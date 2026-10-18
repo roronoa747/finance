@@ -1,4 +1,4 @@
-import { weekKey } from '@/lib/dates'
+import { addDaysIso, todayIso, weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
 import type { MerchantRule, Operation, PaymentRule, SpendCategory, SpendTotal } from './types'
@@ -352,5 +352,75 @@ export function unknownGroups(ops: Operation[], categoryId: string | null = null
     groups.set(key, g)
   }
   return [...groups.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label))
+}
+
+/** Сколько названий уходит в одном запросе предложений ИИ и какой длины (ручка AI-11 берёт 1…50 по ≤ 80 знаков). */
+export const AI_SELLERS_MAX = 50
+const AI_SELLER_NAME_MAX = 80
+
+/**
+ * Что из пачки «Без раздела» спросить у ИИ (бэклог «ИИ», Р-5): только продавцы — переводы людям (`counterparty`)
+ * не уходят; без чисел 6+ (номера карт и счетов); без «ИП + фамилия» (`entrepreneurName`) — человека модель не
+ * угадает (B2C-08), а фамилия — чужое имя. Не больше 50 по сумме, одинаковые названия — один раз. `name` — то, что
+ * уходит и с чем приходит ответ; `match` — продавец пачки, к которому относится предложение.
+ */
+export function aiSellerNames(groups: UnknownGroup[]): { name: string; match: MerchantRule['match'] }[] {
+  const out: { name: string; match: MerchantRule['match'] }[] = []
+  const seen = new Set<string>()
+  for (const g of [...groups].sort((a, b) => b.amount - a.amount)) {
+    if (!g.match.merchant) continue
+    const name = g.label.trim().slice(0, AI_SELLER_NAME_MAX).trim()
+    if (!name || /\d{6,}/.test(name) || entrepreneurName(name) || seen.has(name)) continue
+    seen.add(name)
+    out.push({ name, match: g.match })
+    if (out.length === AI_SELLERS_MAX) break
+  }
+  return out
+}
+
+/** Латинское отчество — `sanitize` сокращает полное ФИО только кириллицей. */
+const LATIN_PATRONYMIC = /(vich|vna|uly|kyzy|ogly)$/
+
+/**
+ * «ИП Абенова», «IP SERIKBAEV A.A. ASTANA KZ», «ИП Дана К.»: ИП и фамилия без цифр. Полное ФИО телефон уже сократил
+ * до «Имя Ф.» (`sanitize`), поэтому человек — это одно-два слова после ИП, инициалы и город в конце не в счёт (и три
+ * с латинским отчеством). «ИП Сулейменов Аптека Плюс» — три слова: название дела, уходит.
+ */
+function entrepreneurName(name: string): boolean {
+  const first = name.toLowerCase().replace(/[.,;:"'«»()*/\\]+/g, ' ').trim().split(' ')[0]
+  if ((first !== 'ип' && first !== 'ip') || /\d/.test(name)) return false
+  const words = normalizeMerchant(name)
+    .split(' ')
+    .filter((w) => w.length > 1)
+  return words.length <= 2 || (words.length === 3 && LATIN_PATRONYMIC.test(words[2]))
+}
+
+/** Привычка «часто и по мелочи» (AI-19): окно, сколько покупок и какой средний чек — пороги замера AI-18. */
+export const HABIT_DAYS = 90
+export const HABIT_MIN_COUNT = 4
+export const HABIT_MAX_AVG = 5_000
+
+/**
+ * «ИП + фамилия» по привычке (AI-19, решение владельца после замера AI-18: 9 из 9 верно): ИИ их не спрашивают, а
+ * частый ИП с мелким чеком — магазин у дома. Своих покупок за 90 дней (окно замера, шире пачки) ≥ 4 и средний чек
+ * ≤ 5 000 ₸ → «Продукты»; остальные — без подсказки. Средний — без деления: сумма ≤ 5 000 × покупок. Ключ — `merchant`.
+ */
+export function habitHints(groups: UnknownGroup[], ops: Operation[], today = todayIso()): Map<string, string> {
+  const ips = new Set(groups.filter((g) => g.match.merchant && entrepreneurName(g.label)).map((g) => g.match.merchant!))
+  const out = new Map<string, string>()
+  if (!ips.size) return out
+  const from = addDaysIso(today, -HABIT_DAYS)
+  const habit = new Map<string, { count: number; amount: number }>()
+  for (const op of ops) {
+    if (op.amount >= 0 || op.internal || op.counterparty || op.date < from || op.date > today) continue
+    const m = normalizeMerchant(op.merchant)
+    if (!ips.has(m)) continue
+    const h = habit.get(m) ?? { count: 0, amount: 0 }
+    h.count += 1
+    h.amount += -op.amount
+    habit.set(m, h)
+  }
+  for (const [m, h] of habit) if (h.count >= HABIT_MIN_COUNT && h.amount <= HABIT_MAX_AVG * h.count) out.set(m, 'sc_food')
+  return out
 }
 

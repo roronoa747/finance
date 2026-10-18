@@ -42,6 +42,21 @@ export interface MeResponse {
   ai?: boolean
 }
 
+/**
+ * Ответ `POST /api/ai/review` v2 (бэклог «ИИ-польза», AU-12): что хорошо, где риск, один шаг — с id кандидата из
+ * присланных или null. Значения фактов уже подставлены сервером.
+ */
+export interface AiReviewAnswer {
+  good: string
+  risk: string
+  step: { text: string; candidate: string | null }
+}
+
+/** Ответ `POST /api/ai/sellers` (AI-11): по названию — id раздела из присланных или null; порядок — как ушло. */
+export interface AiSellersAnswer {
+  items: { name: string; categoryId: string | null }[]
+}
+
 /** Участник семьи из `GET /api/household/members` (B2C-23): без почты и id. */
 export interface MemberView {
   slot: 'a' | 'b' | 'c'
@@ -133,10 +148,13 @@ export interface AdminFamily {
   cost_micros: number
 }
 
-/** Ответ `GET /api/admin/families`: `limit` — одно значение на все семьи, `key` — ключ Claude задан. */
+/**
+ * Ответ `GET /api/admin/families`: `limit_micros` — лимит ИИ на семью в месяц микродолларами (одно значение на все
+ * семьи, бэклог «ИИ-польза» Р-11), `key` — ключ Claude задан.
+ */
 export interface AdminFamilies {
   families: AdminFamily[]
-  limit: number
+  limit_micros: number
   key: boolean
 }
 

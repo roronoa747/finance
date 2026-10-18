@@ -36,8 +36,11 @@ export const useAuthStore = defineStore('auth', () => {
   const members = ref<MemberView[]>([])
   /** Почта владельца из `ADMIN_EMAILS` (B2C-28) — `/auth/me`. */
   const admin = ref(false)
-  /** ИИ у семьи (бэклог «ИИ», Р-7) — `/auth/me`; в демо — никогда (Р-10). */
-  const ai = ref(false)
+  /**
+   * ИИ у семьи (бэклог «ИИ», Р-7) — `/auth/me`; в демо — никогда (Р-10). Хранится на телефоне (`ff_ai`), как
+   * участник: после перезагрузки кнопки ИИ видны сразу, оболочка освежает флаг `fetchMe` (хвост §4, AI-09).
+   */
+  const ai = ref(getItem('ff_ai') === '1' && token.value !== DEMO_TOKEN)
 
   const isAuthenticated = computed(() => Boolean(token.value && user.value))
   /** Вошёл, но «с кем» ещё не пройдено (Р-13): без семьи — только `/who` и настройки. */
@@ -74,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     admin.value = false
     ai.value = false
 
+    removeItem('ff_ai')
     removeItem('ff_auth_token')
     removeItem('ff_user')
     removeItem('ff_household')
@@ -122,22 +126,28 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchMe() {
     if (!token.value) return null
+    // Ответ старого входа не пишется в новый (выход и вход, пока шёл запрос; критик Блока 2 «ИИ»: оболочка зовёт
+    // `/auth/me` при старте).
+    const sent = token.value
     loading.value = true
     error.value = null
     try {
       const res = await apiClient.me()
+      if (token.value !== sent) return null
       user.value = res.user
       household.value = res.household
       member.value = res.member
       admin.value = res.admin === true
       ai.value = !isDemo.value && res.ai === true
+      if (ai.value) setItem('ff_ai', '1')
+      else removeItem('ff_ai')
 
       setItem('ff_user', JSON.stringify(res.user))
       setItem('ff_household', JSON.stringify(res.household))
       setItem('ff_member', JSON.stringify(res.member))
       return res
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      if (token.value === sent && err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         clearAuth()
       }
       throw err

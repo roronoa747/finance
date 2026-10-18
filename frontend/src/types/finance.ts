@@ -1,5 +1,7 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import type { SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { MonthSummaryAI } from '@/lib/aiSummary'
+import type { StepCandidate } from '@/lib/finance'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -22,8 +24,92 @@ export type Tracked = {
 /**
  * Согласие человека на ИИ-помощника (бэклог «ИИ», Р-9) — ключ `aiConsent` личного документа: общее для его
  * устройств, партнёр не видит. Нет ключа — не спрошено. `at` — ISO-время ответа, позднее побеждает при слиянии.
+ * `v` — версия списка «что уходит» (бэклог «ИИ-польза», Р-12, Р-22): «да» старой версии (или без `v`) спрашивается
+ * ещё раз один раз; «нет» любой версии остаётся «нет».
  */
-export type AiConsent = { on: boolean; at: string }
+export type AiConsent = { on: boolean; at: string; v?: number }
+
+/** Шаг разбора месяца (бэклог «ИИ», Р-4): текст и экран из белого списка сервера; нет экрана — null. */
+export type AiReviewStep = { text: string; screen: string | null }
+
+/**
+ * Разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09) — в общем документе: партнёр и viewer видят тот же текст без запроса.
+ * `sent` — что ушло в модель («что ушло», Р-9): v1 — сводка, v2 — факты и кандидаты; `by` — кто запросил; месяц
+ * показывает последний по `at`. v2 (бэклог «ИИ-польза», AU-13): `steps` пуст, шаг один — `step` с кандидатом «Сделать»
+ * (сумма и эффект пересчитываются при открытии); `reason` и `reasonKey` — повод (`month:<YYYY-MM>`,
+ * `salary:<personId>:<YYYY-MM>`; у «Обновить» ключа нет): «один разбор на повод на семью» (Р-4, Р-20).
+ */
+export type AiReview = Tracked & {
+  id: string
+  month: string
+  at: string
+  by: PersonId
+  good: string
+  risk: string
+  steps: AiReviewStep[]
+  sent: MonthSummaryAI | ReviewPayload | null
+  v?: 2
+  reason?: ReviewReason
+  reasonKey?: string
+  step?: { text: string; candidate: StepCandidate | null }
+}
+
+/** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
+export type ReviewReason = 'month' | 'salary' | 'refresh'
+
+/**
+ * Факт разбора v2 (Р-2, Р-19, AU-11): `about` — о чём, без цифр и без имён участников; `value` — как напишет
+ * приложение («80 000 ₸», «к июню 2028», «2 недели»); `raw` — число расчёта `finance.ts`, месяц `YYYY-MM` или числа
+ * строки-образа (для проверки чисел на сервере). Модель ссылается на факт `{f3}`, цифру подставляет сервер.
+ */
+export type ReviewFact = { id: string; about: string; value: string; raw: number | string | number[] }
+
+/** Кандидат шага «Сделать» (Р-3) для модели: `about` без цифр, `value` — сумма, `effect` — эффект строкой. */
+export type ReviewCandidate = { id: string; kind: 'move' | 'prepay' | 'cushion'; about: string; value: string; effect: string }
+
+/** Тело разбора v2 без повода: всё, что уходит в модель, и «что ушло» в листе (Р-9). */
+export type ReviewPayload = { facts: ReviewFact[]; candidates: ReviewCandidate[] }
+
+/**
+ * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,
+ * пишет, сколько план даёт каждой цели и фонду (`given`) и к какому месяцу их соберём; доход и платежи — для причины.
+ * `id` — месяц `YYYY-MM`; при двух снимках месяца побеждает ранний `at`.
+ */
+export type TermSnap = Tracked & {
+  id: string
+  at: string
+  income: number
+  dueIds: string[]
+  goals: { goalId: string; given: number; doneMonth: string | null }[]
+}
+
+/**
+ * Сдвиг месяца (бэклог «ИИ-польза», Р-3, Р-17, AU-05): только в месяце `period` план раздела участника (`from.spend`)
+ * или остаток месяца (`rest`) отдаёт `amount` цели или фонду (`to.goalId`) либо карточке долга (`debt`). Постоянные
+ * `SpendPlan` и `Goal.monthly` не меняются; деньги двигают, как всегда, «Отложил» / «Оплатил».
+ */
+export type PlanShift = Tracked & {
+  id: string
+  period: string
+  by: PersonId
+  from: 'rest' | { spend: PersonId; categoryId: string }
+  to: { goalId: string } | 'debt'
+  amount: number
+  at: string
+}
+
+/**
+ * «Перенести в мечту» у образа сделан (Х-9, AU-31): план раздела уже урезан на `amount`, взнос мечты `goalId` прибавлен —
+ * у образа вместо кнопки «✓ N в мечту». id случайный: «Отменить» — надгробие (слияние: удаление сильнее правки).
+ */
+export type ImageMove = Tracked & {
+  id: string
+  categoryId: string
+  goalId: string
+  amount: number
+  by: PersonId
+  at: string
+}
 
 export type Person = Tracked & {
   id: PersonId
@@ -615,6 +701,16 @@ export type SyncDoc = {
   wishOrder?: QueueOrder | null
   /** Карточка «закрыть кредит» (Р-82). */
   debtCard?: DebtCard | null
+  /** Разборы месяца ИИ (бэклог «ИИ», AI-09): не больше 12 живых, старые — надгробия. До Блока 2 «ИИ» — без ключа. */
+  aiReviews?: AiReview[]
+  /** Снимки срока мечт на начало месяца (бэклог «ИИ-польза», Р-6, AU-04): не больше 3 живых. До Блока 2 — без ключа. */
+  termSnaps?: TermSnap[]
+  /** Сдвиги месяца «Сделать» / «Вернуть срок» (бэклог «ИИ-польза», Р-17, AU-05): отмена — надгробие. До Блока 2 — без ключа. */
+  planShifts?: PlanShift[]
+  /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
+  habitTotals?: HabitTotal[]
+  /** Переносы «в мечту» у образов (бэклог «ИИ-польза», Х-9, AU-31): отмена — надгробие. До AU-31 — без ключа. */
+  imageMoves?: ImageMove[]
   /**
    * Когда закончили первичную настройку бюджета. Пустое значит, что показываем
    * первый запуск (`/start`). Живёт в общем документе, а не в настройках устройства: второй

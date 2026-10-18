@@ -110,6 +110,25 @@ export type SpendTotal = Tracked & {
   unmarked?: number
 }
 
+/** Привычка трат (бэклог «ИИ-польза», Р-24, AU-27) — список в коде (`HABITS`, Р-29). */
+export type HabitId = 'taxi' | 'coffee' | 'delivery' | 'lunch' | 'marketplace'
+
+/**
+ * Итог привычки участника за месяц в общем документе (AU-27): только счётчик и сумма — ни продавцов, ни дат. Ниже порога
+ * месяца не пишется; упавший ниже порога — обнуляется (как итог раздела).
+ */
+export type HabitTotal = Tracked & {
+  /** `${by}:${period}:${habit}` — LWW по id. */
+  id: string
+  by: PersonId
+  /** `YYYY-MM`. */
+  period: string
+  habit: HabitId
+  count: number
+  /** Сумма списаний в целых тенге, > 0 (0 — обнулённый итог). */
+  amount: number
+}
+
 export interface ParsedStatement {
   bank: BankId
   /** Период выписки, `YYYY-MM-DD`. */

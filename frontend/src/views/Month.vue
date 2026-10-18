@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { PhCaretLeft, PhCaretRight } from '@phosphor-icons/vue'
 import { useAuthStore } from '@/stores/auth'
+import { useAiStore } from '@/stores/ai'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { addMonths, monthKey, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
@@ -19,6 +20,7 @@ import PlanSwitch from '@/components/plan/PlanSwitch.vue'
  */
 const route = useRoute()
 const authStore = useAuthStore()
+const ai = useAiStore()
 const ops = useOperationsStore()
 const finance = useFinanceStore()
 
@@ -64,7 +66,7 @@ onMounted(() => void ops.loadUploads())
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <PlanSwitch v-if="!authStore.isViewer" view="month" />
+    <PlanSwitch v-if="!authStore.isViewer" view="month" :dot="ai.reviewUnseen" />
 
     <!-- Месяц: ‹ к прошлым (сводка), › — назад к этому -->
     <div class="relative flex items-center justify-center gap-3.5 text-[15px] font-semibold text-ink" data-month-nav>

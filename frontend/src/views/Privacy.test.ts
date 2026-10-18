@@ -33,9 +33,25 @@ describe('B2C-26: /privacy — публичная политика конфид�
     const html = await renderScreen(Privacy, '/privacy')
     expect(html).not.toContain('Gemini')
     expect(html).toContain('Anthropic')
+    // Хвост §4 ревью frontend Блока 1 (Н-1), AI-10: срок хранения у Anthropic, где обрабатывается, что храним сами.
+    expect(html).toContain('запросы хранит до 30 дней')
+    expect(html).toContain('вне Сеула')
+    expect(html).toContain('число запросов и расход семьи за месяц')
+    expect(html).toContain('keeps requests for up to 30 days')
     expect(html).toContain('не обучается')
     expect(html).toContain('вы дали согласие')
     expect(html).toContain('does not train on this data')
+  })
+
+  // AU-10 (бэклог «ИИ-польза», Р-12): те же пункты, что в листе согласия v2, RU и EN.
+  it('AU-10: согласие v2 — подписки, чек, фраза мечты, разбор сам; RU и EN', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    for (const text of ['названия продавцов и подписок', 'фото чека', 'фраза о мечте', 'Разбор месяца приходит сам', '1-го числа и после отметки зарплаты', 'Фото чека уходит ИИ-помощнику и нигде не сохраняется']) {
+      expect(html, text).toContain(text)
+    }
+    for (const text of ['subscription names', 'receipt photos (never stored)', 'dream phrase', 'arrives by itself', 'after a salary is marked']) {
+      expect(html, text).toContain(text)
+    }
   })
 
   it('открывается без входа и пользователю без семьи; вошедший тоже видит', async () => {

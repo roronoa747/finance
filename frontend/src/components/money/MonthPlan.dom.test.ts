@@ -10,7 +10,7 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type MonthPlanCtx } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
@@ -200,7 +200,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     await press(section('dues'))
     expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
     await press(section('spend'))
-    expect(txt(q('[data-spend="a"]'))).toContain(norm(plain(80_000)))
+    // AU-02: раскрытая «Траты» — разделы семьи (выписок нет — план), а не блоки участников.
+    expect(q('[data-spend]')).toBeNull()
+    expect(txt(q('[data-spend-row="sc_taxi"] [data-spend-amount]'))).toBe(norm(`план ${plain(80_000)}`))
   })
 
   it('выключил цель — остаток сменился сразу, она «на паузе», деньги ушли ниже', async () => {
@@ -855,9 +857,11 @@ describe('ML-01: хвост 960 устарел — траты на жизнь з
     const finance = await open('member', doc)
     expect(planOf(finance).spendTotal).toBe(0)
     await press(section('spend'))
-    expect(all('[data-spends] button').map((b) => txt(b).slice(txt(b).indexOf('+')))).toEqual(['+ Траты · Ильяс', '+ Траты · Аруна'])
-    await press(all('[data-spends] button')[0])
+    // AU-02: вместо «+ Траты · <имя>» у каждого — одна тихая «+ Раздел»; чей план — выбор в листе (своё по умолчанию).
+    expect(all('[data-spends] button').map((b) => txt(b))).toEqual(['+ Раздел'])
+    await press(q('[data-spend-add]'))
     expect(txt(q('[role="dialog"] h3'))).toContain('Траты на месяц')
+    expect(q('[role="dialog"] [data-spend-by]')).not.toBeNull()
     const input = q<HTMLInputElement>('[role="dialog"] input[inputmode]')!
     input.value = '120000'
     input.dispatchEvent(new Event('input'))
@@ -946,5 +950,120 @@ describe('PN-20: строка «Подушки» в «Цели и фонды» �
     await flush()
     await press(section('queue'))
     expect(txt(q('[data-queue="cushion"] [data-status]'))).toBe('на паузе')
+  })
+})
+
+/**
+ * AU-02 (Р-5): раскрытая «Траты» — разделы всей семьи из `spendCompare`, точка у раздела выше обычного и у заголовка,
+ * лист раздела. «Сейчас» — 17 сентября 2026; выписки Ильяса с 1 июня по 17 сентября — июнь…август полные.
+ * Кафе: июнь–август по 30 000 → обычно 30 000; сентябрь 50 000 → точка; план 20 000 → «до плана: +10 000».
+ * Продукты: по 100 000 → обычно 100 000; сентябрь 90 000 — без точки. План Аруны — продукты 150 000.
+ */
+describe('AU-02: траты на «Месяце» — разделы семьи, точка, лист раздела', () => {
+  const total = (period: string, categoryId: string, amount: number): SpendTotal => ({
+    id: `a:month:${period}:${categoryId}`, by: 'a', kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T0,
+  })
+  const totals = [
+    ...['2026-06', '2026-07', '2026-08'].flatMap((m) => [total(m, 'sc_cafe', 30_000), total(m, 'sc_food', 100_000)]),
+    total(KEY, 'sc_cafe', 50_000), total(KEY, 'sc_food', 90_000),
+  ]
+  const spendPlans = [
+    { id: 'a:sc_cafe', by: 'a' as const, categoryId: 'sc_cafe', amount: 20_000, updatedAt: T0 },
+    { id: 'b:sc_food', by: 'b' as const, categoryId: 'sc_food', amount: 150_000, updatedAt: T0 },
+  ]
+  const fullUploads = [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 40, created_at: T0 }]
+  async function openSpend(role: 'member' | 'viewer' = 'member', uploads = fullUploads) {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads } as never)
+    const finance = await open(role, planFamilyDoc({ spendTotals: totals, spendPlans }))
+    await useOperationsStore().loadUploads()
+    await flush()
+    return finance
+  }
+  const compareOf = (finance: ReturnType<typeof useFinanceStore>) => {
+    const { state, ctx } = finance.planInput(KEY)
+    return spendCompare(state, ctx)
+  }
+
+  it('строки — разделы семьи из spendCompare; точка у кафе и у заголовка «Траты»', async () => {
+    const finance = await openSpend()
+    const rows = compareOf(finance).rows
+    expect(rows.map((r) => [r.categoryId, r.amount, r.over])).toEqual([['sc_food', 90_000, false], ['sc_cafe', 50_000, true]])
+    expect(q('[data-section="spend"] [data-section-dot]')).not.toBeNull()
+    await press(section('spend'))
+    expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe'])
+    expect(all('[data-spend-dot]').map((el) => el.closest<HTMLElement>('[data-spend-row]')!.dataset.spendRow)).toEqual(['sc_cafe'])
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(plain(50_000)))
+    // «Не разобрано» в сентябре нет — тихой строки нет.
+    expect(q('[data-spend-unknown]')).toBeNull()
+  })
+
+  it('Х-1, Х-3: «Не разобрано · N» внизу без листа и точки; переводы людям — после трат, без точки', async () => {
+    // «Не разобрано» 12 000; переводы: обычно 0, сентябрь 300 000 — крупнейшие, но последними и без точки.
+    totals.push(total(KEY, '_unknown', 12_000), total(KEY, 'sc_people', 300_000))
+    try {
+      await openSpend()
+      await press(section('spend'))
+      expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe', 'sc_people'])
+      expect(q('[data-spend-row="sc_people"] [data-spend-dot]')).toBeNull()
+      const unknown = q('[data-spend-unknown]')!
+      expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(plain(12_000))])
+      expect(unknown.tagName).not.toBe('BUTTON')
+      expect(unknown.nextElementSibling?.hasAttribute('data-spend-add')).toBe(true)
+    } finally {
+      totals.splice(-2)
+    }
+  })
+
+  it('лист раздела: факт, обычно, план, «до плана» в мечту; «Изменить» — «Сколько в месяц» с суммой участника', async () => {
+    const finance = await openSpend()
+    const cafe = compareOf(finance).rows.find((r) => r.categoryId === 'sc_cafe')!
+    expect(cafe.advice!.amount).toBe(10_000)
+    await press(section('spend'))
+    await press(q('[data-spend-row="sc_cafe"]'))
+    expect(txt(q('[role="dialog"] h3'))).toBe('Кафе и рестораны')
+    expect(txt(q('[role="dialog"] [data-cat-amount]'))).toBe(norm(money(50_000)))
+    expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${plain(30_000)}`))
+    expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${plain(20_000)}`))
+    expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${plain(10_000)} в мечту «${cafe.advice!.goalName}»`))
+    expect(q('[role="dialog"] [data-cat-rk]')).not.toBeNull()
+    await press(q('[role="dialog"] [data-cat-person="a"] [data-cat-edit]'))
+    expect(txt(q('[role="dialog"] h3'))).toBe('Сколько в месяц')
+    expect(q<HTMLInputElement>('[role="dialog"] input[inputmode]')!.value).toBe(plain(20_000))
+  })
+
+  it('без выписок — план строкой, точек нет', async () => {
+    await openSpend('member', [])
+    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    await press(section('spend'))
+    expect(q('[data-spend-dot]')).toBeNull()
+    expect(txt(q('[data-spend-row="sc_food"] [data-spend-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+  })
+
+  it('viewer — строки и лист без «Изменить» и «+ Раздел»', async () => {
+    await openSpend('viewer')
+    await press(section('spend'))
+    expect(all('[data-spend-row]').length).toBe(2)
+    expect(q('[data-spend-add]')).toBeNull()
+    await press(q('[data-spend-row="sc_food"]'))
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(q('[role="dialog"] [data-cat-person="b"]')).not.toBeNull()
+    expect(q('[role="dialog"] [data-cat-edit]')).toBeNull()
+  })
+
+  it('«+ Раздел» — лист «Траты на месяц»; сохранённый план — строкой раздела', async () => {
+    const finance = await openSpend()
+    await press(section('spend'))
+    await press(q('[data-spend-add]'))
+    expect(txt(q('[role="dialog"] h3'))).toBe('Траты на месяц')
+    const sel = q<HTMLSelectElement>('[role="dialog"] select')!
+    sel.value = 'sc_transport'
+    sel.dispatchEvent(new Event('change'))
+    const input = q<HTMLInputElement>('[role="dialog"] input[inputmode]')!
+    input.value = '25000'
+    input.dispatchEvent(new Event('input'))
+    await press(dialogButton('Готово'))
+    expect(finance.householdDoc.spendPlans?.find((x) => x.id === 'a:sc_transport')?.amount).toBe(25_000)
+    expect(q('[data-spend-row="sc_transport"]')).not.toBeNull()
   })
 })

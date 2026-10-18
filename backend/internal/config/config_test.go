@@ -9,7 +9,7 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"PORT", "DATABASE_URL", "JWT_SECRET", "CORS_ORIGIN", "APP_ENV", "GOOGLE_CLIENT_IDS", "ADMIN_EMAILS",
-		"ANTHROPIC_API_KEY", "AI_MODEL_REVIEW", "AI_MODEL_SELLERS", "AI_MODEL_WISH", "AI_MONTHLY_LIMIT",
+		"ANTHROPIC_API_KEY", "AI_MODEL_REVIEW", "AI_MODEL_SELLERS", "AI_MODEL_WISH", "AI_MONTHLY_LIMIT_USD", "AI_MONTHLY_LIMIT",
 		"APPLEPAY_SHORTCUT_URL", "APPLEPAY_SHORTCUT_URL_LEGACY", "APPLEPAY_PUSH_SHORTCUT_URL"} {
 		t.Setenv(key, "")
 	}
@@ -170,8 +170,8 @@ func TestAIDefaults(t *testing.T) {
 	if cfg.AIModelReview != "claude-opus-5-5" || cfg.AIModelSellers != "claude-haiku-5-5" || cfg.AIModelWish != "claude-opus-5-5" {
 		t.Errorf("models = %s / %s / %s", cfg.AIModelReview, cfg.AIModelSellers, cfg.AIModelWish)
 	}
-	if cfg.AIMonthlyLimit != 30 {
-		t.Errorf("AIMonthlyLimit = %d, want 30", cfg.AIMonthlyLimit)
+	if cfg.AIMonthlyLimitMicros != 2_000_000 {
+		t.Errorf("AIMonthlyLimitMicros = %d, want 2 000 000 ($2)", cfg.AIMonthlyLimitMicros)
 	}
 }
 
@@ -179,27 +179,40 @@ func TestAIFromEnv(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("ANTHROPIC_API_KEY", " key ")
 	t.Setenv("AI_MODEL_REVIEW", " claude-sonnet-5-5\n")
+	t.Setenv("AI_MONTHLY_LIMIT_USD", "5")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AnthropicAPIKey != "key" || cfg.AIModelReview != "claude-sonnet-5-5" || cfg.AIMonthlyLimitMicros != 5_000_000 {
+		t.Errorf("cfg = %q / %s / %d", cfg.AnthropicAPIKey, cfg.AIModelReview, cfg.AIMonthlyLimitMicros)
+	}
+}
+
+func TestAIMonthlyLimitTypoFallsBack(t *testing.T) {
+	for _, v := range []string{"0", "-1", "abc", "2.5", "два"} {
+		clearEnv(t)
+		t.Setenv("AI_MONTHLY_LIMIT_USD", v)
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.AIMonthlyLimitMicros != 2_000_000 {
+			t.Errorf("AI_MONTHLY_LIMIT_USD=%q → %d, want 2 000 000", v, cfg.AIMonthlyLimitMicros)
+		}
+	}
+}
+
+// The old request limit is gone: setting it changes nothing (Р-21).
+func TestOldRequestLimitNotRead(t *testing.T) {
+	clearEnv(t)
 	t.Setenv("AI_MONTHLY_LIMIT", "50")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AnthropicAPIKey != "key" || cfg.AIModelReview != "claude-sonnet-5-5" || cfg.AIMonthlyLimit != 50 {
-		t.Errorf("cfg = %q / %s / %d", cfg.AnthropicAPIKey, cfg.AIModelReview, cfg.AIMonthlyLimit)
-	}
-}
-
-func TestAIMonthlyLimitTypoFallsBack(t *testing.T) {
-	for _, v := range []string{"0", "-5", "тридцать", "30x"} {
-		clearEnv(t)
-		t.Setenv("AI_MONTHLY_LIMIT", v)
-		cfg, err := Load()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.AIMonthlyLimit != 30 {
-			t.Errorf("AI_MONTHLY_LIMIT=%q → %d, want 30", v, cfg.AIMonthlyLimit)
-		}
+	if cfg.AIMonthlyLimitMicros != 2_000_000 {
+		t.Errorf("AI_MONTHLY_LIMIT=50 → %d, want the $2 default", cfg.AIMonthlyLimitMicros)
 	}
 }
 

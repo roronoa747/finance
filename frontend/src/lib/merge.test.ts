@@ -1163,9 +1163,106 @@ describe('AI-05: согласие на ИИ в личном документе',
     }
   })
 
+  // AU-10: v1 «да» с телефона и v2 «да» с ноутбука — позднее `at` целиком, с версией.
+  it('aiConsent v1 и v2 с двух телефонов — позднее at целиком, с v', () => {
+    const old = { aiConsent: { on: true, at: T1 } }
+    const fresh = { aiConsent: { on: true, at: T2, v: 2 } }
+    for (const merged of [mergePrivateDocs(old, fresh), mergePrivateDocs(fresh, old)]) {
+      expect(merged.aiConsent).toEqual({ on: true, at: T2, v: 2 })
+    }
+  })
+
   it('с одной стороны — берётся она; ни с одной — ключа нет («не спрошено»)', () => {
     expect(mergePrivateDocs({}, { aiConsent: { on: true, at: T1 } }).aiConsent).toEqual({ on: true, at: T1 })
     expect(mergePrivateDocs({ aiConsent: { on: true, at: T1 } }, {}).aiConsent).toEqual({ on: true, at: T1 })
     expect('aiConsent' in mergePrivateDocs({ accounts: [] }, {})).toBe(false)
+  })
+})
+
+// AI-09 (бэклог «ИИ», Р-4): разборы месяца — список с id в общем документе.
+describe('merge.ts — разборы месяца ИИ (aiReviews)', () => {
+  const review = (id: string, at: string, extra: Record<string, unknown> = {}) => ({
+    id, month: '2026-10', at, by: 'a' as const, good: `хорошо ${id}`, risk: 'риск', steps: [], sent: null, updatedAt: at, ...extra,
+  })
+
+  it('разборы двух телефонов сливаются по id; надгробие сильнее', () => {
+    const one = { ...createEmptyDoc(), aiReviews: [review('r1', '2026-10-01T08:00:00.000Z'), review('r2', '2026-10-02T08:00:00.000Z')] }
+    const two = {
+      ...createEmptyDoc(),
+      aiReviews: [review('r3', '2026-10-03T08:00:00.000Z'), { ...review('r1', '2026-10-01T08:00:00.000Z'), deletedAt: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z' }],
+    }
+    const merged = mergeDocs(one, two).aiReviews ?? []
+    expect(merged.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3'])
+    expect(merged.find((r) => r.id === 'r1')?.deletedAt).toBe('2026-10-05T08:00:00.000Z')
+    expect(mergeDocs(two, one).aiReviews?.find((r) => r.id === 'r1')?.deletedAt).toBe('2026-10-05T08:00:00.000Z')
+  })
+
+  it('документ без ключа (старый клиент) — разборы другой стороны не теряются', () => {
+    const merged = mergeDocs(createEmptyDoc(), { ...createEmptyDoc(), aiReviews: [review('r1', '2026-10-01T08:00:00.000Z')] })
+    expect(merged.aiReviews?.map((r) => r.id)).toEqual(['r1'])
+    expect(defaultSyncDoc().aiReviews).toEqual([])
+  })
+})
+
+// AU-04 (бэклог «ИИ-польза», Р-6): снимки срока мечт — по месяцу, ранний снимок побеждает.
+describe('merge.ts — снимки срока мечт (termSnaps)', () => {
+  const snap = (id: string, at: string, given: number, extra: Record<string, unknown> = {}) => ({
+    id, at, income: 1_000_000, dueIds: ['rent'], goals: [{ goalId: 'car', given, doneMonth: '2027-05' }], updatedAt: at, ...extra,
+  })
+
+  it('два телефона записали один месяц — побеждает ранний at в обе стороны', () => {
+    const early = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T03:00:00.000Z', 60_000)] }
+    const late = { ...createEmptyDoc(), termSnaps: [snap('2026-10', '2026-10-01T09:00:00.000Z', 30_000)] }
+    for (const merged of [mergeDocs(early, late), mergeDocs(late, early)]) {
+      expect(merged.termSnaps).toHaveLength(1)
+      expect(merged.termSnaps![0]).toMatchObject({ at: '2026-10-01T03:00:00.000Z', goals: [{ given: 60_000 }] })
+    }
+  })
+
+  it('разные месяцы — оба; надгробие старшего сильнее; старый клиент без ключа не теряет', () => {
+    const one = { ...createEmptyDoc(), termSnaps: [snap('2026-09', '2026-09-01T03:00:00.000Z', 1), snap('2026-10', '2026-10-01T03:00:00.000Z', 2)] }
+    const two = {
+      ...createEmptyDoc(),
+      termSnaps: [{ ...snap('2026-09', '2026-09-01T03:00:00.000Z', 0), goals: [], deletedAt: '2026-12-01T03:00:00.000Z', updatedAt: '2026-12-01T03:00:00.000Z' }],
+    }
+    const merged = mergeDocs(one, two).termSnaps ?? []
+    expect(merged.map((s) => s.id).sort()).toEqual(['2026-09', '2026-10'])
+    expect(merged.find((s) => s.id === '2026-09')?.deletedAt).toBe('2026-12-01T03:00:00.000Z')
+    expect(mergeDocs(createEmptyDoc(), one).termSnaps).toHaveLength(2)
+    expect(defaultSyncDoc().termSnaps).toEqual([])
+  })
+})
+
+// AU-05 (Р-17): сдвиги месяца — записи по id; отмена (надгробие) побеждает.
+describe('merge.ts — сдвиги месяца (planShifts)', () => {
+  const s = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, period: '2026-10', by: 'a' as const, from: 'rest' as const, to: { goalId: 'car' }, amount: 20_000, at: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z', ...extra,
+  })
+
+  it('сдвиги с двух телефонов — оба; отмена на одном побеждает правку на другом в обе стороны', () => {
+    const one = { ...createEmptyDoc(), planShifts: [s('x1'), s('x2', { amount: 30_000, updatedAt: '2026-10-07T08:00:00.000Z' })] }
+    const two = { ...createEmptyDoc(), planShifts: [s('x3'), s('x2', { deletedAt: '2026-10-06T08:00:00.000Z', updatedAt: '2026-10-06T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.planShifts ?? []).map((x) => x.id).sort()).toEqual(['x1', 'x2', 'x3'])
+      expect(merged.planShifts!.find((x) => x.id === 'x2')!.deletedAt).toBe('2026-10-06T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().planShifts).toEqual([])
+  })
+})
+
+// AU-31 (Х-9): переносы образов — записи по id; отмена (надгробие) побеждает.
+describe('merge.ts — переносы образов (imageMoves)', () => {
+  const m = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, categoryId: 'sc_cafe', goalId: 'trip', amount: 20_000, by: 'a' as const, at: '2026-10-05T08:00:00.000Z', updatedAt: '2026-10-05T08:00:00.000Z', ...extra,
+  })
+
+  it('переносы с двух телефонов — оба; отмена на одном сильнее в обе стороны', () => {
+    const one = { ...createEmptyDoc(), imageMoves: [m('m1'), m('m2')] }
+    const two = { ...createEmptyDoc(), imageMoves: [m('m3', { by: 'b' }), m('m2', { deletedAt: '2026-10-06T08:00:00.000Z', updatedAt: '2026-10-06T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.imageMoves ?? []).map((x) => x.id).sort()).toEqual(['m1', 'm2', 'm3'])
+      expect(merged.imageMoves!.find((x) => x.id === 'm2')!.deletedAt).toBe('2026-10-06T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().imageMoves).toEqual([])
   })
 })

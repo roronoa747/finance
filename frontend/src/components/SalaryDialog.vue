@@ -4,7 +4,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
-import { monthlyFromWeekly, payEventAt, payEvents, payRhythmOf, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
+import { monthlyFromWeekly, payEventAt, payEvents, payRhythmOf, periodMonth, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, Person, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -148,11 +148,22 @@ function onFloating(v: boolean) {
   if (person.value) financeStore.setPerson(person.value.id, { floating: v })
 }
 
+/**
+ * С какого месяца новый оклад по умолчанию (хотфикс 2026-10-17, смоук владельца): зарплата этого месяца ещё не
+ * отмечена — с этого месяца (повышение до дня зарплаты ждёт уже новую сумму); отмечена (хотя бы аванс) — со следующего.
+ */
+function defaultFrom(): string {
+  const key = monthKey()
+  const came = financeStore.payments.some((p) => !p.deletedAt && p.kind === 'salary' && p.targetId === props.id && periodMonth(p.period) === key)
+  return came ? addMonths(key, 1) : key
+}
+
 // «Новый оклад» — сразу под пальцем (React `Budget.tsx:426-427` `autoFocus`), как PV-11; валюта — нынешняя.
 const planRef = ref<HTMLElement | null>(null)
 function startPlanning() {
   planning.value = true
   newCurrency.value = current.value.currency
+  fromMonth.value = defaultFrom()
   void nextTick(() => planRef.value?.querySelector<HTMLInputElement>('input[inputmode]')?.focus())
 }
 

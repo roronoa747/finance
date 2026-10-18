@@ -32,6 +32,7 @@ func TestAIOffWithoutKey(t *testing.T) {
 			cfg := devConfig()
 			cfg.AdminEmails = []string{"dana@example.com"}
 			cfg.AnthropicAPIKey = tc.key
+			cfg.AIMonthlyLimitMicros = 2_000_000
 			tokens := auth.NewTokenService(cfg.JWTSecret, time.Hour)
 			r := NewRouter(cfg, nil, Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx,
 				Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: aiRepo}, tokens, fx.NewClient(), fakeGoogle{})
@@ -61,6 +62,19 @@ func TestAIOffWithoutKey(t *testing.T) {
 				if rec := a.do(t, http.MethodPost, "/api/admin/ai-check", hh.Token, nil); !strings.Contains(rec.Body.String(), `"no_key"`) {
 					t.Errorf("/admin/ai-check: %d %s, want no_key", rec.Code, rec.Body.String())
 				}
+			}
+			// Разбор месяца (AI-08) — в семейной группе за гейтом: без ключа 503 ai_off; с ключом гейт
+			// пропускает member, и битое тело — 400 до модели (сети в тесте нет).
+			wantReview := http.StatusBadRequest
+			if tc.key == "" {
+				wantReview = http.StatusServiceUnavailable
+			}
+			if rec := a.do(t, http.MethodPost, "/api/ai/review", hh.Token, map[string]any{"summary": []int{1}}); rec.Code != wantReview {
+				t.Errorf("/ai/review: %d %s, want %d", rec.Code, rec.Body.String(), wantReview)
+			}
+			// Продавцы (AI-11) — тот же гейт; название с 6+ цифрами — 400 до модели.
+			if rec := a.do(t, http.MethodPost, "/api/ai/sellers", hh.Token, map[string]any{"names": []string{"KASPI 1234567"}, "categories": []map[string]string{{"id": "sc_food", "name": "Продукты"}}}); rec.Code != wantReview {
+				t.Errorf("/ai/sellers: %d %s, want %d", rec.Code, rec.Body.String(), wantReview)
 			}
 		})
 	}

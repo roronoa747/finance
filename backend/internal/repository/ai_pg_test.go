@@ -44,7 +44,7 @@ func TestPostgresAIFlagAndUsage(t *testing.T) {
 	}
 
 	// Counters add up within a month; another month is its own row.
-	if n, err := repo.Used(ctx, h.ID, "2026-10"); err != nil || n != 0 {
+	if n, err := repo.Spent(ctx, h.ID, "2026-10"); err != nil || n != 0 {
 		t.Fatalf("no row = %d, %v", n, err)
 	}
 	for i := 0; i < 2; i++ {
@@ -65,8 +65,15 @@ func TestPostgresAIFlagAndUsage(t *testing.T) {
 	if req != 2 || in != 200 || out != 40 || cost != 1600 {
 		t.Errorf("2026-10 = %d/%d/%d/%d, want 2/200/40/1600", req, in, out, cost)
 	}
-	if n, _ := repo.Used(ctx, h.ID, "2026-11"); n != 1 {
-		t.Errorf("2026-11 used = %d, want 1", n)
+	// Spent is the month's cost_micros — a billed failure (0 requests) counts too (Р-11).
+	if n, _ := repo.Spent(ctx, h.ID, "2026-10"); n != 1600 {
+		t.Errorf("2026-10 spent = %d, want 1600", n)
+	}
+	if err := repo.AddUsage(ctx, h.ID, "2026-11", 0, 5, 5, 4); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := repo.Spent(ctx, h.ID, "2026-11"); n != 5 {
+		t.Errorf("2026-11 spent = %d, want 5", n)
 	}
 
 	// Deleting the family (its only member leaves) takes the counters along.

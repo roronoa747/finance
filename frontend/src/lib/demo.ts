@@ -5,10 +5,38 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey, weekRange } from '@/lib/dates'
-import { monthPlan, planSave } from '@/lib/finance'
+import { monthPlan, planSave, termSnapOf } from '@/lib/finance'
 import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
+import { buildReviewFacts, type PlanInput } from '@/lib/aiFacts'
+import type { AiReview, SyncDoc } from '@/types/finance'
+
+/**
+ * Разбор месяца демо-семьи v2 (бэклог «ИИ-польза», Р-13, AU-14): заранее написанный, без запроса — в демо «Разобрать»
+ * показывает его с пометкой «Пример». Хорошо · Риск · Шаг через мечту демо (поездка), **без цифр** — как живой разбор v2,
+ * где цифры подставляет сервер; слова верны в любой день месяца (тест `demo.review.test.ts` сверяет на разных датах).
+ * Шаг — «Сделать» с кандидатом демо-семьи `cushion` (подушки почти нет). Черновик слов — финал `/ux` с владельцем.
+ */
+export const DEMO_REVIEW = {
+  good: 'Копим на поездку в Японию каждый месяц.',
+  risk: 'Подушки почти нет — неожиданный расход ударит по поездке.',
+  step: 'Отложим остаток месяца в подушку',
+}
+
+/**
+ * Разбор демо в форме v2: заготовка, кандидат «Сделать» — `cushion` из кандидатов кода демо-семьи (его нет — шаг без
+ * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется. Строится по документу без сдвигов этого
+ * месяца — как разбор, сохранённый до «Сделать»: после подтверждения кандидат не пропадает, у шага — «✓ Сделано».
+ */
+export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
+  const key = input.ctx.key
+  const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
+  const before = { ...doc, planShifts }
+  const { payload, byId } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
+  const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
+  return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
+}
 
 /** День `ago` суток назад — как у демо-операций (`day` ниже): даты поездки и операции совпадают. */
 const daysAgo = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
@@ -155,6 +183,18 @@ export function startDemo(): boolean {
         payment: 95_000,
         day: 18,
         payer: 'a',
+        updatedAt: new Date().toISOString(),
+      },
+      // Второй долг с процентами (AU-08, Р-7): на «Долгах» — строка «первым — Автокредит: ставка 19 % — самая высокая».
+      {
+        id: 'cr-repair',
+        name: 'Кредит на ремонт',
+        note: 'Halyk',
+        principal: 400_000,
+        annualRate: 0.14,
+        payment: 25_000,
+        day: 8,
+        payer: 'b',
         updatedAt: new Date().toISOString(),
       },
       // Долг человеку (мелочи Р-5): без процентов, «Отдал» в строке «Долгов»; план «Сначала долги» его не досрочит.
@@ -328,10 +368,24 @@ export function startDemo(): boolean {
     const week = weekKey()
     const prevWeek = weekKey(new Date(Date.now() - 7 * 86_400_000))
     const month = monthKey()
+    // Три прошлых месяца b — для «обычно у вас» на «Месяце» (AU-03, Р-5): кафе обычно ~47 000 (в нём доставка), в этом
+    // месяце — 95 000 (точка у «Кафе и рестораны» и «до плана» в мечту при любом дне месяца).
+    const past = ([[-3, 70_000, 66_000, 44_000], [-2, 76_000, 78_000, 50_000], [-1, 73_000, 76_000, 47_000]] as const).flatMap(([n, food, shop, cafe]) => {
+      const p = addMonths(month, n)
+      return [total('month', p, 'sc_food', food, 11), total('month', p, 'sc_shopping', shop, 3), total('month', p, 'sc_cafe', cafe, 4)]
+    })
+    // Привычка b (AU-30, Р-24): доставка 4 раза в месяц на ~40 000 три прошлых месяца, как на настоящей выписке (Х-11) —
+    // внутри её итогов «Кафе» (44–50 тыс.); итоги руками, как её итоги разделов. Такси a — из его демо-поездок ниже (тот
+    // же `writeTotals`, что у выписки).
+    doc.habitTotals = ([[-3, 38_000], [-2, 42_000], [-1, 40_000]] as const).map(([n, amount]) => {
+      const period = addMonths(month, n)
+      return { id: `b:${period}:delivery`, by: 'b' as const, period, habit: 'delivery' as const, count: 4, amount, updatedAt: at }
+    })
     doc.spendTotals = [
+      ...past,
       total('week', prevWeek, 'sc_food', 24_000, 5),
       total('week', week, 'sc_food', 20_000, 4), total('week', week, 'sc_shopping', 34_000, 2),
-      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2),
+      total('month', month, 'sc_food', 40_000, 8), total('month', month, 'sc_shopping', 34_000, 2), total('month', month, 'sc_cafe', 95_000, 5),
     ]
     // Итог поездки партнёра b (PN-32) — руками, как её итоги разделов: общий итог «За поездку» — двоих.
     doc.tripSpends = [{ id: 'g-trip:b', goalId: 'g-trip', by: 'b', amount: 64_000, ops: 5, updatedAt: at }]
@@ -373,13 +427,25 @@ export function startDemo(): boolean {
   // часть уже обменяли (B2C-79): 500 € по 512 ₸ на Kaspi Gold — строка «обменяно 500 € из 1 500 €».
   financeStore.markSalary('a', { accountId: 'acc-eur' })
   financeStore.addExchange({ by: 'a', accountId: 'acc-eur', toAccountId: 'acc-kaspi', foreign: 500, rate: 512, period: monthKey() })
+  // Снимок срока месяца (AU-08, Р-6): «на начало месяца» герою «Поездка» план давал на 40 000 больше, чем сейчас — у героя
+  // «Мечт» метка «+2 недели · кафе и рестораны выше плана» (40 000 при 100 000 в месяц — 12 дней), на экране цели —
+  // «Вернуть срок». Остальное в снимке — нынешний план (доход и платежи прежние — причина не «новый платёж»).
+  {
+    const at = `${monthKey()}-01T03:00:00.000Z`
+    const snap = termSnapOf(monthPlan({ ...financeStore.householdDoc, credits: financeStore.credits, book: useFxStore().book }, { key: monthKey(), totals: [], spendCategories: [], uploads: [] }), at)
+    snap.goals = snap.goals.map((g) => (g.goalId === 'g-trip' ? { ...g, given: g.given + 40_000 } : g))
+    financeStore.mutateHouseholdDoc((doc) => {
+      doc.termSnaps = [{ ...snap, updatedAt: at }]
+    })
+  }
   // Записи загрузок и свои операции демо — когда стор операций уже переключился на демо-семью (watch по владельцу).
   void nextTick().then(() => {
-    // Девять недель своих операций (0…62 дня назад, Блок 15): у «Недели» есть сравнение с прошлой и тренд
-    // «8 недель»; одна загрузка покрывает их все.
+    // Девятнадцать недель своих операций (0…131 день назад, Блок 15, AU-03): у «Недели» есть сравнение с прошлой и тренд
+    // «8 недель», у «Месяца» — «обычно у вас»; одна загрузка покрывает их все.
     const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10)
     const today = day(0)
-    const from = day(63)
+    // Выписка a — с 1-го числа три месяца назад (AU-03): три полных месяца для «обычно у вас»; операции — ниже, до 131 дня.
+    const from = `${addMonths(monthKey(), -3)}-01`
     const ops = useOperationsStore()
     // «Выписки» недели (B2C-62/67): участник a загрузил, партнёр b — ещё нет (галочка и «ещё нет»). У партнёра b — выписка
     // месяца до этой недели: план месяца показывает факт трат обоих (B2C-90); в первые дни месяца, когда
@@ -387,9 +453,11 @@ export function startDemo(): boolean {
     const monthStart = `${monthKey()}-01`
     const weekStart = weekRange(weekKey()).from
     const arunaTo = weekStart > monthStart ? new Date(Date.parse(weekStart) - 86_400_000).toISOString().slice(0, 10) : today
+    const prevEnd = new Date(Date.parse(`${monthStart}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
     ops.seedDemoUploads([
-      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 55, created_at: new Date().toISOString() },
-      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 10, created_at: new Date().toISOString() },
+      { id: 'demo-upload-a', slot: 'a', bank: 'kaspi', period_from: from, period_to: today, ops_count: 95, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b-prev', slot: 'b', bank: 'kaspi', period_from: `${addMonths(monthKey(), -3)}-01`, period_to: prevEnd, ops_count: 54, created_at: new Date().toISOString() },
+      { id: 'demo-upload-b', slot: 'b', bank: 'kaspi', period_from: monthStart, period_to: arunaTo, ops_count: 13, created_at: new Date().toISOString() },
     ])
     // Пять разделов, продавцы — только из словаря (иначе ответ на продавца, переразложив операции правилами,
     // вернёт их в «не разобрано»; суммы — вне окна оценки «Коммуналки» 21–39 тыс., иначе «платёж по
@@ -398,9 +466,10 @@ export function startDemo(): boolean {
     const op = (n: number, ago: number, amount: number, merchant: string, categoryId: string | null, extra: Partial<Operation> = {}): Operation => ({
       id: `demo-op-${n}`, bank: 'kaspi', date: day(ago), amount, kind: 'purchase', merchant, categoryId, internal: false, ...extra,
     })
-    // Ещё семь недель назад (14…62 дня, Блок 15): у тренда «8 недель», сравнения недель и остатка разделов есть
-    // данные. Суммы — вне допусков платежей (подписки 3–5 тыс., «Коммуналка» 21–39 тыс.): вопросов не добавляют.
-    const older = [1, 0.8, 1.15, 0.9, 1.3, 0.7, 1.05].flatMap((k, w) => {
+    // Ещё семнадцать недель назад (14…131 день, Блок 15; AU-03 — до начала месяца три месяца назад): у тренда «8 недель»,
+    // сравнения недель, остатка разделов и «обычно у вас» есть данные. Суммы — вне допусков платежей (подписки 3–5 тыс.,
+    // «Коммуналка» 21–39 тыс.): вопросов не добавляют.
+    const older = [1, 0.8, 1.15, 0.9, 1.3, 0.7, 1.05, 1.1, 0.95, 1.2, 0.85, 1, 0.9, 1.15, 0.8, 1.05, 1].flatMap((k, w) => {
       const ago = 14 + w * 7
       const sum = (n: number) => -Math.round((n * k) / 100) * 100
       return [
@@ -410,8 +479,20 @@ export function startDemo(): boolean {
         op(103 + w * 4, ago + 5, sum(1_700), 'Yandex Go', 'sc_transport'),
       ]
     })
+    // Такси a (AU-30, Р-24): 14 поездок Yandex Go в каждом из трёх прошлых месяцев (5 600–6 900 ₸, с недельными
+    // ~95 000 в месяц, как на настоящей выписке — Х-11; вне допуска подписки «Яндекс Плюс», вопросов не добавляют) —
+    // вместе с недельными выше привычка «такси» держится 3 месяца: у «Транспорта» на «Месяце» есть образ. В дни прошедшей поездки (20–26 дней назад) поездок нет — её итог прежний (PN-32).
+    const rides = [3, 2, 1]
+      .flatMap((n) =>
+        Array.from({ length: 14 }, (_, i) => ({
+          ...op(600 + n * 20 + i, 0, -(5_600 + i * 100), 'Yandex Go', 'sc_transport'),
+          date: `${addMonths(monthKey(), -n)}-${String(2 + i * 2).padStart(2, '0')}`,
+        })),
+      )
+      .filter((r) => r.date < day(26) || r.date > day(20))
     ops.seedDemoOperations([
       ...older,
+      ...rides,
       op(1, 0, -6_800, 'Galmart', 'sc_food'),
       op(2, 0, -4_990, 'Яндекс Плюс', 'sc_subscriptions'),
       op(3, 0, -7_600, 'ИП Абенова', null),

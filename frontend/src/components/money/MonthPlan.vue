@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCaretRight } from '@phosphor-icons/vue'
+import { PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
+import { useAiStore } from '@/stores/ai'
+import { demoReview as demoReviewOf } from '@/lib/demo'
+import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
 import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
 import {
@@ -15,6 +18,7 @@ import {
   freeByFact,
   allInDebt,
   goalPace,
+  habitImages,
   lastAccountFor,
   liveSpendCategories,
   monthPlan,
@@ -26,8 +30,11 @@ import {
   planPuts,
   putsLeft,
   queueStatus,
+  rkShare,
+  spendCompare,
   spendFact,
   untilPayday,
+  type ImageAction,
   type PlanDue,
   type PlanPut,
   type PlanQueueItem,
@@ -54,10 +61,15 @@ import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
+import AiReviewSheet from '@/components/ai/AiReviewSheet.vue'
 import { useQuerySheet } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
+import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
+import { templateById } from '@/lib/goalTemplates'
+import { attachTemplate } from '@/lib/photos/goalPhoto'
 
 /**
  * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
@@ -65,7 +77,7 @@ import SalarySheet from '@/components/money/SalarySheet.vue'
  * строки, один за раз, по умолчанию всё свёрнуто. Месяц — список дел одним языком (правило 12 «Смысловой флоу»):
  * платёж — «Оплатил» ✓ (Р-94), цель — «Отложил» ✓, зарплата — «Пришла» ✓ (Р-97); действие — нажатием своей строки,
  * лист с одной кнопкой. Подписки — одной строкой (Р-93), цели — короткими строками без фото (Р-92). Управление
- * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮, траты каждого. Всё считает `finance.ts`; здесь — показ и правки
+ * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮; траты — разделы всей семьи, план каждого — в листе раздела (Р-5). Всё считает `finance.ts`; здесь — показ и правки
  * документа через стор. Viewer — тот же план без переключателей, плательщиков, листов и кнопок.
  */
 const props = defineProps<{ monthKey: string }>()
@@ -141,6 +153,8 @@ const freedMeta = computed(() => {
 })
 
 const spentFact = computed(() => spendFact(plan.value.spend))
+/** Траты в сравнении (Р-5, AU-01): разделы всей семьи; точка — у раздела выше обычного и у заголовка «Траты». */
+const compare = computed(() => spendCompare(state.value, ctx.value))
 const sections = computed(() => [
   {
     key: 'dues' as const,
@@ -156,7 +170,8 @@ const sections = computed(() => [
     color: '--s8',
     total: plan.value.spendTotal,
     meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
-    dot: false,
+    dot: compare.value.rows.some((r) => r.over),
+    dotLabel: 'больше обычного',
   },
   {
     key: 'queue' as const,
@@ -226,6 +241,56 @@ watch(
  */
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
+/*
+ * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13): у остатка рядом с «Хватит?» ----------
+ * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
+ * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Точка — разбор есть, а на этом
+ * телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
+ */
+const ai = useAiStore()
+/** Демо (Р-13, AU-14): заранее написанный разбор v2 с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
+const demoReview = computed<AiReview | null>(() =>
+  auth.isDemo
+    ? {
+        id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '',
+        ...demoReviewOf(finance.householdDoc, finance.planInput(props.monthKey)),
+      }
+    : null,
+)
+const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.monthKey))
+/** Запустить может участник с ИИ, не сказавший «Не надо» (Р-9: тогда — как без ИИ); прочитать — любой, если разбор есть. */
+const reviewShown = computed(
+  () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
+)
+const reviewDot = computed(() => !!review.value && review.value.id !== ai.seenReview)
+const reviewOpen = ref(false)
+function markReviewSeen() {
+  if (review.value) ai.markReviewSeen(review.value.id)
+}
+async function openReview() {
+  if (review.value) {
+    if (ai.reviewState !== 'thinking') ai.reviewState = 'idle'
+    reviewOpen.value = true
+    markReviewSeen()
+    return
+  }
+  if (!ai.available) return
+  if (!(await ai.ensureConsent())) {
+    // Личный документ не подтянулся (нет сети) — сказать, а не молчать; «Не надо» и свайп — просто ничего.
+    if (ai.consentFailed) {
+      ai.reviewState = 'failed'
+      reviewOpen.value = true
+    }
+    return
+  }
+  reviewOpen.value = true
+  // Лист закрыли, пока «Думаю…», — разбор не видели: позовёт точка на ✦ (правило 12, `/ux`).
+  if ((await ai.runReview(props.monthKey, 'month')) && reviewOpen.value) markReviewSeen()
+}
+async function refreshReview() {
+  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey, 'refresh')) && reviewOpen.value) markReviewSeen()
+}
+
 /* ---------- кто платит (Р-80) ---------- */
 type PayerTarget = { kind: 'obligation' | 'credit' | 'goal' | 'debt'; id: string; name: string; payer: PersonId | null }
 const payerFor = ref<PayerTarget | null>(null)
@@ -278,12 +343,49 @@ function editDue(d: PlanDue) {
 const dueNote = (d: PlanDue) => (d.kind === 'obligation' && d.obligation.estimate ? 'примерно' : '')
 const askPayer = (d: PlanDue) => (payerFor.value = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer })
 
-/* ---------- траты каждого (Р-81) ---------- */
+/* ---------- траты: разделы семьи (Р-5), план каждого — в листе раздела (Р-81) ---------- */
 const categories = computed(() => {
   const all = finance.householdDoc.spendCategories ?? []
   return liveSpendCategories(all).filter((c) => !plannedElsewhere(c.id, all))
 })
-const spendShare = (fact: number | null, planned: number) => (fact === null || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100)))
+const spendShare = (fact: number | null, planned: number | null) =>
+  fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
+const catFor = ref<string | null>(null)
+const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
+const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
+/** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
+const catPlans = computed(() =>
+  people.value.map((p) => ({
+    by: p.id,
+    name: p.name,
+    amount: plan.value.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0,
+  })),
+)
+/** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
+const images = computed(() => habitImages(state.value, props.monthKey))
+const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)
+const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
+/** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
+function imageAct(a: ImageAction) {
+  if (!canEdit.value) return
+  catFor.value = null
+  if (a.kind === 'goal') {
+    const tpl = templateById(a.template)
+    const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: tpl?.hue ?? 'steel', template: a.template })
+    // Картинка шаблона — как у новой мечты из `GoalNew` (без сети — позже, `retryTemplatePhotos`).
+    if (tpl) void attachTemplate(finance, id, tpl)
+    void router.push(`/goals/${id}`)
+  } else if (a.kind === 'wish') {
+    finance.addWish({ name: a.name, price: a.price, by: me.value })
+    flashCloser('В желаниях')
+  } else if (a.kind === 'move') moveAction.value = a
+  else void router.push('/money/debts/faster')
+}
+function editCatPlan(personId: PersonId, amount: number) {
+  const id = catFor.value
+  catFor.value = null
+  if (id) editSpend(personId, id, amount)
+}
 const spendEdit = ref<{ by: PersonId; categoryId: string; amount: string; fresh: boolean } | null>(null)
 function editSpend(personId: PersonId, categoryId?: string, amount = 0) {
   if (!canEdit.value) return
@@ -295,7 +397,6 @@ function saveSpend() {
   spendEdit.value = null
   if (e?.categoryId) finance.setSpendPlan(e.by, e.categoryId, parseMoney(e.amount))
 }
-const spendless = computed(() => people.value.filter((p) => !plan.value.spend.some((s) => s.by === p.id)))
 
 /* ---------- цели и фонды — короткие строки (Р-92), очередь ⋮⋮ (Р-84), «Отложил» нажатием ---------- */
 const queueIds = computed(() => plan.value.queue.map((q) => q.id))
@@ -395,8 +496,25 @@ function addFund(kind: 'reserve' | 'cushion') {
       </span>
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
-      <!-- Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопке свои. -->
-      <Button variant="secondary" size="sm" class="pointer-events-auto relative z-10 mt-1" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
+      <!--
+        Действие у своего предмета (правило 12): «Хватит?» и разбор месяца — у остатка; слот кольца не ловит нажатия —
+        кнопкам свои. Разбор — круглая кнопка той же высоты: слово рядом с «Хватит?» в круг 150 px не помещается.
+      -->
+      <span class="pointer-events-auto relative z-10 mt-1 flex items-center gap-1.5">
+        <Button variant="secondary" size="sm" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
+        <Button
+          v-if="reviewShown"
+          variant="secondary"
+          size="sm"
+          class="relative w-8 px-0"
+          :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
+          data-review-open
+          @click.stop="openReview"
+        >
+          <PhSparkle :size="16" />
+          <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
+        </Button>
+      </span>
     </MonthRing>
 
     <!--
@@ -460,7 +578,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
               <span class="text-[16.5px] font-bold text-ink">
                 {{ s.name
-                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
+                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template>
               </span>
               <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
             </span>
@@ -532,45 +650,53 @@ function addFund(kind: 'reserve' | 'cushion') {
             </template>
           </div>
 
-          <!-- Траты каждого: план и факт по разделам -->
+          <!--
+            Траты — разделы всей семьи (Р-5): одна цифра у строки (факт; выписок нет — план), полоса факт/план, точка —
+            трат больше обычного; нажатие — лист раздела (обычно, план каждого, справка). Участников не сравниваем.
+          -->
           <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
-            <div v-for="sp in plan.spend" :key="sp.by" class="flex flex-col gap-[9px] border-t border-line py-2.5 first:border-t-0" :data-spend="sp.by">
-              <div class="flex items-center gap-2">
-                <Avatar :id="sp.by" :name="personName(sp.by)" :size="24" />
-                <b class="flex-1 text-[15.5px] text-ink">{{ personName(sp.by) }}</b>
-                <span class="type-meta num">{{ sp.fact === null ? `план ${plain(sp.plan)}` : `${plain(sp.fact)} из ${plain(sp.plan)}` }}</span>
-              </div>
-              <component
-                :is="canEdit ? 'button' : 'div'"
-                v-for="r in sp.rows"
-                :key="r.categoryId"
-                :type="canEdit ? 'button' : undefined"
-                class="flex flex-col gap-1 pl-8 text-left"
-                :class="canEdit && 'press cursor-pointer'"
-                :data-spend-row="r.categoryId"
-                @click="editSpend(sp.by, r.categoryId, r.plan)"
-              >
-                <span class="flex w-full justify-between gap-2 text-[14px]">
-                  <span class="text-ink">{{ r.name }}</span>
-                  <span class="whitespace-nowrap text-ink-2 num"><b v-if="r.fact !== null" class="font-semibold text-ink">{{ plain(r.fact) }}</b>{{ r.fact !== null ? ' из ' : '' }}{{ plain(r.plan) }}</span>
+            <button
+              v-for="r in compare.rows"
+              :key="r.categoryId"
+              type="button"
+              class="press flex w-full cursor-pointer flex-col gap-1 border-t border-line py-2.5 text-left first:border-t-0"
+              :data-spend-row="r.categoryId"
+              :data-over="r.over || undefined"
+              @click="catFor = r.categoryId"
+            >
+              <span class="flex w-full items-center justify-between gap-2 text-[15px]">
+                <span class="min-w-0 truncate text-ink">
+                  {{ r.name
+                  }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-spend-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
                 </span>
-                <span class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
-                  <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.fact, r.plan)}%` }" />
+                <span class="whitespace-nowrap num" data-spend-amount>
+                  <b v-if="r.amount !== null" class="font-semibold text-ink">{{ plain(r.amount) }}</b>
+                  <span v-else class="text-ink-2">план {{ plain(r.plan ?? 0) }}</span>
                 </span>
-              </component>
-              <button v-if="canEdit" type="button" class="press self-start cursor-pointer pl-8 text-[13.5px] font-semibold text-ink-2" @click="editSpend(sp.by)">+ Раздел</button>
+              </span>
+              <span v-if="r.plan" class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
+                <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.amount, r.plan)}%` }" />
+              </span>
+            </button>
+            <!-- «Не разобрано» (Х-1): тихо, без листа и точки — чтобы строки сходились с «потрачено» заголовка -->
+            <div
+              v-if="compare.unknown > 0"
+              class="flex w-full items-center justify-between gap-2 border-t border-line py-2.5 text-[15px] text-ink-2 first:border-t-0"
+              data-spend-unknown
+            >
+              <span>Не разобрано</span>
+              <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
             </div>
             <button
-              v-for="p in canEdit ? spendless : []"
-              :key="p.id"
+              v-if="canEdit"
               type="button"
-              class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-2.5 text-left first:border-t-0"
-              @click="editSpend(p.id)"
+              class="press flex w-full cursor-pointer items-center border-t border-line py-2.5 text-left text-[14.5px] font-semibold text-ink-2 first:border-t-0"
+              data-spend-add
+              @click="editSpend(me)"
             >
-              <Avatar :id="p.id" :name="p.name" :size="24" />
-              <span class="text-[14.5px] font-semibold text-ink-2">+ Траты · {{ p.name }}</span>
+              + Раздел
             </button>
-            <p v-if="!plan.spend.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
+            <p v-if="!compare.rows.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
           </div>
 
           <!-- Цели и фонды по очереди: короткие строки; ⋮⋮ — выше раньше получает деньги; нажатие — «Отложил» -->
@@ -663,6 +789,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
+    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" :example="auth.isDemo" @close="reviewOpen = false" @refresh="refreshReview" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">
@@ -729,13 +856,21 @@ function addFund(kind: 'reserve' | 'cushion') {
       </div>
     </Sheet>
 
+    <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="catFor = null" @edit="editCatPlan" @image="imageAct" />
+    <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
+
     <!-- Сумма раздела трат -->
     <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">
       <template v-if="spendEdit">
         <Field v-if="spendEdit.fresh" label="Раздел" name="category">
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />
         </Field>
-        <Field :label="`${personName(spendEdit.by)}, ₸ в месяц`">
+        <!-- Новый раздел в семье из двух — чей план (участник по умолчанию — свой) -->
+        <Field v-if="spendEdit.fresh && people.length > 1" label="Чей" name="by">
+          <Select v-model="spendEdit.by" :options="people.map((p) => ({ value: p.id, label: p.name }))" class="mb-3" data-spend-by />
+        </Field>
+        <Field :label="spendEdit.fresh && people.length > 1 ? '₸ в месяц' : `${personName(spendEdit.by)}, ₸ в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>

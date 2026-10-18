@@ -4,9 +4,11 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
+import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  termSnapOf,
+  type PlanShiftDraft,
   allocationFor,
   accountForeign,
   fxToTenge,
@@ -17,6 +19,7 @@ import {
   amountAt,
   costliestCredits,
   creditBalance,
+  derivedCredits,
   creditResplit,
   creditSplit,
   endedPlan,
@@ -66,6 +69,10 @@ import {
   type MonthPlanState,
 } from '@/lib/finance'
 import type {
+  AiReview,
+  TermSnap,
+  PlanShift,
+  ImageMove,
   AllocationPart,
   SyncDoc,
   SyncStatus,
@@ -123,6 +130,16 @@ export function defaultSyncDoc(): SyncDoc {
     goalOrder: null,
     wishOrder: null,
     debtCard: null,
+    // Разборы месяца ИИ (AI-09): ключ и пустым — как у payments (RP-03).
+    aiReviews: [],
+    // Снимки срока мечт (AU-04): ключ и пустым — как у payments (RP-03).
+    termSnaps: [],
+    // Сдвиги месяца (AU-05): ключ и пустым — как у payments (RP-03).
+    planShifts: [],
+    // Итоги привычек (AU-27): ключ и пустым — как у payments (RP-03).
+    habitTotals: [],
+    // Переносы образов (AU-31): ключ и пустым — как у payments (RP-03).
+    imageMoves: [],
     setupDoneAt: null,
   }
 }
@@ -134,6 +151,12 @@ export function defaultSyncDoc(): SyncDoc {
 function withDefaults(doc: SyncDoc): SyncDoc {
   return { ...defaultSyncDoc(), ...doc }
 }
+
+/** Сколько разборов месяца ИИ живёт в общем документе (AI-09): год помесячно. */
+export const AI_REVIEWS_KEPT = 12
+
+/** Сколько снимков срока мечт живёт в общем документе (AU-04): этот месяц и два прошлых. */
+export const TERM_SNAPS_KEPT = 3
 
 /** Семья демо-режима: её документ не уходит на сервер (Р-32). */
 export const DEMO_HOUSEHOLD = 'demo-household-1'
@@ -167,6 +190,12 @@ const LOCAL_KEYS = [
   EVENTS_QUEUE_KEY,
   // Увиденные подсказки у предмета (бэклог «первый» Р-7): другой вход на этом телефоне — подсказки снова.
   TIPS_SEEN_KEY,
+  // Открытый на этом телефоне разбор месяца ИИ (AI-09): точка на кнопке — для этого входа.
+  AI_REVIEW_SEEN_KEY,
+  // Предложения ИИ продавцам (AI-12): продавцы этого входа другому не нужны.
+  AI_SELLERS_KEY,
+  // Разбор сам (AU-13): попытки и спрошенное согласие по поводам — этого входа.
+  AI_AUTO_KEY,
 ]
 
 // Запрос не дошёл до сервера (fetch бросил не ApiError) — это «нет сети», а не «не
@@ -204,6 +233,8 @@ export const useFinanceStore = defineStore('finance', () => {
   const isDemo = computed(() => docHousehold.value === DEMO_HOUSEHOLD)
 
   const status = ref<SyncStatus>(unsent.value ? 'dirty' : 'idle')
+  /** Документ в этом запуске уже сверен с сервером (pull или синк): `idle` при старте — лишь «нечего отправлять». */
+  const pulledOnce = ref(false)
   const lastSyncedAt = ref<string | null>(null)
   const lastError = ref<string | null>(null)
   const forceReplace = ref<boolean>(false)
@@ -257,7 +288,6 @@ export const useFinanceStore = defineStore('finance', () => {
   const merchantRules = computed(() =>
     ((privateDoc.value.merchantRules as MerchantRule[] | undefined) ?? []).filter((r) => !r.deletedAt),
   )
-  const derivedCredits = (list: Credit[], pays: Payment[]) => list.map((c) => ({ ...c, principal: creditBalance(c, pays) }))
   const credits = computed(() => derivedCredits(householdDoc.value.credits || [], payments.value))
   const wishlist = computed(() => householdDoc.value.wishlist || [])
   const setupDone = computed(() => Boolean(householdDoc.value.setupDoneAt))
@@ -377,6 +407,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateUnsent.value = false
     docHousehold.value = null
     status.value = 'idle'
+    pulledOnce.value = false
     lastSyncedAt.value = null
     lastError.value = null
     forceReplace.value = false
@@ -587,6 +618,7 @@ export const useFinanceStore = defineStore('finance', () => {
       }
       unsent.value = false
       status.value = 'idle'
+      pulledOnce.value = true
       lastSyncedAt.value = new Date().toISOString()
       lastError.value = null
       forceReplace.value = false
@@ -628,6 +660,7 @@ export const useFinanceStore = defineStore('finance', () => {
           householdRev.value = serverDoc.rev
           status.value = 'idle'
         }
+        pulledOnce.value = true
         saveLocalState()
         settlePlan()
       }
@@ -1016,6 +1049,102 @@ export const useFinanceStore = defineStore('finance', () => {
         g.monthly = monthly
         g.updatedAt = t
       }
+    })
+  }
+
+  /** Разбор месяца ИИ (AI-09): последний живой по `at`; нет — null. */
+  const aiReviewOf = (month: string): AiReview | null =>
+    (householdDoc.value.aiReviews ?? [])
+      .filter((r) => !r.deletedAt && r.month === month)
+      // Равное `at` (два телефона разом) — по id: оба телефона показывают один и тот же разбор.
+      .reduce<AiReview | null>((a, r) => (!a || r.at > a.at || (r.at === a.at && r.id > a.id) ? r : a), null)
+
+  /**
+   * Разбор месяца — в общий документ (AI-09, Р-4): партнёр и viewer видят его после синка. Живых — не больше
+   * `AI_REVIEWS_KEPT`: старшие по `at` становятся надгробиями без текста и сводки (документ не растёт).
+   */
+  function saveAiReview(r: Omit<AiReview, 'id' | 'updatedAt'>): AiReview {
+    const t = new Date().toISOString()
+    const review: AiReview = { ...r, id: Math.random().toString(36).slice(2, 10), updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      const list = [...(doc.aiReviews ?? []), review]
+      const live = list.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
+      doc.aiReviews = list.map((x) =>
+        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], step: undefined, sent: null, deletedAt: t, updatedAt: t } : x,
+      )
+    })
+    return review
+  }
+
+  /** Снимок срока месяца `month` (AU-04); нет — null. */
+  const termSnapFor = (month: string): TermSnap | null =>
+    (householdDoc.value.termSnaps ?? []).find((s) => !s.deletedAt && s.id === month) ?? null
+
+  /**
+   * Снимок срока мечт на начало месяца (Р-6, AU-04): зовётся после подтягивания общего документа (движок синка) и в
+   * демо. Участник (не viewer), снимка текущего месяца нет — записать один раз; живых — не больше `TERM_SNAPS_KEPT`,
+   * старшие — надгробия без данных. Два телефона записали один месяц — слияние оставит ранний (`mergeDocs`).
+   */
+  function ensureTermSnap(): boolean {
+    if (useAuthStore().isViewer || !people.value.length) return false
+    const key = monthKey()
+    if ((householdDoc.value.termSnaps ?? []).some((s) => s.id === key)) return false
+    const t = new Date().toISOString()
+    const snap: TermSnap = { ...termSnapOf(monthPlanOf(key), t), updatedAt: t }
+    // Целей и фондов нет — метке нечего показывать: документ (и ревизию) не трогаем.
+    if (!snap.goals.length) return false
+    mutateHouseholdDoc((doc) => {
+      const list = [...(doc.termSnaps ?? []), snap]
+      const live = list.filter((x) => !x.deletedAt).sort((a, b) => b.id.localeCompare(a.id))
+      const drop = new Set(live.slice(TERM_SNAPS_KEPT).map((x) => x.id))
+      doc.termSnaps = list.map((x) => (drop.has(x.id) ? { ...x, income: 0, dueIds: [], goals: [], deletedAt: t, updatedAt: t } : x))
+    })
+    return true
+  }
+
+  /**
+   * «Сделать» / «Вернуть срок» (Р-3, Р-17, AU-05): запись сдвига этого месяца в общий документ — план месяца пересчитает
+   * `monthPlan`. Viewer — нет (кнопок нет, сервер не примет). Возвращает запись (для «Отменить»).
+   */
+  function addPlanShift(draft: PlanShiftDraft): PlanShift | null {
+    const auth = useAuthStore()
+    if (auth.isViewer || draft.amount <= 0) return null
+    const t = new Date().toISOString()
+    const shift: PlanShift = { ...draft, id: Math.random().toString(36).slice(2, 10), by: (auth.slot ?? 'a') as PersonId, at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = [...(doc.planShifts ?? []), shift]
+    })
+    return shift
+  }
+
+  /** «Отменить» сдвиг — надгробие (слияние: удаление сильнее правки). */
+  function undoPlanShift(id: string) {
+    if (useAuthStore().isViewer) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.planShifts = (doc.planShifts ?? []).map((s) => (s.id === id && !s.deletedAt ? { ...s, deletedAt: t, updatedAt: t } : s))
+    })
+  }
+
+  /** «Перенести в мечту» у образа сделан (Х-9, AU-31) — запись, у образа вместо кнопки ✓; id — для «Отменить». */
+  function addImageMove(draft: { categoryId: string; goalId: string; amount: number }): string | null {
+    const auth = useAuthStore()
+    if (auth.isViewer) return null
+    const t = new Date().toISOString()
+    const move: ImageMove = { ...draft, id: Math.random().toString(36).slice(2, 10), by: (auth.slot ?? 'a') as PersonId, at: t, updatedAt: t }
+    mutateHouseholdDoc((doc) => {
+      doc.imageMoves = [...(doc.imageMoves ?? []), move]
+    })
+    return move.id
+  }
+
+  /** «Отменить» перенос — надгробие (слияние: удаление сильнее правки). */
+  function undoImageMove(id: string) {
+    if (useAuthStore().isViewer) return
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      doc.imageMoves = (doc.imageMoves ?? []).map((m) => (m.id === id && !m.deletedAt ? { ...m, deletedAt: t, updatedAt: t } : m))
     })
   }
 
@@ -2205,6 +2334,7 @@ export const useFinanceStore = defineStore('finance', () => {
     privateDoc,
     privateRev,
     status,
+    pulledOnce,
     syncStatus,
     unsent,
     privateUnsent,
@@ -2241,6 +2371,14 @@ export const useFinanceStore = defineStore('finance', () => {
     saveLocalState,
     setHouseholdDoc,
     mutateHouseholdDoc,
+    aiReviewOf,
+    saveAiReview,
+    termSnapFor,
+    ensureTermSnap,
+    addPlanShift,
+    undoPlanShift,
+    addImageMove,
+    undoImageMove,
     mutatePrivateDoc,
     addMerchantRule,
     addMerchantRules,

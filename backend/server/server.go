@@ -169,7 +169,17 @@ func NewRouter(
 	previewHandler := handlers.NewPreviewHandler(linkpreview.New().Fetch)
 	accountHandler := handlers.NewAccountHandler(repos.Accounts)
 	eventsHandler := handlers.NewEventsHandler(repos.Events, repos.Metrics, repos.Users, cfg.AdminEmails)
-	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimit)
+	adminAIHandler := handlers.NewAdminAIHandler(repos.AI, repos.Users, cfg.AdminEmails, aiClient, cfg.AIModelSellers, cfg.AIMonthlyLimitMicros)
+	// Гейт ИИ-ручек (AI-08; Блоки 3–4 берут его же): ключ и флаг семьи, member, лимит месяца.
+	aiGate := handlers.NewAIGate(repos.AI, aiClient, cfg.AIMonthlyLimitMicros)
+	aiReviewHandler := handlers.NewAIReviewHandler(aiGate, cfg.AIModelReview)
+	aiSellersHandler := handlers.NewAISellersHandler(aiGate, cfg.AIModelSellers)
+	// The limit is money: a model with no price is billed as the priciest — say so in the logs.
+	for _, m := range []string{cfg.AIModelReview, cfg.AIModelSellers} {
+		if aiClient != nil && !ai.KnownPrice(m) {
+			log.Printf("ai: no price for model %q — billing it as the priciest", m)
+		}
+	}
 	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, repos.Statements, repos.Users, cfg.AdminEmails,
 		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy, cfg.ApplePayPushShortcutURL)
 
@@ -248,6 +258,10 @@ func NewRouter(
 				family.Get("/wallet", walletHandler.Status)
 				family.Post("/wallet/connect", walletHandler.Connect)
 				family.Delete("/wallet", walletHandler.Disconnect)
+				// ИИ (бэклог «ИИ», AI-08): разбор месяца — только member семьи с ИИ, в пределах лимита.
+				family.Post("/ai/review", aiReviewHandler.Review)
+				// AI-11: разделы незнакомым продавцам — уходят только названия продавцов и разделов.
+				family.Post("/ai/sellers", aiSellersHandler.Sellers)
 			})
 		})
 	})

@@ -156,14 +156,15 @@ func TestCallErrors(t *testing.T) {
 		status int
 		body   string
 		want   error
+		billed bool // Anthropic answered: the tokens are billed and reported (хвост §4)
 	}{
-		{"429", 429, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`, ErrRateLimited},
-		{"500", 500, `{"type":"error","error":{"type":"api_error","message":"boom"}}`, ErrFailed},
-		{"400", 400, `{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`, ErrFailed},
-		{"refusal", 200, message("refusal", ""), ErrRefused},
-		{"max_tokens", 200, message("max_tokens", `{"ok":`), ErrFailed},
-		{"not json", 200, message("end_turn", "ok"), ErrFailed},
-		{"off schema", 200, message("end_turn", `{"ok":true,"extra":1}`), ErrFailed},
+		{"429", 429, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`, ErrRateLimited, false},
+		{"500", 500, `{"type":"error","error":{"type":"api_error","message":"boom"}}`, ErrFailed, false},
+		{"400", 400, `{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`, ErrFailed, false},
+		{"refusal", 200, message("refusal", ""), ErrRefused, true},
+		{"max_tokens", 200, message("max_tokens", `{"ok":`), ErrFailed, true},
+		{"not json", 200, message("end_turn", "ok"), ErrFailed, true},
+		{"off schema", 200, message("end_turn", `{"ok":true,"extra":1}`), ErrFailed, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -174,8 +175,12 @@ func TestCallErrors(t *testing.T) {
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
-			if u != (Usage{}) {
-				t.Errorf("failure must not report usage: %+v", u)
+			want := Usage{}
+			if tc.billed {
+				want = Usage{Model: "claude-haiku-5-5", InputTokens: 12, OutputTokens: 3}
+			}
+			if u != want {
+				t.Errorf("usage = %+v, want %+v", u, want)
 			}
 			// Errors carry no content: neither the prompt nor the provider's message.
 			for _, leak := range []string{"привет", "Ответь", "slow down", "boom", "test-key", "127.0.0.1"} {
@@ -265,7 +270,8 @@ func TestCostMicros(t *testing.T) {
 	}{
 		{Usage{Model: "claude-opus-5-5", InputTokens: 1_000_000, OutputTokens: 100_000}, 6_000_000},
 		{Usage{Model: "claude-haiku-5-5", InputTokens: 10_000, OutputTokens: 2_000}, 2_000},
-		{Usage{Model: "claude-unknown", InputTokens: 10_000, OutputTokens: 2_000}, 0},
+		// A model missing from the table is billed as the priciest (Opus), not free.
+		{Usage{Model: "claude-unknown", InputTokens: 10_000, OutputTokens: 2_000}, 80_000},
 	}
 	for _, tc := range cases {
 		if got := CostMicros(tc.u); got != tc.want {

@@ -10,7 +10,7 @@ import Toast from '@/components/kit/Toast.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import { useFlash } from '@/components/kit/useFlash'
 import Button from '@/components/ui/Button.vue'
-import { pct as share, usdFromMicros } from '@/lib/money'
+import { pct as share, usdFromMicros, usdWhole } from '@/lib/money'
 import { plural } from '@/lib/utils'
 
 /**
@@ -84,11 +84,12 @@ async function check() {
 }
 
 // Запросы были, а расход 0 — модели нет в таблице цен сервера (Р-14): «≈ —», а не «$0». Запросов нет —
-// одна цифра «0 запросов», «$0» рядом ничего не добавляет (правило 12, шумные цифры).
-const spent = (requests: number, micros: number) => {
+// одна цифра «0 запросов», «$0» рядом ничего не добавляет (правило 12, шумные цифры). Лимит — деньги
+// (бэклог «ИИ-польза» Р-11): у расхода — «из $2».
+const spent = (requests: number, micros: number, limit: number) => {
   const n = `${requests} ${plural(requests, 'запрос', 'запроса', 'запросов')}`
   if (requests === 0 && micros === 0) return n
-  return `${n} · ${micros === 0 ? '≈ —' : usdFromMicros(micros)}`
+  return `${n} · ${micros === 0 ? '≈ —' : `${usdFromMicros(micros)} из ${usdWhole(limit)}`}`
 }
 
 onMounted(async () => {
@@ -133,8 +134,8 @@ const funnel = computed(() => {
       <div class="mb-1 flex items-center gap-1.5">
         <h2 class="type-h3 text-ink">Семьи</h2>
         <Hint label="Про лимит">
-          До {{ families.limit }} {{ plural(families.limit, 'запроса', 'запросов', 'запросов') }} ИИ в месяц на семью.
-          Потолок денег — в консоли Anthropic.
+          <span data-limit>До {{ usdWhole(families.limit_micros) }} ИИ в месяц на семью.</span>
+          Общий потолок — в консоли Anthropic.
         </Hint>
         <span class="flex-1" />
         <!-- -mr-3: текст кнопки — по правому краю тумблеров (у ghost sm поле 12). -->
@@ -157,7 +158,7 @@ const funnel = computed(() => {
         >
           <div class="min-w-0 flex-1">
             <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
-            <div v-if="f.ai || f.requests > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros) }}</div>
+            <div v-if="f.ai || f.requests > 0 || f.cost_micros > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros, families.limit_micros) }}</div>
           </div>
           <Toggle
             :model-value="f.ai"

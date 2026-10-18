@@ -114,6 +114,29 @@ export const WEEK_VIEW_KEY = 'ff_week_view'
  */
 export const TIPS_SEEN_KEY = 'ff_tips_seen'
 
+/** Id разбора месяца ИИ, открытого на этом телефоне (AI-09): другой — точка на кнопке у остатка. */
+export const AI_REVIEW_SEEN_KEY = 'ff_ai_review_seen'
+export const readAiReviewSeen = (): string | null => {
+  const v = readStorage<unknown>(AI_REVIEW_SEEN_KEY, null)
+  return typeof v === 'string' ? v : null
+}
+export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
+
+/**
+ * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`) — когда пробовали в последний
+ * раз (неудача — повтор не чаще раза в сутки) и спросили ли согласие v2 (закрыл лист — до следующего повода).
+ */
+export const AI_AUTO_KEY = 'ff_ai_auto'
+export type AiAutoTry = { at?: string; asked?: boolean }
+export const readAiAuto = (): Record<string, AiAutoTry> => {
+  const v = readStorage<unknown>(AI_AUTO_KEY, {})
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, AiAutoTry>) : {}
+}
+export const writeAiAuto = (v: Record<string, AiAutoTry>) => writeStorage(AI_AUTO_KEY, v)
+
+/** Предложения ИИ продавцам пачки «Без раздела» (AI-12): `{ match → {to, at} }` на этом телефоне, 60 дней. */
+export const AI_SELLERS_KEY = 'ff_ai_sellers'
+
 /** Список увиденных; пусто, мусор или хранилище недоступно — пустой. */
 export function readTipsSeen(): string[] {
   const list = readStorage<unknown>(TIPS_SEEN_KEY, [])

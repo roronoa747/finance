@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthShort } from '@/lib/dates'
-import { doneGoals, doneTerm, goalTerm, planForecast, wishQueue } from '@/lib/finance'
+import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftLabel, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -67,10 +67,24 @@ function termOf(g: Goal) {
   const item = plan.value.queue.find((x) => x.goalId === g.id)
   return goalTerm(item, g, key.value, item?.paused === 'plan' ? forecast.value : undefined)
 }
-/** Подпись цели в строке — только «на паузе»; срок цели — на её экране (Р-116). */
-function whenOf(g: Goal): string {
-  return termOf(g).off ? 'на паузе' : ''
+/**
+ * Метка «мечта сдвинулась» (AU-06, Р-6): сдвиг срока к снимку начала месяца и причина — `dreamShift`; снимка нет или
+ * сдвиг меньше недели — ничего. Тот же расчёт, что у экрана цели.
+ */
+const snap = computed(() => financeStore.termSnapFor(key.value))
+function shiftOf(g: Goal) {
+  const { state, ctx } = financeStore.planInput(key.value)
+  const s = dreamShift(state, ctx, snap.value, g.id)
+  return s ? { text: shiftLabel(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
 }
+const heroShift = computed(() => (main.value ? shiftOf(main.value) : null))
+/**
+ * Подпись цели в строке — «на паузе» или метка сдвига с точкой тона, как у героя; срок цели — на её экране (Р-116).
+ * Один расчёт на отрисовку (`dreamShift` гоняет план месяца).
+ */
+const rowNotes = computed(
+  () => new Map(others.value.map((g) => [g.id, termOf(g).off ? { text: 'на паузе', tone: null } : shiftOf(g)] as const)),
+)
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
 /* ---------- фото (B2C-17) ---------- */
@@ -134,6 +148,8 @@ onMounted(refresh)
         :percent="heroPercent"
         :src="heroSrc"
         :author="main.photoCredit?.author"
+        :note="heroShift?.text"
+        :note-tone="heroShift?.tone"
         @open="router.push(`/goals/${main.id}`)"
       >
         <template v-if="canEdit && !main.photoId" #actions>
@@ -178,7 +194,10 @@ onMounted(refresh)
               clickable
               @click="router.push(`/goals/${id}`)"
             >
-              <span v-if="whenOf(othersById.get(id)!)" class="truncate type-meta">{{ whenOf(othersById.get(id)!) }}</span>
+              <span v-if="rowNotes.get(id)" class="flex min-w-0 items-center gap-1.5 type-meta" data-row-note>
+                <i v-if="rowNotes.get(id)!.tone" class="size-1.5 shrink-0 rounded-full" :class="rowNotes.get(id)!.tone === 'ok' ? 'bg-ok' : 'bg-warn'" aria-hidden="true" />
+                <span class="truncate">{{ rowNotes.get(id)!.text }}</span>
+              </span>
               <ProgressBar :value="othersById.get(id)!.need ? othersById.get(id)!.have / othersById.get(id)!.need : 0" tone="ink" :height="5" />
               <template #end>
                 <span class="font-num text-[15px] font-bold num text-ink">{{ pct(othersById.get(id)!.have, othersById.get(id)!.need) }}{{ NBSP }}%</span>
