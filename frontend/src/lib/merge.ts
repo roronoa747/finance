@@ -240,6 +240,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     // Итоги привычек (AU-27): запись участника `участник:месяц:привычка` — свежий пересчёт заменяет целиком, как итоги
     // разделов; партнёра не затирает.
     habitTotals: mergeList(local.habitTotals ?? [], remote.habitTotals ?? [], (x) => x.id),
+    // Итоги находок (RZ-01): запись участника `участник:месяц:вид:ключ` — как итоги привычек, поздняя побеждает.
+    reviewFinds: mergeList(local.reviewFinds ?? [], remote.reviewFinds ?? [], (x) => x.id),
     // Переносы образов (AU-31): записи двух телефонов по id; отмена — надгробие, сильнее правки.
     imageMoves: mergeList(local.imageMoves ?? [], remote.imageMoves ?? [], (x) => x.id),
     // Метки равны (или их нет) — сброс один и тот же.

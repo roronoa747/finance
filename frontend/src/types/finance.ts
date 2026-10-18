@@ -1,5 +1,5 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitTotal, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import type { StepCandidate } from '@/lib/finance'
 
@@ -48,10 +48,27 @@ export type AiReview = Tracked & {
   risk: string
   steps: AiReviewStep[]
   sent: MonthSummaryAI | ReviewPayload | null
-  v?: 2
+  v?: 2 | 3
   reason?: ReviewReason
   reasonKey?: string
   step?: { text: string; candidate: StepCandidate | null }
+  /** v3 (бэклог «Разбор», Р-15): строка модели к «Куда ушло». */
+  where?: string
+  /** v3: 1–3 совета, у каждого — кнопка (Р-6). */
+  advices?: AiAdvice[]
+  /** v3: счётчик работы на момент разбора (Р-8, Р-19) — операций, находок, ₸ в год у советов. */
+  work?: { ops: number; found: number; yearly: number }
+}
+
+/** Экран предмета находки для «Открыть» (бэклог «Разбор», Р-18): путь строит код (`openPath`). */
+export type OpenTarget = { kind: 'cat' | 'goal' | 'credit' | 'obligation' | 'seller'; id: string; name: string; categoryId?: string }
+
+/** Совет разбора v3 (Р-15): крупная цифра — присланный факт или null; кнопка — «Сделать» с кандидатом или «Открыть». */
+export type AiAdvice = {
+  title: string
+  text: string
+  figure: { about: string; value: string } | null
+  action: { kind: 'do'; candidate: StepCandidate } | { kind: 'open'; target: OpenTarget }
 }
 
 /** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
@@ -709,6 +726,11 @@ export type SyncDoc = {
   planShifts?: PlanShift[]
   /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
   habitTotals?: HabitTotal[]
+  /**
+   * Итоги находок участников за месяц (бэклог «Разбор», Р-13, RZ-01): продавцы, разделы, счётчики и суммы — без дат и
+   * людей. До Блока 1 «Разбор» — без ключа.
+   */
+  reviewFinds?: ReviewFind[]
   /** Переносы «в мечту» у образов (бэклог «ИИ-польза», Х-9, AU-31): отмена — надгробие. До AU-31 — без ключа. */
   imageMoves?: ImageMove[]
   /**

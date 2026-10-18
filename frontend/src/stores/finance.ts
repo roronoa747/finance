@@ -138,6 +138,8 @@ export function defaultSyncDoc(): SyncDoc {
     planShifts: [],
     // Итоги привычек (AU-27): ключ и пустым — как у payments (RP-03).
     habitTotals: [],
+    // Итоги находок (RZ-01): ключ и пустым — как у payments (RP-03).
+    reviewFinds: [],
     // Переносы образов (AU-31): ключ и пустым — как у payments (RP-03).
     imageMoves: [],
     setupDoneAt: null,
