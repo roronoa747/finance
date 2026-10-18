@@ -34,6 +34,17 @@ describe('sellerOk — кого можно назвать', () => {
     expect(sellerOk(op('Apteka Plus', 1_500, 'sc_health', day(SEP, 3)))).toBe(false)
   })
 
+  // Критик Блока 1: строка без `counterparty`, которую семья сама отнесла к «Переводам людям» (имя латиницей заглавными
+  // банк печатает продавцом), и наличные — не продавец: ни в утечку, ни в новое регулярное, ни в двойное.
+  it('раздел «Переводы людям» и наличные без counterparty — нет: утечки и регулярного не будет', () => {
+    expect(sellerOk(op('RUSLAN T.', -5_000, 'sc_people', day(SEP, 3), { kind: 'transfer-out' }))).toBe(false)
+    expect(sellerOk(op('ATM Kaspi', -5_000, 'sc_cash', day(SEP, 3), { kind: 'cash' }))).toBe(false)
+    const nanny = [...times(7, 'RUSLAN T.', -3_000, 'sc_people', '2026-08', 1, { kind: 'transfer-out' }), ...times(7, 'RUSLAN T.', -3_000, 'sc_people', SEP, 1, { kind: 'transfer-out' })]
+    expect(leakFinds(nanny, 'a', SEP)).toEqual([])
+    const monthly = (month: string) => op('RUSLAN T.', -60_000, 'sc_people', day(month, 10), { kind: 'transfer-out' })
+    expect(dueFinds([monthly('2026-08'), monthly(SEP)], 'a', SEP, NONE)).toEqual([])
+  })
+
   it('с разделами — раздел из плана (подписки) мимо', () => {
     expect(sellerOk(op('Netflix', -4_000, 'sc_subscriptions', day(SEP, 3)), [])).toBe(false)
     expect(sellerOk(op('Netflix', -4_000, 'sc_subscriptions', day(SEP, 3)))).toBe(true)

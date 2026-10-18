@@ -10,7 +10,8 @@ import type { MerchantRule, Operation, ReviewFind, SpendCategory } from './types
 // Находки по операциям (бэклог «Разбор», Р-13, Р-14, RZ-01): каждый телефон ищет их по своим операциям — операции
 // личные и есть только у участника. В общий документ уходят итоги месяца: продавец (как печатает банк после `sanitize`,
 // ≤ 40 знаков), раздел, счётчик, сумма, у подорожания — «было». Не уходят: даты операций, переводы людям
-// (`counterparty`), внутренние, «ИП + фамилия» (`entrepreneurName`) и названия с 6+ цифрами. Находки семьи, цену в год,
+// (`counterparty`, разделы «Переводы людям» и «Наличные»), внутренние, «ИП + фамилия» (`entrepreneurName`) и названия с
+// 6+ цифрами. Находки семьи, цену в год,
 // образы и сценарий считает `finance.ts` по документу (правило 6). Пороги — константы, владелец правит числом.
 
 /** Утечка: продавец с ≥ 6 операций в месяц при среднем чеке ≤ 8 000 ₸ (привычки Блока 7 — мимо). */
@@ -56,11 +57,13 @@ const keyOf = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NA
 const inMonth = (op: Operation, period: string) => op.date.slice(0, 7) === period
 
 /**
- * Продавец, которого можно назвать в документе и модели: трата, не перевод человеку, не внутренний, без 6+ цифр, не
+ * Продавец, которого можно назвать в документе и модели: трата, не перевод человеку (ни `counterparty`, ни раздел
+ * «Переводы людям» / «Наличные» — `SPEND_LAST`: семья сама отнесла строку к людям), не внутренний, без 6+ цифр, не
  * «ИП + фамилия»; `categories` — ещё и раздел не из плана (кредиты, аренда, подписки — для утечек и верхушек).
  */
 export function sellerOk(op: Operation, categories?: Categories): boolean {
   if (!isSpend(op) || op.counterparty || op.internal) return false
+  if (op.categoryId && SPEND_LAST.includes(op.categoryId)) return false
   const name = op.merchant.trim()
   if (!name || /\d{6,}/.test(name) || entrepreneurName(name)) return false
   return !(categories && op.categoryId && plannedElsewhere(op.categoryId, categories))
