@@ -626,6 +626,12 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(dialog()).not.toBeNull()
     await swipe(200, 120)
     expect(dialog()).not.toBeNull()
+    // Карточка прокручена вниз — свайп вниз прокручивает её назад, отчёт остаётся (критик Блока 2).
+    const card = q('[data-report-card][data-active]')!
+    card.scrollTop = 40
+    await swipe(10, 120)
+    expect(dialog()).not.toBeNull()
+    card.scrollTop = 0
     await swipe(10, 120)
     await vi.waitFor(() => expect(router.currentRoute.value.query.review).toBeUndefined())
     expect(dialog()).toBeNull()
@@ -699,7 +705,47 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(q('[data-review-link]')).not.toBeNull()
     expect(q('[data-review-do]')).toBeNull()
     expect(txt(document.querySelectorAll('[data-review-advice-text]')[0])).toBe('Отложим остаток — подушки почти нет.')
+    // У совета «Сделать» viewer — без кнопки вовсе (Р-12), не «Открыть» цели, как у устаревшего (критик Блока 2).
+    expect(document.querySelectorAll('[data-review-advice]')[0].querySelectorAll('button, a')).toHaveLength(0)
     expect(q('[data-review-refresh]')).toBeNull()
+  })
+
+  it('нажатие кнопки в карточке — её действие, карточка та же (не листание по трети)', async () => {
+    await openV3({ path: '/month?review=1&card=1' })
+    const title = () => txt(q('[data-report-card][data-active] [data-review-advice-title]'))
+    expect(title()).toBe('В подушку')
+    await press(q('[data-review-do]'))
+    expect(q('[data-do-amount]')).not.toBeNull()
+    expect(title()).toBe('В подушку')
+  })
+
+  it('нажали пилюлю и сразу ушли на другой адрес, пока свой `?review=1` в пути, — отчёт закрыт', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await open({ doc: withFund({ aiReviews: [savedV3(c)] }) })
+    q('[data-review-open]')!.click()
+    void router.push('/month?cat=sc_cafe')
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?cat=sc_cafe'))
+    await flush()
+    expect(dialog()).toBeNull()
+  })
+
+  it('закрыли «Назад» с открытым листом «Сделать» — снова открыли: листа нет, отчёт с первой карточки', async () => {
+    await openV3()
+    await press(q('[data-review-do]'))
+    expect(q('[data-do-amount]')).not.toBeNull()
+    router.back()
+    await vi.waitFor(() => expect(router.currentRoute.value.query.review).toBeUndefined())
+    await flush()
+    expect(dialog()).toBeNull()
+    expect(q('[data-do-amount]')).toBeNull()
+    await press(q('[data-review-open]'))
+    await vi.waitFor(() => expect(dialog()).not.toBeNull())
+    await flush()
+    expect(q('[data-do-amount]')).toBeNull()
+    expect(activeKind()).toBe('work')
   })
 
   it('«Сделать» устарел (кандидата нет в свежих) — «Открыть» той же цели вместо голого текста', async () => {

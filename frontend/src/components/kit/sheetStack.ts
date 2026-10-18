@@ -2,12 +2,12 @@
  * Открытые окна по порядку открытия — листы `Sheet` и полноэкранный отчёт разбора (`AiReport`, бэклог «Разбор», RZ-07):
  * Escape закрывает только верхнее; пока открыто хоть одно — экран за ним не прокручивается и тост «Отменить» стоит
  * поверх (`style.css`, `html[data-sheet-open]`). Один список на всех: лист «Сделать», закрывшись поверх отчёта, не снимает
- * атрибут, пока отчёт открыт, — тост не уходит под отчёт.
+ * атрибут, пока отчёт открыт, — тост не уходит под отчёт. Список и атрибут — только через `pushSheet` / `popSheet`.
  */
-export const sheetStack: symbol[] = []
+const sheetStack: symbol[] = []
 
 /** Атрибут `html[data-sheet-open]` — по списку открытых окон. */
-export function lockScreen() {
+function lockScreen() {
   if (sheetStack.length) document.documentElement.dataset.sheetOpen = ''
   else delete document.documentElement.dataset.sheetOpen
 }
