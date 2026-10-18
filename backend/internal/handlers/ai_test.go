@@ -92,6 +92,8 @@ const reviewBody = `{"v":3,"reason":"month","facts":[` +
 var cleanAnswer = answer("На «Кафе» ушло {f2} — мечта отодвинулась на {f4}.",
 	adv{"Кафе в мечту", "Перенесём часть плана «Кафе» в «Море» — соберём {f3}.", "f3", "a1"},
 	adv{"Аптека у дома", "Частые траты у «Apteka 24» за год — {f7}.", "f7", "a2"},
+	// Three advices — the usual live answer (ревью backend Н-1: 17/17 live answers had three).
+	adv{"Мечта ближе", "Откроем мечту «Море».", nil, "a4"},
 )
 
 type reviewFixture struct {
@@ -261,15 +263,18 @@ func TestReviewSendsOnlyInstructionFactsAndActions(t *testing.T) {
 	}
 
 	// The answer comes with the values put in; figure and action stay ids.
-	if got.Where != "На «Кафе» ушло 80 000 ₸ — мечта отодвинулась на 2 недели." || len(got.Advices) != 2 {
+	if got.Where != "На «Кафе» ушло 80 000 ₸ — мечта отодвинулась на 2 недели." || len(got.Advices) != 3 {
 		t.Fatalf("answer = %+v", got)
 	}
-	a, b := got.Advices[0], got.Advices[1]
+	a, b, c := got.Advices[0], got.Advices[1], got.Advices[2]
 	if a.Title != "Кафе в мечту" || a.Text != "Перенесём часть плана «Кафе» в «Море» — соберём к июню 2028." || *a.Figure != "f3" || a.Action != "a1" {
 		t.Errorf("advice 1 = %+v", a)
 	}
 	if b.Text != "Частые траты у «Apteka 24» за год — 144 000 ₸." || b.Action != "a2" {
 		t.Errorf("advice 2 = %+v", b)
+	}
+	if c.Title != "Мечта ближе" || c.Figure != nil || c.Action != "a4" {
+		t.Errorf("advice 3 = %+v", c)
 	}
 	if u := f.usage(); u.Requests != 1 || u.InputTokens != 1000 || u.OutputTokens != 200 || u.CostMicros != ai.CostMicros(ai.Usage{Model: "claude-opus-5-5", InputTokens: 1000, OutputTokens: 200}) {
 		t.Errorf("usage = %+v", u)
