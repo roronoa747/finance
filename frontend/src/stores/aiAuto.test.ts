@@ -141,6 +141,49 @@ describe('autoReview — старый разбор месяца → v3 сам', 
     expect(aiReview).not.toHaveBeenCalled()
   })
 
+  it('часы телефона отстали: v3 вышел по `at` раньше v2 — замена уже была, 0 (не платим каждый день)', async () => {
+    const doc = planFamilyDoc({ aiReviews: [reviewV2({ id: 'old', at: '2026-09-12T06:00:00.000Z' }), review({ id: 'new', at: '2026-09-12T05:00:00.000Z' })] })
+    const { finance, ai } = family({ doc })
+    expect(finance.aiReviewOf(KEY)!.id).toBe('old')
+    const { client, aiReview } = fakeClient()
+    expect(await ai.autoReview(client)).toBeNull()
+    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).not.toHaveBeenCalled()
+  })
+
+  it('последний — v2 по зарплате: один запрос v3 `month`, и зарплата не повод снова', async () => {
+    vi.setSystemTime(new Date('2026-09-10T05:00:00Z'))
+    const { finance, ai } = family({
+      doc: planFamilyDoc({ aiReviews: [reviewV2({ id: 'm' }), reviewV2({ id: 's', by: 'a', reason: 'salary', reasonKey: `salary:a:${KEY}`, at: '2026-09-10T06:00:00.000Z' })] }),
+    })
+    finance.markSalary('a')
+    vi.setSystemTime(new Date(NOW))
+    const { client, aiReview } = fakeClient()
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('month')
+    vi.setSystemTime(new Date('2026-09-14T08:00:00Z'))
+    await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('«да» v2 + старый разбор → лист согласия v3 один раз (утренний `asked` повода v2 не мешает); закрыл — не всплывает', async () => {
+    const old = { on: true, at: T0, v: 2 }
+    const { ai, finance } = family({ consent: 'none', doc: planFamilyDoc({ aiReviews: [reviewV2()] }) })
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = old))
+    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`month:${KEY}`]: { at: '2026-09-12T03:00:00.000Z', asked: true } }))
+    const { client, aiReview } = fakeClient({ aiConsent: old })
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
+    ai.answer(null)
+    await run
+    vi.setSystemTime(new Date('2026-09-14T08:00:00Z'))
+    await ai.autoReview(client)
+    expect(ai.sheetOpen).toBe(false)
+    expect(aiReview).not.toHaveBeenCalled()
+  })
+
   it('неудача замены → сутки молча (своя попытка `v3:month`)', async () => {
     const { ai } = family({ doc: planFamilyDoc({ aiReviews: [reviewV2()] }) })
     const { client, aiReview } = fakeClient()
@@ -317,6 +360,9 @@ describe('autoReview — молча', () => {
     const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
     const { client, aiReview } = fakeClient()
     expect(await ai.autoReview(client)).toBeNull()
+    // Надгробие старой версии — не «старый разбор» (показывать нечего, RZ-HF1): тоже 0.
+    const old = family({ doc: planFamilyDoc({ aiReviews: [reviewV2({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
+    expect(await old.ai.autoReview(client)).toBeNull()
     expect(aiReview).not.toHaveBeenCalled()
   })
 })
