@@ -1235,4 +1235,30 @@ describe('stores/operations — итоги находок (RZ-01)', () => {
     expect(finance.householdDoc.reviewFinds?.find((f) => f.id === 'a:2026-03:leak:apteka plus')?.deletedAt).toBeTruthy()
     expect(finds().find((f) => f.id === 'a:2026-09:leak:apteka plus')?.count).toBe(7)
   })
+
+  // Ревью frontend Н-4: главный путь — регулярное внесли в план, находка обнуляется пересчётом стора.
+  it('новое регулярное → заведён платёж того же имени — итог обнулён; отметка «это платёж по …» — тоже', async () => {
+    const plus = (month: string, merchant = 'YANDEX PLUS', amount = -1_990) => ({
+      bank: 'kaspi' as const, date: `${month}-12`, amount, kind: 'purchase' as const, merchant, categoryId: null, internal: false,
+    })
+    const recurring = (id: string) => (useFinanceStore().householdDoc.reviewFinds ?? []).find((f) => f.id === id)
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement([plus('2026-08'), plus('2026-09'), plus('2026-08', 'FITNESS LAB', -15_000), plus('2026-09', 'FITNESS LAB', -15_000)], '2026-08-01', '2026-09-25')))
+    await store.send(client)
+    expect(recurring('a:2026-09:recurring:yandex plus')).toMatchObject({ count: 2, amount: 1_990 })
+    expect(recurring('a:2026-09:recurring:fitness lab')).toMatchObject({ count: 2, amount: 15_000 })
+
+    finance.addObligation({ name: 'Yandex Plus', day: 12, category: 'd4', amount: 1_990 })
+    await nextTick()
+    expect(recurring('a:2026-09:recurring:yandex plus')).toMatchObject({ count: 0, amount: 0 })
+
+    // Отметка: платёж с другим именем, правило «FITNESS LAB — это платёж по «Спортзал»».
+    const gym = finance.addObligation({ name: 'Спортзал', day: 12, category: 'd4', amount: 15_000 })
+    finance.addMerchantRule({ match: { merchant: normalizeMerchant('FITNESS LAB') }, to: { payment: { kind: 'obligation', targetId: gym, categoryId: 'sc_subscriptions' } } }, 'a')
+    await nextTick()
+    expect(recurring('a:2026-09:recurring:fitness lab')).toMatchObject({ count: 0, amount: 0 })
+  })
 })
