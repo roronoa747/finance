@@ -2,9 +2,10 @@
 
 > **Статус:** бэклог составлен ночью 2026-10-18 (составитель — Fable 5.1, режим ночи: вопросов владельцу нет, неясное —
 > дефолтом с пометкой «решение составителя, ночью»). Блок 1 🔄 — исполнитель ✅ (RZ-01…RZ-06, ветка `rz-block-1-finds`,
-> Handoff в `block-1-finds/SESSION.md`); Блоки 2–3 ⬜. Ночью идёт Блок 1 (L) по конвейеру до клинапа **без
+> Handoff в `block-1-finds/SESSION.md`), критик ✅ (граница данных находок, состав согласия v3, заголовок после
+> подстановки; хвост Х-5); Блоки 2–3 ⬜. Ночью идёт Блок 1 (L) по конвейеру до клинапа **без
 > деплоя**; `main`, прод и `memory/STATE.md` ночью не трогаются (сводит оркестратор утром). Следующий шаг —
-> `/critic Разбор 1 ultracode`.
+> `/accept Разбор 1 ultracode`.
 
 Источник: `Разбор-brief.md` (резюме интервью подтверждено владельцем 2026-10-18, 3 раунда, без правок). Повод —
 хвост **Х-24** владельца (2026-10-18, дословно в брифе): «разбор скудный… непонятно, что куда растеклось, нет указаний по
@@ -210,6 +211,7 @@ viewer/демо каждой фронт-задачи · Р-9, Р-23 → RZ-10, R
 | Х-2. Названия продавцов в советах — как печатает банк, с городом и страной («… ASTANA Q. KZ»): короткое имя для показа (без хвостов города, как `normalizeMerchant`, но с регистром) | исполнитель Блока 1, RZ-06 | `/ux` Блока 2? |
 | Х-3. На настоящих данных модель ни разу не выбрала «Сделать» (0 из 12 живых ответов с находками — всё «Открыть»): «Сделать» видно только у демо | исполнитель Блока 1, RZ-06 | |
 | Х-4. Платёж кредита без правила платежа — «новое регулярное списание, которого нет в плане»: кнопка «добавить в план» (новое действие — после MVP, Р-6) | исполнитель Блока 1, RZ-06 | |
+| Х-5. Словарное «новое регулярное» с одного списания (Р-14: кредит, аренда, коммуналка, связь, подписки — с одного раза) получает цену в год × 12 (Р-19) и сценарий «мечта раньше»: годовая подписка или разовая покупка у оператора связи — «в год» в 12 раз больше правды. На настоящих выписках — только в первом месяце (июль: 5 из 6 «регулярных» — с одного списания; август, сентябрь — 0). Предложение: с одного списания — без × 12 и без сценария, пока нет второго месяца (правка Р-14 / Р-19 — только владелец) | критик Блока 1 | |
 
 ## 5. Протокол
 
@@ -367,3 +369,27 @@ viewer/демо каждой фронт-задачи · Р-9, Р-23 → RZ-10, R
   Тосты над листами — `html[data-sheet-open] #shell-toast { z-index: 65 }`; согласие — z 70.
 - Живой дизайн-док — `memory/backlog/идея-и-редизайн/block-2-design/DESIGN.md`: §5 «Месяц» — разбор ✦ и лист v2
   :522-544; §6 тексты — разбор :826-838. Правки — только затронутых секций.
+
+**После Блока 1** (критик, 2026-10-18; ветка `rz-block-1-finds`, не в `main`)
+- Находки участника — `lib/statements/finds.ts`: `reviewFinds(ops, by, period, ctx)` = `leakFinds` + `topFinds` +
+  `dueFinds` (`recurring` / `pricier` / `double`), `sellerOk` (без `counterparty`, `internal`, разделов `SPEND_LAST`,
+  «ИП + фамилия», 6+ цифр), `sameFind`, `findKeepFrom`; пороги — константы в шапке (+ `RECURRING_MAX_PER_MONTH` 2,
+  `DOUBLE_MAX_OPS` 4 — уточнения исполнителя). Документ — `SyncDoc.reviewFinds: ReviewFind[]` (`statements/types.ts`, id
+  `by:period:kind:key`), запись — `writeReviewFinds(months)` в `stores/operations.ts` сразу после `writeHabitTotals`.
+- `finance.ts` (после `imageMath`, раздел «находки разбора v3»): `REVIEW_FINDINGS_MAX` 12, `ReviewFinding` (у
+  `leak`/`recurring`/`pricier`/`double` — `key` продавца), `FindImage`, `findKey`, `findMonth(ctx)` (месяц находок: текущий,
+  если выписка у кого-то дошла до 7-го, иначе прошлый), `reviewFindings`, `ReviewScenario` / `reviewScenario` (не по
+  `sc_credit` / `sc_rent` / `sc_utilities`), `reviewWork(state, ctx, findings, used)`, `WhereRow` / `whereRows(state, ctx,
+  n = 5)` (`share` 0…1 — геометрия), `ReviewOutcome` / `reviewOutcome(state, ctx, prev)`; `earlierDays`, `measureFor`
+  экспортированы; `MonthPlanState.reviewFinds`.
+- `aiFacts.ts`: `buildReviewFacts(doc, input, reason)` → `ReviewFactsV3 {payload: {v: 3, facts ≤ 40, actions ≤ 9},
+  doById, openById, findings, byAction}`; `openPath(target)`; `factsLines` v2 и v3. Типы `types/finance.ts`: `AiReview`
+  (`v?: 2 | 3`, `where`, `advices: AiAdvice[]`, `work`), `AiAdvice` (`figure: {about, value} | null` — готовый факт,
+  `action: {kind: 'do', candidate} | {kind: 'open', target}`), `OpenTarget`, `ReviewAction`, `ReviewPayloadV3`;
+  `types/api.ts` `AiReviewAnswer` v3. Стор: `requestReview` — тело v3, совет на неприсланное действие отброшен, нет
+  кнопок — `ai_failed` без запроса; `AI_CONSENT_V` = 3, `AI_SENDS[1]` — «Продавцы и суммы частых трат, списаний и крупных
+  покупок» (черновик). Временный показ v3 — `AiReviewSheet.vue` (`RZ-05 временно, снимает RZ-07`); демо — ещё v2.
+- Go `handlers/ai.go`: `maxReviewBody` 48 КБ, `maxReviewFacts` 40, `maxReviewActions` 9, `maxReviewAdvices` 3,
+  `maxAdviceWords` 4 (после подстановки — `reviewRequest.fill`), `maxAdviceRunes` 160, `actionID` `^a[1-9]$`;
+  `reviewSchema(facts, actions)`; живой тест — `TestLiveReviewV3`. Тесты фронта — 242 файла / 2 485 тестов, 1 пропуск (+ e2e
+  `rz-block1-review-v3`).

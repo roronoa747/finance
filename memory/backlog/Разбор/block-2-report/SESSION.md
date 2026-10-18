@@ -23,8 +23,38 @@
 - Правило 12 на каждом экране: одна кнопка на карточку, одна крупная цифра, заголовок 1–4 слова, «что ушло» свёрнуто;
   цвета — токены; крупная цифра ≤ 34 px. В Handoff по каждому экрану: главное действие и у какого предмета, что ушло в
   подсказку, что скрыто.
-- **Факты кода после Блока 1** (заполняет критик Блока 1): <имена и поля — `AiReview` v3, `openPath`, `whereRows`,
-  `reviewOutcome`, `reviewWork`; что временно в `AiReviewSheet` и где; как хранится `figure`; адреса `openPath`>.
+- **Факты кода после Блока 1** (критик Блока 1, 2026-10-18; сводка — §6 индекса «После Блока 1»):
+  - `AiReview` v3 (`types/finance.ts`): `v: 3`, `where` (строка модели к «Куда ушло»), `advices: AiAdvice[]` — `{title,
+    text, figure: {about, value} | null, action: {kind: 'do', candidate: StepCandidate} | {kind: 'open', target:
+    OpenTarget}}`; **`figure` хранится готовым фактом** из отправленного `payload` (не id, ответ модели его не несёт),
+    `work: {ops, found, yearly}` — на момент разбора; `sent` — `ReviewPayloadV3 {v: 3, facts, actions}`; `good` / `risk` /
+    `steps` пустые. `OpenTarget {kind: 'cat' | 'goal' | 'credit' | 'obligation' | 'seller', id, name, categoryId?}` — у
+    `seller` `id` — нормализованный продавец, `categoryId` — его раздел.
+  - `lib/aiFacts.ts` `openPath(target)`: `cat` → `/month?cat=<id>`, `goal` → `/goals/<id>`, `credit` →
+    `/money/debts?credit=<id>`, `obligation` → `/money?obligation=<id>`, `seller` → `/money/history?cat=<categoryId>`
+    (без раздела — `/money/history`); `?cat` на «Месяце» и в истории пока ничего не открывают — RZ-08. `factsLines(payload)`
+    — «что ушло» v2 и v3 (факты, «шаг — …», «открыть — …»).
+  - `lib/finance.ts`: `whereRows(state, ctx, n = 5)` → `WhereRow {categoryId, name, amount, usual: number | null, plan:
+    number | null, share}` (`share` 0…1 — доля полосы от самой длинной из фактов, «обычно» и планов); `reviewOutcome(state,
+    ctx, prev)` → `ReviewOutcome {done: {title, done}[], sections: {categoryId, name, amount, usual: number | null}[],
+    dream: {name, was, now: string | null} | null} | null` — только по v3 прошлого месяца; `sections` — только советы
+    «Открыть» на раздел; мечта ищется по имени в `about` факта «главная мечта «…» — срок» (имя с «» или с именем участника
+    не совпадёт → `dream: null`); `reviewWork(state, ctx, findings, used)`; **`findMonth(ctx)`** — месяц находок и «Куда
+    ушло»: текущий, если выписка у кого-то дошла до 7-го, иначе прошлый (разбор 1-го — о прошлом месяце; подпись карточки
+    «Куда ушло» должна называть месяц).
+  - Временно в `components/ai/AiReviewSheet.vue` (комментарии `RZ-05 временно, снимает RZ-07`): `v3`, `madeOf`, `v3Rows`,
+    `v3Candidate`, `openDo`, `workLine`, шаблон `<template v-if="v3">` (атрибуты `data-review-where`, `data-review-advice`,
+    `data-review-advice-title`, `data-review-advice-text`, `data-review-do`, `data-review-done`, `data-review-link` —
+    `data-review-open` занят ✦, `data-review-work`) и `DoSheet` `v3 ? v3Candidate : fresh`. Проверки временного показа —
+    v3-блок `AiReview.dom.test.ts` и e2e `rz-block1-review-v3` (лист через `screenMixin({ reviewOpen: true })`) —
+    перенести на отчёт.
+  - Демо: `lib/demo.ts` `demoReview` — ещё v2 (берёт `doById`); заготовка v3 и `reviewFinds` демо — RZ-09.
+  - Слова на `/ux`: строка согласия v3 — «Продавцы и суммы частых трат, списаний и крупных покупок», политика RU/EN —
+    «частые траты, повторяющиеся списания и крупнейшие покупки, число повторов» (критик Блока 1 поправил черновик: «что
+    раздуло» шлёт и разовые крупнейшие покупки). Хвост Х-2 (короткие имена продавцов), если владелец назначит в блок, —
+    одной функцией и в `about` фактов (`nm` в `aiFacts.ts`), и в показе: модель пишет имя «как в about».
+  - Мёрж с веткой `ai-block-4-wish-shot` (Блок 4 «ИИ», «Скриншот товара» убран из согласия) — конфликт в `AI_SENDS`,
+    иконках `AiConsentSheet.vue`, `Privacy.vue` и тестах согласия: итог — четыре пункта (v3-строка продавцов, без скриншота).
 - Следующий шаг — `/critic Разбор 2`.
 
 ---
