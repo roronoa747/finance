@@ -5966,12 +5966,18 @@ export type ReviewScenario =
   | { finding: ReviewFinding; monthly: number; days: number; goalId: string; goalName: string }
   | { finding: ReviewFinding; monthly: number; months: number; saved: number; creditId: string; creditName: string }
 
+/** Разделы, трату которых «убрать» нельзя — платёж кредита, аренда, коммуналка: сценария по ним нет (замер RZ-06). */
+const SCENARIO_NOT: readonly string[] = ['sc_credit', 'sc_rent', 'sc_utilities']
+
 /**
- * Сценарий по находке с наибольшей ценой в год среди утечек, новых и двойных списаний: `monthly = yearly / 12` в главную
- * мечту с темпом (`earlierDays`), иначе досрочкой в самый дорогой процентный долг (`prepayOutcome`); иначе null.
+ * Сценарий по находке с наибольшей ценой в год среди утечек, новых и двойных списаний (кроме кредитов, аренды и
+ * коммуналки): `monthly = yearly / 12` в главную мечту с темпом (`earlierDays`), иначе досрочкой в самый дорогой
+ * процентный долг (`prepayOutcome`); иначе null.
  */
 export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, findings: ReviewFinding[]): ReviewScenario | null {
-  const finding = findings.filter((f) => f.kind === 'leak' || f.kind === 'recurring' || f.kind === 'double').sort((a, b) => b.yearly - a.yearly)[0]
+  const finding = findings
+    .filter((f) => (f.kind === 'leak' || f.kind === 'recurring' || f.kind === 'double') && !(f.categoryId && SCENARIO_NOT.includes(f.categoryId)))
+    .sort((a, b) => b.yearly - a.yearly)[0]
   if (!finding) return null
   const monthly = Math.round(finding.yearly / 12)
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)

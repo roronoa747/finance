@@ -216,6 +216,14 @@ describe('reviewScenario — «если… — мечта раньше»', () =>
     expect((s as { days: number }).days).toBeGreaterThan(0)
   })
 
+  it('платёж кредита, аренда, коммуналка — не сценарий (их «убрать» нельзя): берётся следующая находка', () => {
+    const credit = rf('a', KEY, 'recurring', 'oplata kredita', { name: 'ОПЛАТА КРЕДИТА', categoryId: 'sc_credit', count: 2, amount: 100_000 })
+    const doc = family({ reviewFinds: [...FINDS, credit] })
+    const list = findingsOf(doc)
+    expect(of(list, 'recurring').map((f) => f.categoryId)).toContain('sc_credit')
+    expect(reviewScenario(stateOf(doc), ctxOf(doc), list)!.finding).toBe(of(list, 'leak')[0])
+  })
+
   it('без мечты — досрочка в самый дорогой долг (`prepayOutcome`); без мечты и долгов — null', () => {
     const doc = family({ goals: [] })
     const list = findingsOf(doc)
