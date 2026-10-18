@@ -288,6 +288,15 @@ describe('whereRows — «куда ушло»', () => {
     expect(fun.planShare).toBeNull()
     expect(rows.find((r) => r.categoryId === 'sc_cafe')!.planShare).toBeCloseTo(120_000 / 450_000)
   })
+
+  it('раздел новый — «обычно» 0: риски «обычно» нет (у левого края читалась сбоем, `/ux` Блока 2)', () => {
+    const doc = family({ spendTotals: [...TOTALS, total('a', KEY, 'sc_health', 30_000, 2)] })
+    const rows = whereRows(stateOf(doc), ctxOf(doc))
+    const fresh = rows.find((r) => r.categoryId === 'sc_health')!
+    expect(fresh.usual).toBe(0)
+    expect(fresh.usualShare).toBeNull()
+    expect(rows.find((r) => r.categoryId === 'sc_food')!.usualShare).toBeCloseTo(380_000 / 450_000)
+  })
 })
 
 describe('reviewOutcome — итог прошлого месяца', () => {

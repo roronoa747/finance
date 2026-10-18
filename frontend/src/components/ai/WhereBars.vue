@@ -44,8 +44,9 @@ const legend = computed(() => ({ usual: props.rows.some((r) => r.usualShare !== 
           :style="{ width: grown ? pct(r.share) : '0%' }"
           data-where-fill
         />
-        <i v-if="r.usualShare !== null" class="absolute -inset-y-[3px] block w-[2px] -translate-x-1/2 rounded-full bg-ink" :style="{ left: pct(r.usualShare) }" data-where-usual />
-        <i v-if="r.planShare !== null" class="absolute -inset-y-[3px] block w-[2px] -translate-x-1/2 rounded-full bg-brand" :style="{ left: pct(r.planShare) }" data-where-plan />
+        <!-- Обводка цветом фона: риска плана на `--warn` / `--ink-3` и «обычно» на `--warn` в тёмной теме — 1,2–1,6 : 1 (`/ux`). -->
+        <i v-if="r.usualShare !== null" class="absolute -inset-y-[3px] block w-[2px] -translate-x-1/2 rounded-full bg-ink ring-2 ring-canvas" :style="{ left: pct(r.usualShare) }" data-where-usual />
+        <i v-if="r.planShare !== null" class="absolute -inset-y-[3px] block w-[2px] -translate-x-1/2 rounded-full bg-brand ring-2 ring-canvas" :style="{ left: pct(r.planShare) }" data-where-plan />
       </span>
     </RouterLink>
     <!-- Легенда рисок — одной строкой, только того, что нарисовано. -->

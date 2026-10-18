@@ -6016,7 +6016,7 @@ export function reviewWork(
 
 /**
  * Строка «Куда ушло» (Р-4): раздел, факт, «обычно», план, доля полосы 0…1 от самой длинной полосы картинки, места рисок
- * «обычно» и плана на той же шкале (`usualShare`, `planShare`; нет числа — null) и `over` — выше обычного по тому же
+ * «обычно» и плана на той же шкале (`usualShare`, `planShare`; нет числа или 0 — null) и `over` — выше обычного по тому же
  * порогу, что точка раздела на «Месяце» (`spendCompare`; полоса — `--warn`, RZ-08).
  */
 export type WhereRow = {
@@ -6049,7 +6049,8 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): Wher
     usual: r.usual,
     plan: r.plan,
     share: at(r.amount)!,
-    usualShare: at(r.usual),
+    // «Обычно» 0 (раздел новый) и план 0 — без риски: у левого края она читалась сбоем (`/ux` Блока 2).
+    usualShare: r.usual ? at(r.usual) : null,
     planShare: r.plan ? at(r.plan) : null,
     over: r.over,
   }))
