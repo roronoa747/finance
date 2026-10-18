@@ -55,11 +55,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Ответ ручки v2 (значения фактов уже подставлены сервером). */
+/** Ответ ручки v3 (значения фактов уже подставлены сервером): совет на первое действие — «Сделать» семьи с подушкой. */
 const answer = {
-  good: 'Остаётся 120 000 ₸.',
-  risk: 'Кредитка под 40%.',
-  step: { text: 'Посмотрим долги', candidate: null as string | null },
+  where: 'Остаётся 120 000 ₸.',
+  advices: [{ title: 'В подушку', text: 'Кредитка под 40%.', figure: null as string | null, action: 'a1' }],
 }
 
 /** Фонд-подушка: у семьи появляются кандидаты «Сделать» — досрочка и подушка (`stepCandidates`). */
@@ -109,7 +108,7 @@ async function open(opts: { role?: 'member' | 'viewer'; ai?: boolean; doc?: Sync
   auth.setAuthData(authAs(opts.role ?? 'member', 'a'))
   auth.ai = opts.ai ?? true
   const finance = useFinanceStore()
-  finance.setHouseholdDoc(opts.doc ?? planFamilyDoc(), 1)
+  finance.setHouseholdDoc(opts.doc ?? withFund(), 1)
   // Лист согласия живёт в оболочке; здесь экран без неё — стор «спрашивает», ответ даёт тест.
   useAiStore().sheetMounted = true
   router = createRouter({ history: createMemoryHistory(), routes })
@@ -190,7 +189,7 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(q('[data-review-risk]')!.textContent).toBe('Остаётся 627 000 тенге.')
   })
 
-  it('нет разбора: согласие → запрос фактами без имён (повод «месяц») → разбор v2 в общем документе → лист', async () => {
+  it('нет разбора: согласие → запрос фактами и действиями без имён (повод «месяц») → разбор v3 в общем документе → лист', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
     const finance = await open()
     const ai = useAiStore()
@@ -201,22 +200,26 @@ describe('AI-09: разбор месяца у остатка', () => {
     await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
     await flush()
 
-    // Исходящее тело — повод, факты и кандидаты AU-11: без имён семьи.
+    // Исходящее тело v3 — повод, факты и действия RZ-03: без имён семьи.
     const body = spy.mock.calls[0][0]
     expect(body.reason).toBe('month')
+    expect(body.v).toBe(3)
     expect(body.facts.length).toBeGreaterThan(3)
+    expect(body.actions[0]).toMatchObject({ id: 'a1', kind: 'do' })
     const sent = JSON.stringify(body)
     for (const name of ['Ильяс', 'Аруна']) expect(sent).not.toContain(name)
 
     const list = finance.householdDoc.aiReviews ?? []
     expect(list).toHaveLength(1)
-    expect(list[0]).toMatchObject({ month: KEY, by: 'a', good: answer.good, v: 2, reason: 'month', reasonKey: `month:${KEY}`, steps: [], step: { text: 'Посмотрим долги', candidate: null } })
-    expect(list[0].sent).toEqual({ facts: body.facts, candidates: body.candidates })
+    expect(list[0]).toMatchObject({ month: KEY, by: 'a', good: '', risk: '', v: 3, reason: 'month', reasonKey: `month:${KEY}`, steps: [], where: answer.where })
+    expect(list[0].advices![0]).toMatchObject({ title: 'В подушку', text: 'Кредитка под 40%.', figure: null, action: { kind: 'do' } })
+    expect(list[0].sent).toEqual({ v: 3, facts: body.facts, actions: body.actions })
+    expect(list[0].work!.found).toBeGreaterThanOrEqual(0)
     expect(finance.unsent).toBe(true)
-    expect(txt(q('[data-review-risk]'))).toBe('Кредитка под 40%.')
+    expect(txt(q('[data-review-advice-text]'))).toBe('Кредитка под 40%.')
     // Число не рвётся строкой: разряды и «₸» — через неразрывный пробел (стенд: «95 / 000 ₸»); документ — как пришло.
-    expect(q('[data-review-good]')!.textContent).toContain('120 000 ₸')
-    expect(list[0].good).toBe('Остаётся 120 000 ₸.')
+    expect(q('[data-review-where]')!.textContent).toContain('120 000 ₸')
+    expect(list[0].where).toBe('Остаётся 120 000 ₸.')
     // Свой разбор — без точки.
     expect(q('[data-review-dot]')).toBeNull()
 
@@ -249,7 +252,7 @@ describe('AI-09: разбор месяца у остатка', () => {
     await flush()
     expect(q('[data-review-dot]')).not.toBeNull()
     await press(q('[data-review-open]'))
-    expect(txt(q('[data-review-good]'))).toBe(answer.good)
+    expect(txt(q('[data-review-where]'))).toBe(answer.where)
     expect(q('[data-review-dot]')).toBeNull()
   })
 
@@ -369,7 +372,7 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(spy.mock.calls[0][0].reason).toBe('refresh')
     expect(useFinanceStore().aiReviewOf(KEY)!.reasonKey).toBeUndefined()
     await flush()
-    expect(txt(q('[data-review-good]'))).toBe(answer.good)
+    expect(txt(q('[data-review-where]'))).toBe(answer.where)
     expect(q('[data-review-refresh]')).toBeNull()
   })
 
@@ -472,5 +475,66 @@ describe('AU-13: лист разбора v2 — «Сделать» у шага',
     expect(txt(plain)).toContain('Сверить траты с планом')
     await press(plain)
     expect(dialog()).not.toBeNull()
+  })
+})
+
+/** RZ-05 (бэклог «Разбор», Р-15): временный показ v3 в листе до отчёта Блока 2 — «Куда ушло», советы с кнопкой, счётчик. */
+describe('RZ-05: лист разбора v3 (временно, снимает RZ-07)', () => {
+  const savedV3 = (candidate: StepCandidate, extra: Partial<AiReview> = {}): AiReview =>
+    saved({
+      v: 3, reason: 'month', reasonKey: `month:${KEY}`, good: '', risk: '', steps: [],
+      where: 'Кафе выросло — мечта отодвинулась.',
+      advices: [
+        { title: 'В подушку', text: 'Отложим остаток — подушки почти нет.', figure: null, action: { kind: 'do', candidate } },
+        { title: 'Кафе у дома', text: 'Раздуло одной покупкой.', figure: { about: 'траты на «Кафе» выше обычного на', value: '60 000 ₸' }, action: { kind: 'open', target: { kind: 'cat', id: 'sc_cafe', name: 'Кафе' } } },
+      ],
+      work: { ops: 1240, found: 4, yearly: 720_000 },
+      sent: { v: 3, facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }], actions: [{ id: 'a1', kind: 'open', about: 'открыть траты «Кафе»', value: '', effect: '' }] },
+      ...extra,
+    })
+
+  it('участник: «Куда ушло», советы, «Сделать» → лист → «✓ Сделано»; «Открыть» — ссылка на экран предмета; счётчик', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    useFinanceStore().setHouseholdDoc(withFund({ aiReviews: [savedV3(c)] }), 2)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-where]'))).toBe('Кафе выросло — мечта отодвинулась.')
+    expect([...document.querySelectorAll('[data-review-advice-title]')].map(txt)).toEqual(['В подушку', 'Кафе у дома'])
+    expect(q('[data-review-good]')).toBeNull()
+    expect(q('[data-review-link]')?.getAttribute('href')).toBe('/month?cat=sc_cafe')
+    expect(txt(q('[data-review-work]'))).toMatch(/^Просмотрел 1\s240 операций · нашёл 4 · ≈ 720\s000 ₸ в год$/)
+    await press(q('[data-review-do]'))
+    expect(q('[data-do-amount]')!.textContent).toBe(money(c.shift.amount))
+    await press(q('[data-do-confirm]'))
+    expect((useFinanceStore().householdDoc.planShifts ?? []).filter((s) => !s.deletedAt)).toHaveLength(1)
+    expect(txt(q('[data-review-done]'))).toBe('Сделано')
+    // «Что ушло» v3 — факты и «открыть — …».
+    await press(q('[data-review-sent-open]'))
+    expect(txt(q('[data-review-sent]'))).toContain('открыть — траты «Кафе»')
+  })
+
+  it('«Открыть» закрывает лист и ведёт по адресу; без находок в советах — счётчик без «≈»', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    useFinanceStore().setHouseholdDoc(withFund({ aiReviews: [savedV3(c, { work: { ops: 12, found: 0, yearly: 0 } })] }), 2)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-work]'))).toBe('Просмотрел 12 операций · нашёл 0')
+    await press(q('[data-review-link]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?cat=sc_cafe'))
+    await flush()
+    expect(dialog()).toBeNull()
+  })
+
+  it('viewer: «Открыть» есть, «Сделать» нет', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await open({ role: 'viewer', doc: withFund({ aiReviews: [savedV3(c)] }) })
+    await press(q('[data-review-open]'))
+    expect(q('[data-review-link]')).not.toBeNull()
+    expect(q('[data-review-do]')).toBeNull()
   })
 })

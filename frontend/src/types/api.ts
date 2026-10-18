@@ -43,13 +43,12 @@ export interface MeResponse {
 }
 
 /**
- * Ответ `POST /api/ai/review` v2 (бэклог «ИИ-польза», AU-12): что хорошо, где риск, один шаг — с id кандидата из
- * присланных или null. Значения фактов уже подставлены сервером.
+ * Ответ `POST /api/ai/review` v3 (бэклог «Разбор», Р-16, RZ-04): строка к «Куда ушло» и 1–3 совета — у каждого id
+ * факта крупной цифры (или null) и id действия из присланных. Значения фактов в тексте уже подставлены сервером.
  */
 export interface AiReviewAnswer {
-  good: string
-  risk: string
-  step: { text: string; candidate: string | null }
+  where: string
+  advices: { title: string; text: string; figure: string | null; action: string }[]
 }
 
 /** Ответ `POST /api/ai/sellers` (AI-11): по названию — id раздела из присланных или null; порядок — как ушло. */

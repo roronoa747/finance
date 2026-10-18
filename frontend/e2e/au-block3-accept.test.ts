@@ -19,7 +19,8 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * «›»): не только 1-го, а весь месяц, пока своя зарплата прошлого месяца не разложена.
  * (б) — расхождение приёмки, закрыто возвратом AU-33: пока точка нового разбора есть, «Месяц» ведёт в этот месяц.
  */
-const ANSWER = { good: 'Копим на «Машину».', risk: 'Подушки мало.', step: { text: 'Отложим в подушку', candidate: 'c1' as string | null } }
+/** Ответ ручки v3 (RZ-05): совет «Сделать» на первое действие семьи (`a1`). */
+const ANSWER = { where: 'Копим на «Машину».', advices: [{ title: 'Отложим в подушку', text: 'Подушки мало.', figure: null as string | null, action: 'a1' }] }
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
 /** Сентябрьская зарплата a пришла в евро («Пришла», ручная валютная) и не разложена — `salaryToAllocate` → сентябрь. */
 const septSalary: Payment = {
@@ -51,7 +52,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     at('2026-10-01T04:00:00Z')
     server = fakeServer(familyDoc())
     pv = fakePrivate()
-    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 2 } } })
+    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
     aiReview = vi.fn(async (_body: unknown) => ANSWER)
   })
 

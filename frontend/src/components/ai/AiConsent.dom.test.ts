@@ -88,7 +88,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
     card.querySelector<HTMLButtonElement>('button[aria-label="Что уходит"]')!.click()
     await settle()
     expect(document.body.textContent).toContain(
-      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, названия продавцов и подписок, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
+      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, продавцов и суммы частых трат, списаний и крупных покупок, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
     )
     const sw = card.querySelector<HTMLButtonElement>('[role="switch"]')!
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -106,7 +106,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
 })
 
 describe('AI-05: лист согласия', () => {
-  it('пять пунктов (v2), «когда» — строкой под ними (Х-16), Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
+  it('пять пунктов (v3), «когда» — строкой под ними (Х-16), Anthropic, «Подробнее» → /privacy; «Включить» — согласие, лист закрыт', async () => {
     signIn('member', true)
     await mount(AiConsentSheet, '/settings')
     const ai = useAiStore()
@@ -117,7 +117,7 @@ describe('AI-05: лист согласия', () => {
     expect(document.querySelector('[data-ai-to]')!.textContent).toBe('Claude от Anthropic получит:')
     expect(items).toEqual([
       'Цифры месяца и названия статей без ваших имён',
-      'Названия продавцов и подписок',
+      'Продавцы и суммы частых трат, списаний и крупных покупок',
       'Скриншот товара',
       'Фото чека',
       'Фраза о мечте',
@@ -172,7 +172,7 @@ describe('AI-05: лист согласия', () => {
   })
 
   // AU-10 (бэклог «ИИ-польза», Р-12, Р-22): список вырос — «да» прежней версии спрашивается ещё раз ровно один раз.
-  it('«да» v1 → лист ещё раз → «Включить» пишет v: 2 → второй раз листа нет', async () => {
+  it('«да» v1 → лист ещё раз → «Включить» пишет v: 3 → второй раз листа нет', async () => {
     signIn('member', true)
     await mount(AiConsentSheet, '/settings')
     const finance = useFinanceStore()
@@ -186,14 +186,14 @@ describe('AI-05: лист согласия', () => {
     expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(5)
     document.querySelector<HTMLButtonElement>('[data-ai-yes]')!.click()
     await expect(first).resolves.toBe(true)
-    expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })
+    expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 3 })
 
     await expect(ai.ensureConsent()).resolves.toBe(true)
     await settle()
     expect(ai.sheetOpen).toBe(false)
   })
 
-  it('«Не надо» v1 остаётся «нет» без листа; «да» v2 — без листа', async () => {
+  it('«Не надо» v1 остаётся «нет» без листа; «да» v3 — без листа', async () => {
     signIn('member', true)
     await mount(AiConsentSheet, '/settings')
     const finance = useFinanceStore()
@@ -204,21 +204,35 @@ describe('AI-05: лист согласия', () => {
     await settle()
     expect(ai.sheetOpen).toBe(false)
 
-    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-02T00:00:00Z', v: 2 }))
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-02T00:00:00Z', v: 3 }))
     expect(ai.consent).toBe('on')
     await expect(ai.ensureConsent()).resolves.toBe(true)
     await settle()
     expect(ai.sheetOpen).toBe(false)
   })
 
-  it('настройки: выключить — «нет» с v: 2; подсказка называет новые пункты и «приходит сам»', async () => {
+  // RZ-03 (бэклог «Разбор», Р-21): состав изменился — «да» v2 спрашивается ещё раз; «Не надо» v2 остаётся «нет».
+  it('«да» v2 → «не спрошено» (лист ещё раз); «Не надо» v2 → «нет»; «да» v3 → «да»', async () => {
+    signIn('member', true)
+    await mount(AiConsentSheet, '/settings')
+    const finance = useFinanceStore()
+    const ai = useAiStore()
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-02T00:00:00Z', v: 2 }))
+    expect(ai.consent).toBe('unknown')
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: false, at: '2026-10-02T00:00:00Z', v: 2 }))
+    expect(ai.consent).toBe('off')
+    finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: '2026-10-02T00:00:00Z', v: 3 }))
+    expect(ai.consent).toBe('on')
+  })
+
+  it('настройки: выключить — «нет» с v: 3; подсказка называет новые пункты и «приходит сам»', async () => {
     signIn('member', true)
     const el = await mount(Settings, '/settings')
     useAiStore().setConsent(true)
     await settle()
     el.querySelector<HTMLButtonElement>('[data-ai-card] [role="switch"]')!.click()
     await settle()
-    expect(useFinanceStore().privateDoc.aiConsent).toMatchObject({ on: false, v: 2 })
+    expect(useFinanceStore().privateDoc.aiConsent).toMatchObject({ on: false, v: 3 })
     el.querySelector<HTMLButtonElement>('[data-ai-card] button[aria-label="Что уходит"]')!.click()
     await settle()
     const hint = el.querySelector('[data-ai-card]')!.textContent!

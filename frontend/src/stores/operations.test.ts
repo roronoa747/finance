@@ -1173,3 +1173,92 @@ describe('stores/operations — итоги привычек (AU-27)', () => {
     expect(finance.householdDoc.habitTotals?.find((t) => t.id === 'a:2026-09:taxi')?.count).toBe(8)
   })
 })
+
+describe('stores/operations — итоги находок (RZ-01)', () => {
+  const shop = (k: number, month: string, merchant = 'APTEKA PLUS', amount = -1_500) =>
+    Array.from({ length: k }, (_, i) => ({
+      bank: 'kaspi' as const, date: `${month}-${String(i + 1).padStart(2, '0')}`, amount,
+      kind: 'purchase' as const, merchant, categoryId: null, internal: false,
+    }))
+  const person = (month: string) => ({
+    bank: 'kaspi' as const, date: `${month}-20`, amount: -30_000, kind: 'transfer-out' as const, merchant: 'Перевод', counterparty: 'Дана К.', categoryId: null, internal: false,
+  })
+  const statement = (ops: Omit<Operation, 'id'>[], from: string, to: string): ParsedStatement => ({ bank: 'kaspi', from, to, operations: assignIds(ops), skipped: 0 })
+  const finds = () => (useFinanceStore().householdDoc.reviewFinds ?? []).filter((f) => !f.deletedAt)
+
+  it('загрузка выписки → находки участника за месяцы выписки; без дат и людей; повтор — без записи; партнёр видит', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement([...shop(7, '2026-08'), ...shop(8, '2026-09'), person('2026-09'), ...shop(2, '2026-09', 'ИП Абенова', -12_000)], '2026-08-01', '2026-09-25')))
+    await store.send(client)
+
+    const leaks = finds().filter((f) => f.kind === 'leak').map((f) => [f.id, f.count, f.amount])
+    expect(leaks).toEqual([['a:2026-08:leak:apteka plus', 7, 10_500], ['a:2026-09:leak:apteka plus', 8, 12_000]])
+    const text = JSON.stringify(finance.householdDoc.reviewFinds)
+    expect(text).not.toMatch(/2026-0\d-\d\d|Дана|Абенова/)
+    // Месяц находок ≤ 2 КБ.
+    expect(JSON.stringify(finds().filter((f) => f.period === '2026-09')).length).toBeLessThan(2_048)
+
+    const before = JSON.stringify(finance.householdDoc.reviewFinds)
+    const mutate = vi.spyOn(finance, 'mutateHouseholdDoc')
+    store.setDraft(draftOf(statement([...shop(7, '2026-08'), ...shop(8, '2026-09'), person('2026-09'), ...shop(2, '2026-09', 'ИП Абенова', -12_000)], '2026-08-01', '2026-09-25')))
+    await store.send(client)
+    expect(JSON.stringify(finance.householdDoc.reviewFinds)).toBe(before)
+    expect(mutate.mock.calls.length).toBe(0)
+
+    const partner = mergeDocs({ ...finance.householdDoc, reviewFinds: [] }, finance.householdDoc)
+    expect(partner.reviewFinds?.map((f) => f.id).sort()).toEqual((finance.householdDoc.reviewFinds ?? []).map((f) => f.id).sort())
+  })
+
+  it('утечка пропала — итог обнулён, не надгробие; месяц старше четырёх от последнего — надгробие', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement(shop(7, '2026-03'), '2026-03-01', '2026-03-31')))
+    await store.send(client)
+    expect(finds().find((f) => f.id === 'a:2026-03:leak:apteka plus')?.count).toBe(7)
+
+    // Аптеку увели в «Подписки» (раздел из плана) — утечки больше нет.
+    store.answer({ merchant: normalizeMerchant('APTEKA PLUS') }, { categoryId: 'sc_subscriptions' })
+    store.setDraft(draftOf(statement(shop(7, '2026-03'), '2026-03-01', '2026-03-31')))
+    await store.send(client)
+    const zero = finance.householdDoc.reviewFinds?.find((f) => f.id === 'a:2026-03:leak:apteka plus')
+    expect(zero).toMatchObject({ count: 0, amount: 0 })
+    expect(zero?.deletedAt).toBeUndefined()
+
+    store.answer({ merchant: normalizeMerchant('APTEKA PLUS') }, { categoryId: 'sc_health' })
+    store.setDraft(draftOf(statement(shop(7, '2026-09'), '2026-09-01', '2026-09-30')))
+    await store.send(client)
+    expect(finance.householdDoc.reviewFinds?.find((f) => f.id === 'a:2026-03:leak:apteka plus')?.deletedAt).toBeTruthy()
+    expect(finds().find((f) => f.id === 'a:2026-09:leak:apteka plus')?.count).toBe(7)
+  })
+
+  // Ревью frontend Н-4: главный путь — регулярное внесли в план, находка обнуляется пересчётом стора.
+  it('новое регулярное → заведён платёж того же имени — итог обнулён; отметка «это платёж по …» — тоже', async () => {
+    const plus = (month: string, merchant = 'YANDEX PLUS', amount = -1_990) => ({
+      bank: 'kaspi' as const, date: `${month}-12`, amount, kind: 'purchase' as const, merchant, categoryId: null, internal: false,
+    })
+    const recurring = (id: string) => (useFinanceStore().householdDoc.reviewFinds ?? []).find((f) => f.id === id)
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    const { client } = fakeServer()
+    store.setDraft(draftOf(statement([plus('2026-08'), plus('2026-09'), plus('2026-08', 'FITNESS LAB', -15_000), plus('2026-09', 'FITNESS LAB', -15_000)], '2026-08-01', '2026-09-25')))
+    await store.send(client)
+    expect(recurring('a:2026-09:recurring:yandex plus')).toMatchObject({ count: 2, amount: 1_990 })
+    expect(recurring('a:2026-09:recurring:fitness lab')).toMatchObject({ count: 2, amount: 15_000 })
+
+    finance.addObligation({ name: 'Yandex Plus', day: 12, category: 'd4', amount: 1_990 })
+    await nextTick()
+    expect(recurring('a:2026-09:recurring:yandex plus')).toMatchObject({ count: 0, amount: 0 })
+
+    // Отметка: платёж с другим именем, правило «FITNESS LAB — это платёж по «Спортзал»».
+    const gym = finance.addObligation({ name: 'Спортзал', day: 12, category: 'd4', amount: 15_000 })
+    finance.addMerchantRule({ match: { merchant: normalizeMerchant('FITNESS LAB') }, to: { payment: { kind: 'obligation', targetId: gym, categoryId: 'sc_subscriptions' } } }, 'a')
+    await nextTick()
+    expect(recurring('a:2026-09:recurring:fitness lab')).toMatchObject({ count: 0, amount: 0 })
+  })
+})

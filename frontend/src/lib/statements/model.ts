@@ -383,7 +383,7 @@ const LATIN_PATRONYMIC = /(vich|vna|uly|kyzy|ogly)$/
  * до «Имя Ф.» (`sanitize`), поэтому человек — это одно-два слова после ИП, инициалы и город в конце не в счёт (и три
  * с латинским отчеством). «ИП Сулейменов Аптека Плюс» — три слова: название дела, уходит.
  */
-function entrepreneurName(name: string): boolean {
+export function entrepreneurName(name: string): boolean {
   const first = name.toLowerCase().replace(/[.,;:"'«»()*/\\]+/g, ' ').trim().split(' ')[0]
   if ((first !== 'ип' && first !== 'ip') || /\d/.test(name)) return false
   const words = normalizeMerchant(name)

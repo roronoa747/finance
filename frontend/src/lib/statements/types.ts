@@ -122,6 +122,34 @@ export type HabitTotal = Tracked & {
   amount: number
 }
 
+/** Вид находки участника (бэклог «Разбор», Р-13): утечка, новое регулярное, подорожание, двойное, верхушка раздела. */
+export type ReviewFindKind = 'leak' | 'recurring' | 'pricier' | 'double' | 'top'
+
+/**
+ * Итог находки участника за месяц в общем документе (бэклог «Разбор», Р-13, RZ-01): продавец, раздел, счётчик и сумма —
+ * без дат операций и без людей. Пропавшая находка обнуляется (`count: 0, amount: 0`), как итог привычки.
+ */
+export type ReviewFind = Tracked & {
+  /** `${by}:${period}:${kind}:${key}` — key: нормализованный продавец (leak/recurring/pricier/double) или categoryId (top). */
+  id: string
+  by: PersonId
+  /** `YYYY-MM`. */
+  period: string
+  kind: ReviewFindKind
+  /** Продавец как печатает банк (после `sanitize`), ≤ 40 знаков; у top — ''. */
+  name: string
+  categoryId: string | null
+  count: number
+  /** leak, top — сумма за месяц; recurring, pricier, double — типичная сумма одного списания; 0 — обнулённый итог. */
+  amount: number
+  /** pricier: сумма в плане месяца (`amountAt`). */
+  was?: number
+  /** pricier: обязательство, к которому ведёт правило платежа. */
+  targetId?: string
+  /** top: до 2 крупнейших покупок месяца в разделе — название и сумма. */
+  top?: { name: string; amount: number }[]
+}
+
 export interface ParsedStatement {
   bank: BankId
   /** Период выписки, `YYYY-MM-DD`. */

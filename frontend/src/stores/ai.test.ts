@@ -66,7 +66,7 @@ describe('stores/ai — доступность и согласие', () => {
     ai.setConsent(true)
     const c = useFinanceStore().privateDoc.aiConsent as { on: boolean; at: string; v: number }
     expect(c.on).toBe(true)
-    expect(c.v).toBe(2) // AU-10: версия списка «что уходит»
+    expect(c.v).toBe(3) // AU-10, RZ-03: версия списка «что уходит»
     expect(Number.isNaN(Date.parse(c.at))).toBe(false)
     expect(ai.consent).toBe('on')
     ai.setConsent(false)
@@ -123,7 +123,7 @@ describe('stores/ai — доступность и согласие', () => {
 
   // Хвост §4 ревью frontend Блока 1 (Н-4), AI-09: новый телефон до синка не спрашивает второй раз.
   it('не спрошено здесь, а на сервере «да» (другой телефон человека) → true без листа', async () => {
-    const fetchFn = online({ aiConsent: { on: true, at: '2026-10-15T08:00:00.000Z', v: 2 } })
+    const fetchFn = online({ aiConsent: { on: true, at: '2026-10-15T08:00:00.000Z', v: 3 } })
     const ai = member()
     await expect(ai.ensureConsent()).resolves.toBe(true)
     expect(ai.sheetOpen).toBe(false)
@@ -131,15 +131,15 @@ describe('stores/ai — доступность и согласие', () => {
     expect(String(fetchFn.mock.calls[0]?.[0])).toContain('/sync/private')
   })
 
-  // AU-10: на сервере «да» прежней версии — спросить ещё раз (лист), ответ пишет v: 2.
-  it('на сервере «да» v1 → лист; «Включить» → {on: true, v: 2}', async () => {
+  // AU-10: на сервере «да» прежней версии — спросить ещё раз (лист), ответ пишет v: 3.
+  it('на сервере «да» v1 → лист; «Включить» → {on: true, v: 3}', async () => {
     online({ aiConsent: { on: true, at: '2026-10-15T08:00:00.000Z' } })
     const ai = member()
     const answer = ai.ensureConsent()
     await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     ai.answer(true)
     await expect(answer).resolves.toBe(true)
-    expect(useFinanceStore().privateDoc.aiConsent).toMatchObject({ on: true, v: 2 })
+    expect(useFinanceStore().privateDoc.aiConsent).toMatchObject({ on: true, v: 3 })
     expect(ai.consent).toBe('on')
   })
 

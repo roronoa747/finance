@@ -138,6 +138,8 @@ export function defaultSyncDoc(): SyncDoc {
     planShifts: [],
     // Итоги привычек (AU-27): ключ и пустым — как у payments (RP-03).
     habitTotals: [],
+    // Итоги находок (RZ-01): ключ и пустым — как у payments (RP-03).
+    reviewFinds: [],
     // Переносы образов (AU-31): ключ и пустым — как у payments (RP-03).
     imageMoves: [],
     setupDoneAt: null,
@@ -1071,7 +1073,7 @@ export const useFinanceStore = defineStore('finance', () => {
       const live = list.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
       const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
       doc.aiReviews = list.map((x) =>
-        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], step: undefined, sent: null, deletedAt: t, updatedAt: t } : x,
+        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], step: undefined, where: undefined, advices: undefined, work: undefined, sent: null, deletedAt: t, updatedAt: t } : x,
       )
     })
     return review

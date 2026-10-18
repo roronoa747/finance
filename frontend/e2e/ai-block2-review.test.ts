@@ -28,8 +28,8 @@ const stored = {
     { text: 'Обсудим план трат вдвоём.', screen: null },
   ],
 }
-/** Ответ ручки — v2 (бэклог «ИИ-польза», AU-12): шаг один, кандидата нет. */
-const answer = { good: stored.good, risk: stored.risk, step: { text: 'Посмотрим долги.', candidate: null } }
+/** Ответ ручки — v3 (бэклог «Разбор», RZ-05): совет на первое действие семьи (`a1` — досрочно). */
+const answer = { where: stored.good, advices: [{ title: 'Долги', text: stored.risk, figure: null, action: 'a1' }] }
 
 /** Семья с тем, что не должно уйти: имена, заметки, причина версии, желание; личный документ — отдельно. */
 function familyDoc(): SyncDoc {
@@ -44,7 +44,7 @@ function familyDoc(): SyncDoc {
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 /** Текст листа разбора — от его диалога (SSR рисует лист на месте, без Teleport); пусто — лист закрыт. */
 const sheet = (html: string) => {
-  const i = html.search(/data-review-(example|good|state)/)
+  const i = html.search(/data-review-(example|good|where|state)/)
   if (i < 0) return ''
   const d = html.lastIndexOf('role="dialog"', i)
   return visible(html.slice(d < 0 ? i : d))
@@ -108,26 +108,26 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     expect(review).toHaveBeenCalledTimes(1)
     expect(one.store.householdDoc.aiReviews).toHaveLength(1)
 
-    // Исходящее тело: факты разбора v2 (AU-11) — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
+    // Исходящее тело: факты разбора v3 (AU-11, RZ-03) — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
     const body = JSON.stringify(review.mock.calls[0][0])
     for (const bad of ['Ильяс', 'Аруна', 'секрет', 'Галина', 'кольцо', 'Депозит']) expect(body, bad).not.toContain(bad)
     expect(body).toContain('"facts"')
 
     let html = sheet(await opened(one))
-    expect(html).toContain(answer.good)
-    expect(html).toContain('Посмотрим долги.')
+    expect(html).toContain(answer.where)
+    expect(html).toContain(answer.advices[0].text)
 
     setActivePinia(one.pinia)
     await one.store.syncHousehold(one.client)
-    expect(JSON.stringify(server.data.aiReviews)).toContain(answer.risk)
+    expect(JSON.stringify(server.data.aiReviews)).toContain(answer.advices[0].text)
 
     // Партнёр — другой телефон: тот же разбор из документа, без запроса.
     storage.clear()
     review.mockClear()
     const two = await as('member', 'b')
     html = sheet(await opened(two))
-    expect(html).toContain(answer.good)
-    expect(html).toContain(answer.risk)
+    expect(html).toContain(answer.where)
+    expect(html).toContain(answer.advices[0].text)
     // Открытие сохранённого — без запроса (кнопка у остатка открывает лист с ним).
     await tapReview(two)
     expect(review).not.toHaveBeenCalled()
@@ -141,7 +141,7 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     expect(useAiStore().available).toBe(false)
     const html = await opened(v)
     expect(html).toContain('data-review-open')
-    expect(sheet(html)).toContain(answer.good)
+    expect(sheet(html)).toContain(answer.where)
     expect(html).not.toContain('data-review-refresh')
     await tapReview(v)
     expect(review).not.toHaveBeenCalled()

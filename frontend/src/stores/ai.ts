@@ -3,14 +3,14 @@ import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFacts } from '@/lib/aiFacts'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
-import { countedPayments, liveSpendCategories, periodMonth } from '@/lib/finance'
+import { countedPayments, liveSpendCategories, periodMonth, reviewWork, type ReviewFinding } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import type { AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
+import type { AiAdvice, AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -126,30 +126,54 @@ export const useAiStore = defineStore('ai', () => {
     reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${auth.slot ?? 'a'}:${key}` : undefined
 
   /**
-   * Разбор v2 месяца `key` (бэклог «ИИ-польза», AU-13): факты и кандидаты кода (`buildReviewFacts`, без имён) → ручка
-   * → разбор в общий документ с кандидатом «Сделать» по id ответа (партнёр видит без запроса). Ошибка — код ручки
-   * строкой (`ai_limit`, `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ.
+   * Разбор v3 месяца `key` (бэклог «Разбор», Р-15, RZ-05; v2 — «ИИ-польза», AU-13): факты и действия кода
+   * (`buildReviewFacts`, без имён) → ручка → разбор в общий документ (партнёр видит без запроса): у совета — факт крупной
+   * цифры и кнопка по id ответа («Сделать» — кандидат, «Открыть» — экран); совет, чьё действие не нашлось, отброшен,
+   * ни одного — `ai_failed`. Счётчик работы — на момент разбора (`reviewWork`). Ошибка — код ручки строкой (`ai_limit`,
+   * `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ.
    */
   function requestReview(key: string, reason: ReviewReason, client: ApiClient): Promise<AiReview | string> {
     if (inflight) return inflight
     inflight = (async () => {
-      const { payload, byId } = buildReviewFacts(finance.householdDoc, finance.planInput(key), reason)
-      // Фактов нет (пустая семья) — ручка ответит 400: не спрашиваем.
-      if (!payload.facts.length) return 'ai_failed'
+      const input = finance.planInput(key)
+      const { payload, doById, openById, findings, byFact, byAction } = buildReviewFacts(finance.householdDoc, input, reason)
+      // Фактов или кнопок нет (пустая семья; совета без кнопки не бывает, Р-6) — ручка ответит 400: не спрашиваем.
+      if (!payload.facts.length || !payload.actions.length) return 'ai_failed'
       try {
         const res = await client.aiReview({ reason, ...payload })
+        const facts = new Map(payload.facts.map((f) => [f.id, f]))
+        const advices: AiAdvice[] = []
+        const used: ReviewFinding[] = []
+        for (const a of res.advices) {
+          const candidate = doById.get(a.action)
+          const target = openById.get(a.action)
+          if (!candidate && !target) continue
+          const f = a.figure ? facts.get(a.figure) : undefined
+          advices.push({
+            title: a.title,
+            text: a.text,
+            figure: f ? { about: f.about, value: f.value } : null,
+            action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
+          })
+          // В X — находка, о которой совет: сначала его крупная цифра, без неё — кнопка (Р-19; у «Сделать» — null).
+          const finding = (a.figure ? byFact.get(a.figure) : undefined) ?? byAction.get(a.action)
+          if (finding) used.push(finding)
+        }
+        if (!advices.length) return 'ai_failed'
         const reasonKey = reasonKeyOf(reason, key)
         return finance.saveAiReview({
           month: key,
           at: new Date().toISOString(),
           by: auth.slot ?? 'a',
-          good: res.good,
-          risk: res.risk,
+          good: '',
+          risk: '',
           steps: [],
-          v: 2,
+          v: 3,
           reason,
           ...(reasonKey ? { reasonKey } : {}),
-          step: { text: res.step.text, candidate: res.step.candidate ? byId.get(res.step.candidate) ?? null : null },
+          where: res.where,
+          advices,
+          work: reviewWork(input.state, input.ctx, findings, used),
           sent: payload,
         })
       } catch (err) {
@@ -205,10 +229,11 @@ export const useAiStore = defineStore('ai', () => {
 
   /**
    * Разбор сам (Р-4, Р-20, AU-13) — зовут движок синка после подтянутого общего документа и оболочка после своей
-   * «Пришла». Участник с ИИ (`available`: не viewer, не демо), в сети, есть повод текущего месяца. Согласие v2 «да» —
-   * запрос в фоне, без «Думаю…»; «да» v1 — лист согласия v2 один раз на повод (закрыл — до следующего повода); не
-   * спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть — молча, тот же повод на этом телефоне — не чаще
-   * раза в сутки (`ff_ai_auto`, попытка пишется до запроса). Один запрос за раз.
+   * «Пришла». Участник с ИИ (`available`: не viewer, не демо), в сети, есть повод текущего месяца. «Да» текущей версии
+   * согласия (`AI_CONSENT_V`) — запрос в фоне, без «Думаю…»; «да» прежней версии — лист согласия один раз на повод
+   * (закрыл — до следующего повода); не спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть, тело старой
+   * версии (400) и семья без кнопок (`ai_failed` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
+   * сутки (`ff_ai_auto`, попытка пишется до запроса). Один запрос за раз.
    */
   async function autoReview(client: ApiClient = apiClient): Promise<AiReview | null> {
     if (!available.value || consent.value === 'off' || inflight) return null
@@ -222,7 +247,7 @@ export const useAiStore = defineStore('ai', () => {
     const tried = mine()[rk]
     if (tried?.at && Date.now() - Date.parse(tried.at) < DAY_MS) return null
     if (consent.value === 'unknown') {
-      // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить v2 один раз на повод.
+      // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить заново один раз на повод.
       const c = finance.privateDoc.aiConsent as AiConsent | undefined
       // Листа нет (экран без оболочки) — спросить нечем: повод не тратим.
       if (!c?.on || tried?.asked || !sheetMounted.value) return null
@@ -326,19 +351,23 @@ export const useAiStore = defineStore('ai', () => {
 /** Лимит месяца кончился: «ИИ вернётся 1 ноября» — с месяцем, «1-го» заставляло думать, какого (владелец, `/ux` Блока 2). */
 export const aiLimitText = () => `ИИ вернётся 1 ${MONTHS_GEN[parseMonthKey(addMonths(monthKey(), 1)).month]}`
 
-/** Версия согласия (бэклог «ИИ-польза», Р-12): список ниже вырос — «да» прежней версии спрашивается ещё раз. */
-export const AI_CONSENT_V = 2
+/**
+ * Версия согласия (бэклог «ИИ-польза», Р-12; v3 — «Разбор», Р-21): список ниже изменился — «да» прежней версии
+ * спрашивается ещё раз один раз.
+ */
+export const AI_CONSENT_V = 3
 
 /**
- * Кто получает и что уходит (Р-9; v2 — бэклог «ИИ-польза», Р-12) — одни слова для листа согласия и подсказки в
+ * Кто получает и что уходит (Р-9; v2 — бэклог «ИИ-польза», Р-12; v3 — «Разбор», Р-7, Р-21: продавцы и суммы находок —
+ * частые траты, списания и 1–2 крупнейшие покупки раздела, «что раздуло») — одни слова для листа согласия и подсказки в
  * настройках. `AI_AUTO` — не «что», а «когда» (разбор без нажатия): в листе — строкой под списком (Х-16), в подсказке
- * настроек — отдельной фразой.
+ * настроек — отдельной фразой. Слова v3 — черновик, финал `/ux` Блока 2.
  */
 export const AI_TO = 'Claude от Anthropic'
 export const AI_AUTO = 'Разбор приходит сам — 1-го и после зарплаты'
 export const AI_SENDS = [
   'Цифры месяца и названия статей без ваших имён',
-  'Названия продавцов и подписок',
+  'Продавцы и суммы частых трат, списаний и крупных покупок',
   'Скриншот товара',
   'Фото чека',
   'Фраза о мечте',
