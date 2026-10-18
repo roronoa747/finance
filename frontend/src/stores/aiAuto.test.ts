@@ -5,7 +5,9 @@ import { DEMO_TOKEN, useAuthStore } from './auth'
 import { useAiStore } from './ai'
 import { useFinanceStore } from './finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import type { AiReview, SyncDoc } from '@/types/finance'
+import type { AiReview, ReviewPayloadV3, SyncDoc } from '@/types/finance'
+import type { ReviewFind } from '@/lib/statements/types'
+import { money } from '@/lib/money'
 
 /**
  * AU-13 (бэклог «ИИ-польза», Р-4, Р-20): разбор сам — повод `month` (первый вход в месяце) и `salary` (своя первая
@@ -14,7 +16,8 @@ import type { AiReview, SyncDoc } from '@/types/finance'
  */
 const NOW = '2026-09-12T07:00:00Z'
 const KEY = '2026-09'
-const ANSWER = { good: 'Хорошо.', risk: 'Риск.', step: { text: 'Шаг', candidate: null } }
+/** Ответ ручки v3 (RZ-05): совет на первое действие семьи — «досрочно» (`stepCandidates` `planFamilyDoc`). */
+const ANSWER = { where: 'Хорошо.', advices: [{ title: 'Шаг', text: 'Риск.', figure: null, action: 'a1' }] }
 
 function fakeClient(priv: Record<string, unknown> = {}) {
   const aiReview = vi.fn(async (_body: unknown) => ANSWER)
@@ -74,7 +77,7 @@ describe('autoReview — повод «месяц»', () => {
     const r = await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
     expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('month')
-    expect(r).toMatchObject({ v: 2, reason: 'month', reasonKey: `month:${KEY}`, by: 'a' })
+    expect(r).toMatchObject({ v: 3, reason: 'month', reasonKey: `month:${KEY}`, by: 'a' })
     expect(finance.aiReviewOf(KEY)!.id).toBe(r!.id)
     // Фоном — без «Думаю…» на экране.
     expect(ai.reviewState).toBe('idle')
@@ -324,5 +327,47 @@ describe('reviewUnseen — точка «новый разбор»', () => {
     expect(ai.reviewUnseen).toBe(false)
     expect(family({ role: 'viewer', doc: planFamilyDoc({ aiReviews: [review({})] }) }).ai.reviewUnseen).toBe(true)
     expect(family().ai.reviewUnseen).toBe(false)
+  })
+})
+
+// RZ-05 (бэклог «Разбор», Р-15, Р-19): что сохраняет разбор v3 — факт крупной цифры, кнопка по id, счётчик.
+describe('requestReview v3 — сохранение', () => {
+  const leak = (by: 'a' | 'b', period: string): ReviewFind => ({
+    id: `${by}:${period}:leak:apteka`, by, period, kind: 'leak', name: 'APTEKA', categoryId: 'sc_health', count: 8, amount: 12_000, updatedAt: T0,
+  })
+  const doc = () => planFamilyDoc({ reviewFinds: [leak('a', '2026-07'), leak('b', '2026-08')] })
+
+  it('figure → факт {about, value}; «Сделать» → кандидат, «Открыть» → экран; совет на чужое действие отброшен; work — по советам', async () => {
+    const { ai } = family({ doc: doc() })
+    const { client, aiReview } = fakeClient()
+    aiReview.mockImplementation(async (body: unknown) => {
+      const b = body as ReviewPayloadV3
+      const open = b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!
+      const yearly = b.facts.find((f) => f.about === 'частые траты у «APTEKA» — за год')!
+      return {
+        where: 'Где.',
+        advices: [
+          { title: 'Досрочно', text: 'Текст.', figure: null, action: 'a1' },
+          { title: 'Чужое', text: 'Текст.', figure: null, action: 'a9' },
+          { title: 'Аптека', text: 'Текст.', figure: yearly.id, action: open.id },
+        ],
+      } as never
+    })
+    const r = await ai.runReview(KEY, 'month', client)
+    expect(r!.advices!.map((a) => a.title)).toEqual(['Досрочно', 'Аптека'])
+    expect(r!.advices![0].action).toMatchObject({ kind: 'do', candidate: { kind: 'prepay' } })
+    expect(r!.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA» — за год', value: money(144_000) }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka' } } })
+    // Утечка: 12 000 в месяц × 12 — только она в советах; «Сделать» находки не несёт.
+    expect(r!.work).toMatchObject({ found: 1, yearly: 144_000 })
+    expect(r!.where).toBe('Где.')
+  })
+
+  it('все советы на чужие действия — разбор не сохраняется, «Не вышло»', async () => {
+    const { ai, finance } = family({ doc: doc() })
+    const { client, aiReview } = fakeClient()
+    aiReview.mockResolvedValue({ where: 'Где.', advices: [{ title: 'Чужое', text: 'Текст.', figure: null, action: 'a9' }] } as never)
+    expect(await ai.runReview(KEY, 'month', client)).toBeNull()
+    expect(ai.reviewState).toBe('failed')
+    expect(finance.householdDoc.aiReviews ?? []).toHaveLength(0)
   })
 })

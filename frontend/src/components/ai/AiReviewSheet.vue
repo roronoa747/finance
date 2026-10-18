@@ -5,10 +5,10 @@ import { PhCaretRight, PhCheck, PhCircleNotch } from '@phosphor-icons/vue'
 import { aiLimitText, useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import type { AiReview, ReviewPayload } from '@/types/finance'
+import type { AiReview, ReviewPayload, ReviewPayloadV3 } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
-import { factsLines } from '@/lib/aiFacts'
-import { shiftMade, stepCandidates } from '@/lib/finance'
+import { factsLines, openPath } from '@/lib/aiFacts'
+import { shiftMade, stepCandidates, type StepCandidate } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { dayLabel, monthBy, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
@@ -91,6 +91,45 @@ const fresh = computed(() => {
 })
 const doOpen = ref(false)
 
+/*
+ * ---------- v3 — RZ-05 временно, снимает RZ-07 (экран-отчёт Блока 2, лист уходит) ----------
+ * «Куда ушло» строкой модели, советы списком: у совета справа — «Сделать» (участник, кандидат ещё применим) / «✓ Сделано»
+ * или «Открыть» (экран предмета, лист закрывается; viewer тоже — это чтение); внизу — счётчик работы.
+ */
+const v3 = computed(() => props.review?.v === 3)
+const madeOf = (c: StepCandidate) => shiftMade(finance.householdDoc.planShifts ?? [], { ...c.shift, period: props.monthKey })
+const v3Rows = computed(() => {
+  if (!v3.value) return []
+  const live = auth.isViewer ? [] : (() => {
+    const { state, ctx } = finance.planInput(props.monthKey)
+    return stepCandidates(state, ctx)
+  })()
+  return (props.review?.advices ?? []).map((a, i) => {
+    const c = a.action.kind === 'do' ? a.action.candidate : null
+    const made = !!c && madeOf(c)
+    return {
+      i,
+      a,
+      made,
+      fresh: c && !made ? live.find((x) => x.id === c.id) ?? null : null,
+      path: a.action.kind === 'open' ? openPath(a.action.target) : null,
+    }
+  })
+})
+const v3Candidate = ref<StepCandidate | null>(null)
+function openDo(c: StepCandidate) {
+  v3Candidate.value = c
+  doOpen.value = true
+}
+/** «Просмотрел N операций · нашёл K · ≈ X ₸ в год» — числа кода на момент разбора (Р-8); без X, когда он 0. */
+const workLine = computed(() => {
+  const w = props.review?.work
+  if (!v3.value || !w) return ''
+  const parts = [`Просмотрел ${plain(w.ops)} ${plural(w.ops, 'операцию', 'операции', 'операций')}`, `нашёл ${w.found}`]
+  if (w.yearly > 0) parts.push(`≈ ${money(w.yearly)} в год`)
+  return parts.join(' · ')
+})
+
 /** Шаг v1 на экран, где лист открыт (`/month` с «Месяца»), — не ссылка: она только закрывала лист (Х-13). */
 const linkOf = (screen: string | null) => (screen && screen !== route.path ? screen : null)
 
@@ -116,7 +155,7 @@ watch(
 const sentRows = computed(() => {
   const s = props.review?.sent
   if (!s) return []
-  return 'facts' in s ? [{ title: 'Факты месяца', rows: factsLines(s as ReviewPayload) }] : sentLines(s, props.monthKey)
+  return 'facts' in s ? [{ title: 'Факты месяца', rows: factsLines(s as ReviewPayload | ReviewPayloadV3) }] : sentLines(s, props.monthKey)
 })
 
 function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: string[] }[] {
@@ -171,6 +210,26 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
     <p v-if="example" class="-mt-1 mb-2 type-meta" data-review-example>Пример</p>
 
     <div v-if="review" class="flex flex-col gap-4" data-review>
+      <!-- v3 — RZ-05 временно, снимает RZ-07: «Куда ушло» и советы, у каждого кнопка (Р-6). -->
+      <template v-if="v3">
+        <section v-if="review.where">
+          <h3 class="type-section text-ink">Куда ушло</h3>
+          <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-where>{{ keep(review.where) }}</p>
+        </section>
+        <section v-for="r in v3Rows" :key="r.i" class="flex items-center gap-3" data-review-advice>
+          <div class="min-w-0 flex-1">
+            <h3 class="type-section text-ink" data-review-advice-title>{{ r.a.title }}</h3>
+            <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-advice-text>{{ keep(r.a.text) }}</p>
+          </div>
+          <span v-if="r.made" class="flex shrink-0 items-center gap-1 text-[13.5px] font-semibold text-ok" data-review-done><PhCheck :size="15" weight="bold" aria-hidden="true" />Сделано</span>
+          <Button v-else-if="r.fresh" variant="secondary" size="sm" class="shrink-0" data-review-do @click="openDo(r.fresh)">Сделать</Button>
+          <Button v-else-if="r.path" variant="secondary" size="sm" class="shrink-0" as-child>
+            <RouterLink :to="r.path" data-review-link @click="emit('close')">Открыть</RouterLink>
+          </Button>
+        </section>
+        <p v-if="workLine" class="text-[12.5px] text-ink-2 num" data-review-work>{{ workLine }}</p>
+      </template>
+      <template v-else>
       <section>
         <h3 class="type-section text-ok">Хорошо</h3>
         <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-good>{{ keep(review.good) }}</p>
@@ -179,6 +238,7 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
         <h3 class="type-section text-warn">Риск</h3>
         <p class="mt-1 text-[15px] leading-snug text-ink num" data-review-risk>{{ keep(review.risk) }}</p>
       </section>
+      </template>
       <!-- v2: шаг один, действие — у него (правило 12: «Сделать» живёт у своего предмета). -->
       <section v-if="v2 && review.step">
         <h3 class="type-section text-ink">Шаг</h3>
@@ -236,5 +296,5 @@ function sentLines(s: MonthSummaryAI, key: string): { title: string; rows: strin
     <p v-else class="flex items-center justify-center gap-2 py-6 text-[15px]" :class="ai.reviewState === 'thinking' ? 'text-ink-2' : 'text-ink'" :data-review-state="ai.reviewState"><PhCircleNotch v-if="ai.reviewState === 'thinking'" :size="17" class="shrink-0 animate-spin" aria-hidden="true" data-review-spin /><span>{{ stateText }}</span></p>
   </Sheet>
   <!-- Лист «Сделать» поверх разбора (z 60, как вложенные листы); разбор под ним остаётся. -->
-  <DoSheet :candidate="open && doOpen ? fresh : null" :z="60" @close="doOpen = false" />
+  <DoSheet :candidate="open && doOpen ? (v3 ? v3Candidate : fresh) : null" :z="60" @close="doOpen = false" />
 </template>

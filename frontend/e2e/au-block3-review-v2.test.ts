@@ -17,7 +17,8 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type
  * разом — не больше 2 запросов; «Пришла» на телефоне 2 → разбор `salary`; лимит (429) — тишина; согласие v1 → лист один
  * раз; «Сделать» → сдвиг месяца у обоих; viewer — без кнопок; в теле — только повод, факты и кандидаты, без имён.
  */
-const ANSWER = { good: 'Копим на «Машину».', risk: 'Подушки мало.', step: { text: 'Отложим в подушку', candidate: 'c1' as string | null } }
+/** Ответ ручки v3 (RZ-05): совет «Сделать» на первое действие семьи (`a1`). */
+const ANSWER = { where: 'Копим на «Машину».', advices: [{ title: 'Отложим в подушку', text: 'Подушки мало.', figure: null as string | null, action: 'a1' }] }
 
 /** Семья с фондом-подушкой: у неё есть кандидаты «Сделать» (досрочка, подушка). */
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
@@ -95,7 +96,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     expect(html).toContain('data-plan-dot')
     expect(html).toContain('data-review-dot')
     html = await monthHtml(two, { reviewOpen: true })
-    expect(visible(html)).toContain(ANSWER.good)
+    expect(visible(html)).toContain(ANSWER.where)
     two.ai.markReviewSeen(two.store.aiReviewOf('2026-10')!.id)
     expect(await monthHtml(two)).not.toContain('data-plan-dot')
   })
@@ -175,7 +176,9 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
   it('«Сделать» → сдвиг месяца у обоих телефонов; viewer видит разбор без кнопок', async () => {
     const one = await as('member', 'a')
     const r = await one.ai.autoReview(one.aiClient)
-    const c = r!.step!.candidate!
+    const a = r!.advices![0]!.action
+    const c = a.kind === 'do' ? a.candidate : null
+    if (!c) throw new Error('совет без «Сделать»')
     expect(c).not.toBeNull()
     // Лист разбора: «Сделать» у шага.
     // Атрибут целиком: `data-review-dot` и `data-review-done` — другие.
@@ -186,7 +189,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     // Viewer — до «Сделать»: разбор с шагом, но без кнопки и без «Обновить»; сам не разбирает.
     const viewer = await as('viewer', 'b')
     const html = await monthHtml(viewer, { reviewOpen: true })
-    expect(visible(html)).toContain(ANSWER.step.text)
+    expect(visible(html)).toContain(ANSWER.advices[0].title)
     expect(html).not.toMatch(doBtn)
     expect(html).not.toContain('data-review-refresh')
     await viewer.ai.autoReview(viewer.aiClient)
@@ -203,11 +206,11 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     expect(await monthHtml(two, { reviewOpen: true })).toContain('data-review-done')
   })
 
-  it('тело запроса — только повод, факты и кандидаты; имён участников нет', async () => {
+  it('тело запроса — только повод, факты и действия (v3); имён участников нет', async () => {
     const one = await as('member', 'a')
     await one.ai.autoReview(one.aiClient)
     const body = aiReview.mock.calls[0][0] as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['candidates', 'facts', 'reason'])
+    expect(Object.keys(body).sort()).toEqual(['actions', 'facts', 'reason', 'v'])
     const text = JSON.stringify(body)
     for (const name of ['Ильяс', 'Аруна', 'u-a', 'a@example.com']) expect(text, name).not.toContain(name)
     expect((body.facts as unknown[]).length).toBeGreaterThan(3)

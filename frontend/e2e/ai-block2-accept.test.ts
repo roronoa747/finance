@@ -21,8 +21,8 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * в документе оба, показан последний, партнёр видит новый; (и) демо — нажатие ✦ без запроса и записи; (к) имена в
  * падежах в названиях статей, долгов и целей не уходят, а `sent` в общем документе = ушедшая сводка.
  */
-/** Ответ ручки — v2 (бэклог «ИИ-польза», AU-12): шаг один, кандидата нет. */
-const answer = (good: string) => ({ good, risk: 'Кредитка под 40% — самый дорогой долг.', step: { text: 'Посмотрим долги.', candidate: null } })
+/** Ответ ручки — v3 (бэклог «Разбор», RZ-05): совет на первое действие семьи (`a1` — досрочно). */
+const answer = (where: string) => ({ where, advices: [{ title: 'Долги', text: 'Кредитка под 40% — самый дорогой долг.', figure: null, action: 'a1' }] })
 /** Разбор v1, сохранённый в документе до v2 (читается как раньше). */
 const saved = (good: string, atIso: string): AiReview => ({
   id: 'r0', month: '2026-10', at: atIso, by: 'a', good, risk: 'Кредитка под 40% — самый дорогой долг.',
@@ -44,7 +44,7 @@ function namedDoc(): SyncDoc {
 
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 const sheet = (html: string) => {
-  const i = html.search(/data-review-(example|good|state)/)
+  const i = html.search(/data-review-(example|good|where|state)/)
   if (i < 0) return ''
   const d = html.lastIndexOf('role="dialog"', i)
   return visible(html.slice(d < 0 ? i : d))
@@ -152,7 +152,7 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     setActivePinia(one.pinia)
     const live = (one.store.householdDoc.aiReviews ?? []).filter((r) => !r.deletedAt)
     expect(live).toHaveLength(2)
-    expect(one.store.aiReviewOf('2026-10')?.good).toBe('Новый разбор.')
+    expect(one.store.aiReviewOf('2026-10')?.where).toBe('Новый разбор.')
     const html = await opened(one)
     expect(sheet(html)).toContain('Новый разбор.')
     expect(html).not.toContain('data-review-refresh')
@@ -194,7 +194,7 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     const body = review.mock.calls[0][0]
     const text = JSON.stringify(body)
     for (const bad of ['Ильяс', 'Арун', 'водит', 'платит']) expect(text, bad).not.toContain(bad)
-    // Факты v2 (AU-11) называют главную мечту и первый долг — имена в них заменены.
+    // Факты (AU-11, RZ-03) называют главную мечту и первый долг — имена в них заменены.
     expect(text).toContain('участник')
 
     setActivePinia(one.pinia)

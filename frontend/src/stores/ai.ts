@@ -3,14 +3,14 @@ import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFacts } from '@/lib/aiFacts'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
-import { countedPayments, liveSpendCategories, periodMonth } from '@/lib/finance'
+import { countedPayments, liveSpendCategories, periodMonth, reviewWork, type ReviewFinding } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import type { AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
+import type { AiAdvice, AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -126,34 +126,53 @@ export const useAiStore = defineStore('ai', () => {
     reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${auth.slot ?? 'a'}:${key}` : undefined
 
   /**
-   * Разбор v2 месяца `key` (бэклог «ИИ-польза», AU-13): факты и кандидаты кода (`buildReviewFacts`, без имён) → ручка
-   * → разбор в общий документ с кандидатом «Сделать» по id ответа (партнёр видит без запроса). Ошибка — код ручки
-   * строкой (`ai_limit`, `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ.
+   * Разбор v3 месяца `key` (бэклог «Разбор», Р-15, RZ-05; v2 — «ИИ-польза», AU-13): факты и действия кода
+   * (`buildReviewFacts`, без имён) → ручка → разбор в общий документ (партнёр видит без запроса): у совета — факт крупной
+   * цифры и кнопка по id ответа («Сделать» — кандидат, «Открыть» — экран); совет, чьё действие не нашлось, отброшен,
+   * ни одного — `ai_failed`. Счётчик работы — на момент разбора (`reviewWork`). Ошибка — код ручки строкой (`ai_limit`,
+   * `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ.
    */
   function requestReview(key: string, reason: ReviewReason, client: ApiClient): Promise<AiReview | string> {
     if (inflight) return inflight
     inflight = (async () => {
-      const { payload: v3, doById } = buildReviewFacts(finance.householdDoc, finance.planInput(key), reason)
-      // RZ-03 временно, снимает RZ-05: ручка ещё v2 — тело v2 из фактов v3, кандидаты — действия «Сделать».
-      const dos = v3.actions.filter((a) => a.kind === 'do')
-      const byId = new Map(dos.map((a, i) => [`c${i + 1}`, doById.get(a.id)!]))
-      const payload = { facts: v3.facts, candidates: dos.map((a, i) => ({ id: `c${i + 1}`, kind: doById.get(a.id)!.kind, about: a.about, value: a.value, effect: a.effect })) }
-      // Фактов нет (пустая семья) — ручка ответит 400: не спрашиваем.
-      if (!payload.facts.length) return 'ai_failed'
+      const input = finance.planInput(key)
+      const { payload, doById, openById, findings, byAction } = buildReviewFacts(finance.householdDoc, input, reason)
+      // Фактов или кнопок нет (пустая семья; совета без кнопки не бывает, Р-6) — ручка ответит 400: не спрашиваем.
+      if (!payload.facts.length || !payload.actions.length) return 'ai_failed'
       try {
         const res = await client.aiReview({ reason, ...payload })
+        const facts = new Map(payload.facts.map((f) => [f.id, f]))
+        const advices: AiAdvice[] = []
+        const used: ReviewFinding[] = []
+        for (const a of res.advices) {
+          const candidate = doById.get(a.action)
+          const target = openById.get(a.action)
+          if (!candidate && !target) continue
+          const f = a.figure ? facts.get(a.figure) : undefined
+          advices.push({
+            title: a.title,
+            text: a.text,
+            figure: f ? { about: f.about, value: f.value } : null,
+            action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
+          })
+          const finding = byAction.get(a.action)
+          if (finding) used.push(finding)
+        }
+        if (!advices.length) return 'ai_failed'
         const reasonKey = reasonKeyOf(reason, key)
         return finance.saveAiReview({
           month: key,
           at: new Date().toISOString(),
           by: auth.slot ?? 'a',
-          good: res.good,
-          risk: res.risk,
+          good: '',
+          risk: '',
           steps: [],
-          v: 2,
+          v: 3,
           reason,
           ...(reasonKey ? { reasonKey } : {}),
-          step: { text: res.step.text, candidate: res.step.candidate ? byId.get(res.step.candidate) ?? null : null },
+          where: res.where,
+          advices,
+          work: reviewWork(input.state, input.ctx, findings, used),
           sent: payload,
         })
       } catch (err) {
