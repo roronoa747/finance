@@ -125,8 +125,10 @@ const reviewDay = computed(() => {
   return dayLabel(d.day, d.key)
 })
 const REASON: Record<ReviewReason, string> = { month: 'начался месяц', salary: 'после зарплаты', refresh: 'обновили' }
-/** Повод и день — тихо под счётчиком: «1 октября · начался месяц». */
-const whenLine = computed(() => [reviewDay.value, props.review?.reason ? REASON[props.review.reason] : null].filter(Boolean).join(' · '))
+/** Повод и день — тихо под счётчиком: «1 октября · начался месяц». У «Примера» демо — ни дня, ни повода. */
+const whenLine = computed(() =>
+  props.example ? '' : [reviewDay.value, props.review?.reason ? REASON[props.review.reason] : null].filter(Boolean).join(' · '),
+)
 
 /* ---------- «Куда ушло» (Р-4): полосы считает код за месяц находок ---------- */
 const whereMonth = computed(() => `в ${monthIn(findMonth(input.value.ctx), false)}`)

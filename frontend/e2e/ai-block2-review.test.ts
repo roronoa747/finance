@@ -173,7 +173,8 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     const html = await screen(pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })])
     const text = sheet(html)
     expect(text).toContain('Пример')
-    expect(text).toContain(visible(DEMO_REVIEW.good))
+    // Разбор демо v3 (бэклог «Разбор», RZ-09): «Куда ушло» — строка заготовки.
+    expect(text).toContain(visible(DEMO_REVIEW.where))
     expect(html).not.toContain('data-review-refresh')
     setActivePinia(pinia)
     expect(useFinanceStore().householdDoc.aiReviews ?? []).toHaveLength(0)

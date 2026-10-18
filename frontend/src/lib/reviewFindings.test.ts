@@ -185,9 +185,9 @@ describe('reviewFindings — находки семьи', () => {
   })
 })
 
-describe('демо-семья (без находок демо — RZ-09)', () => {
+describe('демо-семья (находки демо — RZ-09)', () => {
   for (const day of ['2026-10-01T06:00:00Z', '2026-10-16T06:00:00Z']) {
-    it(`${day}: только «раздуло» или ничего, без падений; числа целые`, async () => {
+    it(`${day}: утечка, новое списание и «раздуло» (когда месяц находок текущий), без падений; числа целые`, async () => {
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(new Date(day))
       const map = new Map<string, string>()
@@ -203,7 +203,8 @@ describe('демо-семья (без находок демо — RZ-09)', () =>
       const finance = useFinanceStore()
       const { state, ctx } = finance.planInput(monthKey())
       const list = reviewFindings(state, ctx)
-      expect(list.every((f) => f.kind === 'grew')).toBe(true)
+      expect(list.map((f) => f.kind).filter((k) => k !== 'grew').sort()).toEqual(['leak', 'recurring'])
+      if (findMonth(ctx) === monthKey()) expect(list.some((f) => f.kind === 'grew')).toBe(true)
       expect(integers(list)).toEqual([])
       expect(reviewWork(state, ctx, list).ops).toBeGreaterThan(0)
       expect(whereRows(state, ctx).length).toBeGreaterThan(0)
