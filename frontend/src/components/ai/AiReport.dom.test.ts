@@ -13,6 +13,7 @@ import type { AiReview, Goal, SyncDoc } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { stepCandidates, type StepCandidate } from '@/lib/finance'
 import { money } from '@/lib/money'
+import { startDemo } from '@/lib/demo'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -24,7 +25,8 @@ vi.mock('@/lib/photos/store', async (orig) => ({
  * AI-09 (бэклог «ИИ», Р-4, Р-7, Р-9): кнопка разбора у остатка «Месяца», лист разбора, разбор в общем документе.
  * Ручка — подменённый `apiClient.aiReview` со счётчиком; личный документ — фейковый сервер (`ensureConsent` тянет его).
  * AU-13 (бэклог «ИИ-польза», Р-2, Р-3): разбор v2 — факты в запросе, шаг с «Сделать» → `DoSheet`, «✓ Сделано»;
- * разборы v1 читаются как раньше, шаг на этот же экран — текст (Х-13).
+ * разборы v1 читаются как раньше, шаг на этот же экран — текст (Х-13). RZ-07 (бэклог «Разбор»): лист снят — те же
+ * проверки на отчёте `AiReport` (v1/v2 — одной карточкой), ниже — карточки v3.
  */
 let app: App | null = null
 let router: Router
@@ -138,7 +140,7 @@ const press = async (el: HTMLElement | null | undefined) => {
   el!.click()
   await flush()
 }
-const dialog = () => [...document.querySelectorAll('[role="dialog"]')].find((d) => d.textContent?.includes('Разбор месяца')) ?? null
+const dialog = () => document.querySelector('[data-report]')
 
 describe('AI-09: разбор месяца у остатка', () => {
   it('семья без ИИ — кнопки нет; с ИИ — круглая кнопка рядом с «Хватит?», той же высоты, не брендовая', async () => {
@@ -478,63 +480,250 @@ describe('AU-13: лист разбора v2 — «Сделать» у шага',
   })
 })
 
-/** RZ-05 (бэклог «Разбор», Р-15): временный показ v3 в листе до отчёта Блока 2 — «Куда ушло», советы с кнопкой, счётчик. */
-describe('RZ-05: лист разбора v3 (временно, снимает RZ-07)', () => {
+/**
+ * RZ-07 (бэклог «Разбор», Р-2, Р-15, Р-17): отчёт на весь экран — карточки по порядку (работа, куда ушло, советы, итог),
+ * у совета крупная цифра факта и одна кнопка; листание нажатием по трети, старт с `card`; ✕, свайп вниз и «Открыть»
+ * закрывают и снимают параметр; v1/v2 — одной карточкой.
+ */
+describe('RZ-07: отчёт разбора v3', () => {
+  const advices = (candidate: StepCandidate): AiReview['advices'] => [
+    { title: 'В подушку', text: 'Отложим остаток — подушки почти нет.', figure: null, action: { kind: 'do', candidate } },
+    { title: 'Кафе у дома', text: 'Раздуло одной покупкой.', figure: { about: 'траты на «Кафе» выше обычного на', value: '60 000 ₸' }, action: { kind: 'open', target: { kind: 'cat', id: 'sc_cafe', name: 'Кафе' } } },
+  ]
   const savedV3 = (candidate: StepCandidate, extra: Partial<AiReview> = {}): AiReview =>
     saved({
       v: 3, reason: 'month', reasonKey: `month:${KEY}`, good: '', risk: '', steps: [],
       where: 'Кафе выросло — мечта отодвинулась.',
-      advices: [
-        { title: 'В подушку', text: 'Отложим остаток — подушки почти нет.', figure: null, action: { kind: 'do', candidate } },
-        { title: 'Кафе у дома', text: 'Раздуло одной покупкой.', figure: { about: 'траты на «Кафе» выше обычного на', value: '60 000 ₸' }, action: { kind: 'open', target: { kind: 'cat', id: 'sc_cafe', name: 'Кафе' } } },
-      ],
+      advices: advices(candidate),
       work: { ops: 1240, found: 4, yearly: 720_000 },
       sent: { v: 3, facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }], actions: [{ id: 'a1', kind: 'open', about: 'открыть траты «Кафе»', value: '', effect: '' }] },
       ...extra,
     })
-
-  it('участник: «Куда ушло», советы, «Сделать» → лист → «✓ Сделано»; «Открыть» — ссылка на экран предмета; счётчик', async () => {
-    await open()
-    const c = candidateOf('cushion')
-    useFinanceStore().setHouseholdDoc(withFund({ aiReviews: [savedV3(c)] }), 2)
-    await flush()
-    await press(q('[data-review-open]'))
-    expect(txt(q('[data-review-where]'))).toBe('Кафе выросло — мечта отодвинулась.')
-    expect([...document.querySelectorAll('[data-review-advice-title]')].map(txt)).toEqual(['В подушку', 'Кафе у дома'])
-    expect(q('[data-review-good]')).toBeNull()
-    expect(q('[data-review-link]')?.getAttribute('href')).toBe('/month?cat=sc_cafe')
-    expect(txt(q('[data-review-work]'))).toMatch(/^Просмотрел 1\s240 операций · нашёл 4 · ≈ 720\s000 ₸ в год$/)
-    await press(q('[data-review-do]'))
-    expect(q('[data-do-amount]')!.textContent).toBe(money(c.shift.amount))
-    await press(q('[data-do-confirm]'))
-    expect((useFinanceStore().householdDoc.planShifts ?? []).filter((s) => !s.deletedAt)).toHaveLength(1)
-    expect(txt(q('[data-review-done]'))).toBe('Сделано')
-    // «Что ушло» v3 — факты и «открыть — …».
-    await press(q('[data-review-sent-open]'))
-    expect(txt(q('[data-review-sent]'))).toContain('открыть — траты «Кафе»')
-  })
-
-  it('«Открыть» закрывает лист и ведёт по адресу; без находок в советах — счётчик без «≈»', async () => {
-    await open()
-    const c = candidateOf('cushion')
-    useFinanceStore().setHouseholdDoc(withFund({ aiReviews: [savedV3(c, { work: { ops: 12, found: 0, yearly: 0 } })] }), 2)
-    await flush()
-    await press(q('[data-review-open]'))
-    expect(txt(q('[data-review-work]'))).toBe('Просмотрел 12 операций · нашёл 0')
-    await press(q('[data-review-link]'))
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?cat=sc_cafe'))
-    await flush()
-    expect(dialog()).toBeNull()
-  })
-
-  it('viewer: «Открыть» есть, «Сделать» нет', async () => {
+  /** Семья с подушкой и разбором v3 текущего месяца (кандидат — из того же входа плана). */
+  async function openV3(opts: { role?: 'member' | 'viewer'; extra?: Partial<AiReview>; path?: string } = {}) {
     await open()
     const c = candidateOf('cushion')
     app!.unmount()
     document.body.innerHTML = ''
-    await open({ role: 'viewer', doc: withFund({ aiReviews: [savedV3(c)] }) })
+    await open({ role: opts.role, doc: withFund({ aiReviews: [savedV3(c, opts.extra)] }) })
+    if (opts.path) {
+      await router.push(opts.path)
+      await flush()
+    } else await press(q('[data-review-open]'))
+    // Отчёт — по адресу: переход (ленивый компонент маршрута) доходит не за один тик.
+    await vi.waitFor(() => expect(router.currentRoute.value.query.review).toBe('1'))
+    await flush()
+    return c
+  }
+  const kinds = () => [...document.querySelectorAll('[data-report-card]')].map((c) => c.getAttribute('data-report-card'))
+  const activeKind = () => q('[data-report-card][data-active]')?.getAttribute('data-report-card')
+  const tap = async (x: number) => {
+    q('[data-report-card][data-active]')!.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x }))
+    await flush()
+  }
+
+  it('карточки по порядку: работа ИИ, куда ушло, советы; счётчик — числа разбора; у совета крупная цифра факта', async () => {
+    await openV3()
+    expect(dialog()!.getAttribute('aria-label')).toBe('Разбор месяца')
+    expect(kinds()).toEqual(['work', 'where', 'advice', 'advice'])
+    expect(document.querySelectorAll('[data-report-progress] > span')).toHaveLength(4)
+    expect(activeKind()).toBe('work')
+    expect(txt(q('[data-review-ops]'))).toMatch(/^1\s240$/)
+    expect(txt(q('[data-review-work]'))).toMatch(/^нашёл 4 · ≈ 720\s000 ₸ в год$/)
+    // Повод и день — тихо: «12 сентября · начался месяц».
+    expect(txt(q('[data-review-when]'))).toBe('12 сентября · начался месяц')
+    expect(txt(q('[data-review-where]'))).toBe('Кафе выросло — мечта отодвинулась.')
+    // Подпись картинки называет месяц находок: выписок нет — прошлый.
+    expect(txt(q('[data-review-where-month]'))).toBe('в августе')
+    expect([...document.querySelectorAll('[data-review-advice-title]')].map(txt)).toEqual(['В подушку', 'Кафе у дома'])
+    const cards = [...document.querySelectorAll('[data-review-advice]')]
+    expect(cards[0].querySelector('[data-review-figure]')).toBeNull()
+    expect(txt(cards[1].querySelector('[data-review-figure]'))).toBe('60 000 ₸')
+    expect(txt(cards[1].querySelector('[data-review-figure-about]'))).toBe('траты на «Кафе» выше обычного на')
+    // Кнопка у совета одна: «Сделать» (брендовая) у первого, «Открыть» у второго.
+    expect([...cards[0].querySelectorAll('button, a')].map(txt)).toEqual(['Сделать'])
+    expect([...cards[1].querySelectorAll('button, a')].map(txt)).toEqual(['Открыть'])
+    expect(cards[0].querySelector('[data-review-do]')!.className).toContain('bg-brand')
+    expect(q('[data-review-link]')!.getAttribute('href')).toBe('/month?cat=sc_cafe')
+    expect(q('[data-review-good]')).toBeNull()
+    // Открыли — разбор увиден, параметр на адресе.
+    expect(useAiStore().seenReview).toBe('r1')
+    expect(router.currentRoute.value.query.review).toBe('1')
+  })
+
+  it('«Сделать» → лист с цифрами кода поверх отчёта → подтвердил: сдвиг месяца, «✓ Сделано», тост над отчётом', async () => {
+    const c = await openV3()
+    await press(q('[data-review-do]'))
+    expect(q('[data-do-amount]')!.textContent).toBe(money(c.shift.amount))
+    // Лист «Сделать» — над отчётом (z 60 > 50).
+    const layer = [...document.querySelectorAll<HTMLElement>('body > div')].find((d) => d.querySelector('[data-do-amount]'))!
+    expect(Number(layer.style.zIndex)).toBe(60)
+    await press(q('[data-do-confirm]'))
+    expect((useFinanceStore().householdDoc.planShifts ?? []).filter((s) => !s.deletedAt)).toHaveLength(1)
+    expect(txt(q('[data-review-done]'))).toBe('Сделано')
+    expect(q('[data-review-do]')).toBeNull()
+    // Лист закрыт, отчёт открыт — экран всё ещё «под окном»: тост встаёт над ним (`html[data-sheet-open] #shell-toast`).
+    expect(dialog()).not.toBeNull()
+    expect(document.documentElement.hasAttribute('data-sheet-open')).toBe(true)
+    expect(q('[data-do-toast]')).not.toBeNull()
+  })
+
+  it('«Открыть» ведёт на экран предмета, отчёт закрыт, параметр снят', async () => {
+    await openV3()
+    await press(q('[data-review-link]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?cat=sc_cafe'))
+    await flush()
+    expect(dialog()).toBeNull()
+    expect(document.documentElement.hasAttribute('data-sheet-open')).toBe(false)
+  })
+
+  it('нажатие по правой трети — следующая карточка, по левой — предыдущая, по середине — ничего', async () => {
+    await openV3()
+    const w = window.innerWidth
+    await tap(w - 10)
+    expect(activeKind()).toBe('where')
+    await tap(w / 2)
+    expect(activeKind()).toBe('where')
+    await tap(5)
+    expect(activeKind()).toBe('work')
+    await tap(5)
+    expect(activeKind()).toBe('work')
+  })
+
+  it('старт с `card=2` — карточка второго совета', async () => {
+    await openV3({ path: '/month?review=1&card=2' })
+    expect(dialog()).not.toBeNull()
+    expect(txt(q('[data-report-card][data-active] [data-review-advice-title]'))).toBe('Кафе у дома')
+  })
+
+  it('✕ закрывает и снимает `review` и `card`; повторное открытие — с первой карточки', async () => {
+    await openV3({ path: '/month?review=1&card=2' })
+    await press(q('[data-report-close]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'))
+    expect(dialog()).toBeNull()
     await press(q('[data-review-open]'))
+    expect(activeKind()).toBe('work')
+  })
+
+  it('свайп вниз от верха карточки закрывает; короткий и вбок — нет', async () => {
+    await openV3()
+    const swipe = async (dx: number, dy: number) => {
+      const el = q('[data-report-card][data-active]')!
+      const t = (x: number, y: number) => ({ clientX: x, clientY: y, identifier: 0, target: el }) as unknown as Touch
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [t(100, 100)] }))
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [t(100 + dx, 100 + dy)] }))
+      await flush()
+    }
+    await swipe(0, 40)
+    expect(dialog()).not.toBeNull()
+    await swipe(200, 120)
+    expect(dialog()).not.toBeNull()
+    await swipe(10, 120)
+    await vi.waitFor(() => expect(router.currentRoute.value.query.review).toBeUndefined())
+    expect(dialog()).toBeNull()
+  })
+
+  it('Escape закрывает отчёт; открыт лист «Сделать» — Escape закрывает только его', async () => {
+    await openV3()
+    await press(q('[data-review-do]'))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(q('[data-do-amount]')).toBeNull()
+    expect(dialog()).not.toBeNull()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(dialog()).toBeNull()
+  })
+
+  it('«что ушло» — на последней карточке, раскрывается фактами и «открыть — …»; «Обновить» — разбору больше суток', async () => {
+    await openV3({ extra: { at: '2026-09-11T06:00:00.000Z' } })
+    useAiStore().setConsent(true)
+    await flush()
+    const last = [...document.querySelectorAll('[data-report-card]')].at(-1)!
+    expect(last.querySelector('[data-review-foot]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-review-foot]')).toHaveLength(1)
+    await press(q('[data-review-sent-open]'))
+    expect(txt(q('[data-review-sent]'))).toContain('открыть — траты «Кафе»')
+    expect(q('[data-review-refresh]')).not.toBeNull()
+  })
+
+  it('без находок в советах — счётчик без «≈»', async () => {
+    await openV3({ extra: { work: { ops: 12, found: 0, yearly: 0 } } })
+    expect(txt(q('[data-review-ops]'))).toBe('12')
+    expect(txt(q('[data-review-work]'))).toBe('нашёл 0')
+  })
+
+  it('viewer: «Открыть» есть, «Сделать» нет (текст совета остаётся), «Обновить» нет', async () => {
+    await openV3({ role: 'viewer', extra: { at: '2026-09-01T06:00:00.000Z' } })
     expect(q('[data-review-link]')).not.toBeNull()
     expect(q('[data-review-do]')).toBeNull()
+    expect(txt(document.querySelectorAll('[data-review-advice-text]')[0])).toBe('Отложим остаток — подушки почти нет.')
+    expect(q('[data-review-refresh]')).toBeNull()
+  })
+
+  it('«Сделать» устарел (кандидата нет в свежих) — «Открыть» той же цели вместо голого текста', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Подушки как фонда больше нет — кандидата `cushion` у семьи нет.
+    await open({ doc: planFamilyDoc({ aiReviews: [savedV3(c)] }) })
+    await press(q('[data-review-open]'))
+    const first = document.querySelectorAll('[data-review-advice]')[0]
+    expect(first.querySelector('[data-review-do]')).toBeNull()
+    expect(first.querySelector('[data-review-link]')!.getAttribute('href')).toBe('/goals/fund')
+  })
+
+  it('итог прошлого месяца — по v3 прошлого месяца: «Сделать» сделан, раздел совета; прошлый — v2: карточки нет', async () => {
+    await open()
+    const c = candidateOf('cushion')
+    app!.unmount()
+    document.body.innerHTML = ''
+    const prev = savedV3(c, { id: 'r0', month: '2026-08', at: '2026-08-01T06:00:00.000Z' })
+    const shift = { id: 's1', period: '2026-08', by: 'a' as const, from: 'rest' as const, to: { goalId: 'fund' }, amount: 10_000, at: T0, updatedAt: T0 }
+    await open({ doc: withFund({ aiReviews: [prev, savedV3(c)], planShifts: [shift] }) })
+    await press(q('[data-review-open]'))
+    expect(kinds()).toEqual(['work', 'where', 'advice', 'advice', 'outcome'])
+    expect(txt(q('[data-outcome-done]'))).toMatch(/^В подушку ?Сделано$/)
+    expect(txt(q('[data-outcome-section]'))).toContain('Кафе')
+    expect(q('[data-report-card="outcome"] [data-review-foot]')).not.toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    await open({ doc: withFund({ aiReviews: [savedV2(null, { id: 'r0', month: '2026-08', at: '2026-08-01T06:00:00.000Z' }), savedV3(c)] }) })
+    await press(q('[data-review-open]'))
+    expect(kinds()).not.toContain('outcome')
+  })
+
+  it('v2 — одна карточка «Разбор» (Хорошо · Риск · Шаг), без полосок, низ на ней', async () => {
+    await open({ doc: withFund({ aiReviews: [savedV2(null)] }) })
+    await press(q('[data-review-open]'))
+    expect(kinds()).toEqual(['old'])
+    expect(q('[data-report-progress]')).toBeNull()
+    expect(txt(q('[data-review-step-text]'))).toBe('Отложим остаток в подушку')
+    expect(q('[data-report-card="old"] [data-review-foot]')).not.toBeNull()
+  })
+
+  it('демо: по адресу — отчёт «Пример», без дня и «Обновить»; запроса нет', async () => {
+    const spy = vi.spyOn(apiClient, 'aiReview')
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    expect(startDemo()).toBe(true)
+    router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/month?review=1')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Month)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await flush()
+    expect(dialog()).not.toBeNull()
+    expect(txt(q('[data-review-example]'))).toBe('Пример')
+    expect(q('[data-review-day]')).toBeNull()
+    expect(q('[data-review-refresh]')).toBeNull()
+    expect(spy).not.toHaveBeenCalled()
   })
 })
+

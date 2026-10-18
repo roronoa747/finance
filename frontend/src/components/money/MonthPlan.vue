@@ -61,7 +61,7 @@ import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
-import AiReviewSheet from '@/components/ai/AiReviewSheet.vue'
+import AiReport from '@/components/ai/AiReport.vue'
 import { useQuerySheet } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
@@ -242,13 +242,15 @@ watch(
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
 /*
- * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13): у остатка рядом с «Хватит?» ----------
- * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
- * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Точка — разбор есть, а на этом
- * телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
+ * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13; v3 — «Разбор», RZ-07): у остатка
+ * рядом с «Хватит?» ----------
+ * Есть разбор месяца — отчёт с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
+ * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Отчёт — оверлей по адресу
+ * `?review=1[&card=<n>]` (Р-17): закрыли — параметры сняты; открыт с разбором — разбор «увиден». Точка — разбор есть, а
+ * на этом телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
  */
 const ai = useAiStore()
-/** Демо (Р-13, AU-14): заранее написанный разбор v2 с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
+/** Демо (Р-13, AU-14): заранее написанный разбор с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
 const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
@@ -263,15 +265,38 @@ const reviewShown = computed(
   () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
 )
 const reviewDot = computed(() => !!review.value && review.value.id !== ai.seenReview)
-const reviewOpen = ref(false)
-function markReviewSeen() {
-  if (review.value) ai.markReviewSeen(review.value.id)
+const { open: reviewOpen, close: closeReview } = useQuerySheet('review', ['card'])
+/** Номер совета, с которого стартует отчёт (`&card=<n>` — ✦ у предмета, Блок 3). */
+const reviewCard = computed(() => {
+  const n = Number(route.query.card)
+  return Number.isInteger(n) && n >= 1 ? n : null
+})
+// Отчёт открыт и в нём разбор (открыли, ответ пришёл при открытом, «Обновить») — увиден. Закрыли, пока «Думаю…», —
+// не видели: позовёт точка (правило 12, `/ux`).
+watch(
+  [() => reviewOpen.value && reviewShown.value, () => review.value?.id],
+  ([shown]) => {
+    if (shown && review.value) ai.markReviewSeen(review.value.id)
+  },
+  { immediate: true },
+)
+// Ушли с адреса отчёта («Открыть» — экран предмета, в том числе `/month?cat=`) до того, как дошёл его собственный
+// `?review=1`, — закрыт: параметра «до» не было, и `useQuerySheet` сам этого не заметит.
+watch(
+  () => route.fullPath,
+  () => {
+    if (reviewOpen.value && route.query.review !== '1') reviewOpen.value = false
+  },
+)
+/** Отчёт — по адресу: «Назад» его закрывает, ✦ у предмета (Блок 3) ведёт сюда же. */
+function showReview() {
+  reviewOpen.value = true
+  if (route.query.review !== '1') void router.push({ query: { ...route.query, review: '1' } })
 }
 async function openReview() {
   if (review.value) {
     if (ai.reviewState !== 'thinking') ai.reviewState = 'idle'
-    reviewOpen.value = true
-    markReviewSeen()
+    showReview()
     return
   }
   if (!ai.available) return
@@ -279,16 +304,17 @@ async function openReview() {
     // Личный документ не подтянулся (нет сети) — сказать, а не молчать; «Не надо» и свайп — просто ничего.
     if (ai.consentFailed) {
       ai.reviewState = 'failed'
-      reviewOpen.value = true
+      showReview()
     }
     return
   }
-  reviewOpen.value = true
-  // Лист закрыли, пока «Думаю…», — разбор не видели: позовёт точка на ✦ (правило 12, `/ux`).
-  if ((await ai.runReview(props.monthKey, 'month')) && reviewOpen.value) markReviewSeen()
+  // «Думаю…» — до открытия: отчёт без разбора сразу показывает, что ответ в пути.
+  const run = ai.runReview(props.monthKey, 'month')
+  showReview()
+  await run
 }
 async function refreshReview() {
-  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey, 'refresh')) && reviewOpen.value) markReviewSeen()
+  if (await ai.ensureConsent()) await ai.runReview(props.monthKey, 'refresh')
 }
 
 /* ---------- кто платит (Р-80) ---------- */
@@ -789,7 +815,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
-    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" :example="auth.isDemo" @close="reviewOpen = false" @refresh="refreshReview" />
+    <AiReport :open="reviewOpen && reviewShown" :month-key="monthKey" :review="review" :example="auth.isDemo" :card="reviewCard" @close="closeReview" @refresh="refreshReview" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">

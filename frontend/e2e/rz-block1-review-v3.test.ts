@@ -120,7 +120,7 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     expect(html.match(/data-review-advice(?=[\s=>])/g)).toHaveLength(2)
     expect(html).toMatch(doBtn)
     expect(html).toContain('data-review-link')
-    expect(visible(html)).toContain('Просмотрел')
+    expect(visible(html)).toContain('операций просмотрено')
   })
 
   it('(в)(г) «Сделать» → сдвиг месяца у обоих, «✓ Сделано»; «Открыть» ведёт на историю с разделом продавца', async () => {

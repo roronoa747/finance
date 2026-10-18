@@ -38,6 +38,7 @@ import {
   type StepCandidate,
 } from '@/lib/finance'
 import { maskNames } from '@/lib/aiSummary'
+import { shortMerchant } from '@/lib/statements/model'
 import { addMonths, monthBy } from '@/lib/dates'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -71,6 +72,11 @@ function clip(s: string, max: number): string {
 }
 /** Название в «ёлочках»: свои «» внутри названия сломали бы границы — убираем. */
 const nm = (s: string) => `«${clip(s.replace(/[«»]/g, '').trim(), NAME_MAX)}»`
+/**
+ * Продавец в словах разбора — коротко, без города и страны (Х-2, `shortMerchant`): модель пишет имя «как в about», крупная
+ * цифра совета — это же `about`, — экран показывает то же короткое имя. В документе (`reviewFinds`) — как печатает банк.
+ */
+const seller = (f: ReviewFinding) => (f.kind === 'grew' || f.kind === 'pricier' ? f.name : shortMerchant(f.name))
 
 /** Вход плана месяца — `financeStore.planInput(key)`: тот же, что у экранов и «Сделать» листа разбора. */
 export type PlanInput = { state: MonthPlanState; ctx: MonthPlanCtx }
@@ -106,7 +112,7 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
   const out: Draft[] = []
   const put = (about: string, value: string, raw: ReviewFact['raw']) => out.push({ about, value, raw })
   if (f.kind === 'leak') {
-    const who = `частые траты у ${nm(f.name)}`
+    const who = `частые траты у ${nm(seller(f))}`
     put(`${who} — в месяц`, money(f.monthly), f.monthly)
     put(`${who} — раз в месяц`, times(f.count), f.count)
     put(`${who} — за год`, money(f.yearly), f.yearly)
@@ -115,27 +121,27 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
   } else if (f.kind === 'grew') {
     const cat = nm(f.name)
     put(`траты на ${cat} выше обычного на`, money(f.growth), f.growth)
-    if (f.why.kind === 'purchases') for (const i of f.why.items) put(`что раздуло ${cat}: ${nm(i.name)}`, money(i.amount), i.amount)
+    if (f.why.kind === 'purchases') for (const i of f.why.items) put(`что раздуло ${cat}: ${nm(shortMerchant(i.name))}`, money(i.amount), i.amount)
     else {
       put(`покупок в ${cat} ${thisMonth ? 'в этом' : 'в прошлом'} месяце`, times(f.why.count), f.why.count)
       put(`обычно покупок в ${cat} в месяц`, times(f.why.usualCount), f.why.usualCount)
     }
   } else if (f.kind === 'recurring') {
-    const who = `новое регулярное списание ${nm(f.name)}, которого нет в плане`
+    const who = `новое регулярное списание ${nm(seller(f))}, которого нет в плане`
     put(`${who} — в месяц`, money(f.amount), f.amount)
     put(`${who} — за год`, money(f.yearly), f.yearly)
   } else if (f.kind === 'pricier') {
     put(`подписка ${nm(f.name)} стала дороже: было`, money(f.was), f.was)
     put(`подписка ${nm(f.name)} стала дороже: стало`, money(f.amount), f.amount)
   } else {
-    put(`списание ${nm(f.name)} прошло дважды одной суммой`, money(f.amount), f.amount)
+    put(`списание ${nm(seller(f))} прошло дважды одной суммой`, money(f.amount), f.amount)
   }
   return out
 }
 
 /** Факты сценария «если убрать — мечта раньше» (Р-5 (4)). */
 function scenarioFacts(s: ReviewScenario): Draft[] {
-  const who = `если убрать ${nm(s.finding.name)}`
+  const who = `если убрать ${nm(seller(s.finding))}`
   if ('days' in s) return [{ about: `${who} — мечта ${nm(s.goalName)} раньше на`, value: shiftSpan(s.days), raw: s.days }]
   const out: Draft[] = []
   if (s.saved > 0) out.push({ about: `${who} — процентов банку меньше на`, value: money(s.saved), raw: s.saved })
@@ -148,8 +154,8 @@ function openOf(f: ReviewFinding): { target: OpenTarget; about: string } {
   if (f.kind === 'grew') return { target: { kind: 'cat', id: f.categoryId, name: f.name }, about: `открыть траты ${nm(f.name)}` }
   if (f.kind === 'pricier') return { target: { kind: 'obligation', id: f.obligationId, name: f.name }, about: `открыть подписку ${nm(f.name)}` }
   return {
-    target: { kind: 'seller', id: f.key, name: f.name, ...(f.categoryId ? { categoryId: f.categoryId } : {}) },
-    about: `открыть покупки у ${nm(f.name)}`,
+    target: { kind: 'seller', id: f.key, name: seller(f), ...(f.categoryId ? { categoryId: f.categoryId } : {}) },
+    about: `открыть покупки у ${nm(seller(f))}`,
   }
 }
 
