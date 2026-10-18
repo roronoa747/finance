@@ -335,7 +335,9 @@ describe('requestReview v3 — сохранение', () => {
   const leak = (by: 'a' | 'b', period: string): ReviewFind => ({
     id: `${by}:${period}:leak:apteka`, by, period, kind: 'leak', name: 'APTEKA', categoryId: 'sc_health', count: 8, amount: 12_000, updatedAt: T0,
   })
-  const doc = () => planFamilyDoc({ reviewFinds: [leak('a', '2026-07'), leak('b', '2026-08')] })
+  // Двойное списание августа (месяц находок — прошлый: выписок сентября нет) — находка без совета: в K, но не в X.
+  const double: ReviewFind = { id: 'a:2026-08:double:sport club', by: 'a', period: '2026-08', kind: 'double', name: 'SPORT CLUB', categoryId: 'sc_fun', count: 2, amount: 5_000, updatedAt: T0 }
+  const doc = () => planFamilyDoc({ reviewFinds: [leak('a', '2026-07'), leak('b', '2026-08'), double] })
 
   it('figure → факт {about, value}; «Сделать» → кандидат, «Открыть» → экран; совет на чужое действие отброшен; work — по советам', async () => {
     const { ai } = family({ doc: doc() })
@@ -357,8 +359,9 @@ describe('requestReview v3 — сохранение', () => {
     expect(r!.advices!.map((a) => a.title)).toEqual(['Досрочно', 'Аптека'])
     expect(r!.advices![0].action).toMatchObject({ kind: 'do', candidate: { kind: 'prepay' } })
     expect(r!.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA» — за год', value: money(144_000) }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka' } } })
-    // Утечка: 12 000 в месяц × 12 — только она в советах; «Сделать» находки не несёт.
-    expect(r!.work).toMatchObject({ found: 1, yearly: 144_000 })
+    // Утечка: 12 000 в месяц × 12 — только она в советах; «Сделать» находки не несёт; двойное (60 000 в год) нашли, но
+    // совета о нём нет — в X не входит (Р-19, критик Блока 1: без `used` X был бы 204 000).
+    expect(r!.work).toMatchObject({ found: 2, yearly: 144_000 })
     expect(r!.where).toBe('Где.')
   })
 
