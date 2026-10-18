@@ -403,7 +403,7 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 		}
 		// Words as the family sees them: «Аптека {f7}» is «Аптека 144 000 ₸» — four, not two (Р-12).
 		if len(strings.Fields(q.fill(x.Title))) > maxAdviceWords {
-			add("заголовок до четырёх слов")
+			add("заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке")
 		}
 		if utf8.RuneCountInString(x.Text) > maxAdviceRunes {
 			add("совет — одно короткое предложение")
