@@ -123,8 +123,9 @@ export const readAiReviewSeen = (): string | null => {
 export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
 
 /**
- * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`) — когда пробовали в последний
- * раз (неудача — повтор не чаще раза в сутки) и спросили ли согласие v2 (закрыл лист — до следующего повода).
+ * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`; замена старого разбора —
+ * `v3:month:<месяц>`, RZ-HF1) — когда пробовали в последний раз (неудача — повтор не чаще раза в сутки) и спросили ли
+ * согласие новой версии (закрыл лист — до следующего повода).
  */
 export const AI_AUTO_KEY = 'ff_ai_auto'
 export type AiAutoTry = { at?: string; asked?: boolean }

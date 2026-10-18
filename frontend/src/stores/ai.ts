@@ -212,14 +212,25 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
-   * Повод разбора сам в месяце `key` (Р-20) по общему документу: нет разбора `month:<key>` — `month`; иначе своя
+   * Разбор месяца `key` есть, но только старой версии (v1/v2, до «Разбора» v3): повод `month` снова открыт (хотфикс
+   * RZ-HF1, владелец 2026-10-18 «старый → новый сам»). Любой v3 месяца в документе (и надгробие) закрывает его и у
+   * партнёра — один раз, не по `at`: часы телефона отстали — v3 вышел бы «раньше» старого и платился снова (критик).
+   */
+  const staleReview = (key: string): boolean => {
+    const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
+    return reviews.some((r) => !r.deletedAt) && !reviews.some((r) => (r.v ?? 1) >= 3)
+  }
+
+  /**
+   * Повод разбора сам в месяце `key` (Р-20) по общему документу: старый разбор (`staleReview`) или нет разбора
+   * `month:<key>` — `month`; иначе своя
    * первая отметка зарплаты месяца (аванс и недели — та же отметка месяца, не новые поводы) без разбора
    * `salary:<я>:<key>` и без разбора месяца позже неё (тот уже видел зарплату) — `salary`; иначе ничего. Надгробия
    * обрезки «живых ≤ 12» (`saveAiReview`) тоже считаются: повод их уже был — иначе частое «Обновить» вернёт повод.
    */
   function autoReason(key: string): 'month' | 'salary' | null {
     const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
-    if (!reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
+    if (staleReview(key) || !reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
     const me = auth.slot
     const mark = salaryMarks(key)[0]
     // Когда отметку записали (`updatedAt`), а не день прихода (`at` аванса — его день): разбор позже записи её видел.
@@ -241,7 +252,8 @@ export const useAiStore = defineStore('ai', () => {
     const key = monthKey()
     const reason = autoReason(key)
     if (!reason) return null
-    const rk = reasonKeyOf(reason, key)!
+    // Замена старого разбора — своя попытка (`v3:month:<key>`): попытка v2 того же утра не держит её сутки (RZ-HF1).
+    const rk = (reason === 'month' && staleReview(key) ? 'v3:' : '') + reasonKeyOf(reason, key)!
     // Попытки — только этого месяца: прошлые поводы не копятся.
     const mine = () => Object.fromEntries(Object.entries(readAiAuto()).filter(([k]) => k.endsWith(`:${key}`)))
     const tried = mine()[rk]
