@@ -218,8 +218,10 @@ func ParsePush(app, title, body string) (PushOp, Result) {
 // text is split at " / ", "|", ";" and sentence ends.
 func pushLines(title, body string) []string {
 	text := title + "\n" + body
-	text = balance.ReplaceAllString(text, "\n")
+	// Masks first: their digits inside the balance label ("Доступно по карте *4321: 9 999 ₸") would
+	// stop the label before the money (приёмка Б2 п. 2).
 	text = cardMask.ReplaceAllString(text, " ")
+	text = balance.ReplaceAllString(text, "\n")
 	text = sentence.ReplaceAllString(text, "\n$1")
 	text = strings.ReplaceAll(text, " / ", "\n") // "APPLE.COM/BILL" stays whole
 	parts := strings.FieldsFunc(text, func(r rune) bool { return strings.ContainsRune("\n\r|;", r) })

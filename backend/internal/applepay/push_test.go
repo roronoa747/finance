@@ -236,3 +236,28 @@ func TestParsePushDeclineAndCodeInAnyLine(t *testing.T) {
 		}
 	}
 }
+
+// Приёмка Б2 п. 2 (Р-8, Р-11): a card mask inside the balance label does not save the balance —
+// it is never the amount nor a part of the merchant.
+func TestParsePushBalanceWithCardMask(t *testing.T) {
+	for _, c := range []struct {
+		app, title, body string
+		want             Result
+		minor            int64
+		merchant         string
+	}{
+		{"Kaspi.kz", "Kaspi Gold", "Доступно по карте *4321: 9 999 ₸\nПокупка: 110 ₸", ResultOp, 11000, "Покупка"},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка в MAGNUM\nДоступно по карте **4321: 2 060 ₸", ResultIgnore, 0, ""},
+		{"Kaspi.kz", "Kaspi Gold", "Покупка: 160 ₸\nMAGNUM\nДоступно по карте *1234: 9 160 ₸", ResultOp, 16000, "MAGNUM"},
+		{"Freedom SuperApp", "Покупка", "-170 ₸\nSULPAK\nОстаток по счёту **5678 8 170 ₸", ResultOp, 17000, "SULPAK"},
+		{"Homebank", "Halyk Bank", "Покупка 180 KZT SMALL. Доступно по карте •• 1234: 9 180 KZT", ResultOp, 18000, "SMALL"},
+	} {
+		op, res := ParsePush(c.app, c.title, c.body)
+		if res != c.want || res == ResultOp && (op.Minor != c.minor || op.Merchant != c.merchant) {
+			t.Errorf("%q / %q: %v %d %q, want %v %d %q", c.title, c.body, res, op.Minor, op.Merchant, c.want, c.minor, c.merchant)
+		}
+		if l := strings.ToLower(op.Merchant); strings.Contains(l, "доступ") || strings.Contains(l, "остат") {
+			t.Errorf("%q: the balance label in the merchant %q", c.body, op.Merchant)
+		}
+	}
+}
