@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
+import { BANK_NAMES } from '@/components/useSalaryTap'
 import { money, moneyIn, moneySigned, signTone } from '@/lib/money'
 import { atLabel, dayLabel, dayWeekdayLabel } from '@/lib/dates'
 import { fxYearDelta, type SalaryLine, type SalaryLineEvent } from '@/lib/finance'
@@ -44,7 +45,6 @@ const mine = computed(() => canEdit.value && !!props.line && auth.slot === props
  * и недели точка — у «Пришла» своего прихода в строках выше.
  */
 const ops = useOperationsStore()
-const BANK_NAMES: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom', halyk: 'Halyk' }
 const arrivalText = computed(() => {
   const l = props.line
   if (!l || !mine.value || !l.open || l.rhythm !== 'month' || l.foreign) return ''

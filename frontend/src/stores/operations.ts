@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount, openGoals, phoneOpTenge, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, tripOps, tripStatus, tripTotal } from '@/lib/finance'
 import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
@@ -210,13 +210,20 @@ export const useOperationsStore = defineStore('operations', () => {
    * Остальные строки того же продавца этого и прошлого месяца по новому правилу стали «rule» — из
    * вопросов они ушли, поэтому отмечаются сразу (те, что прошли проверку суммы правила); сколько —
    * прибавляется к «Отмечено по выписке». Правило пишется до первого ожидания в `recategorize`, так
-   * что отметка не ждёт сети. `accountId` — счёт зачисления (только «Пришла» по пушу, `useSalaryTap`);
-   * вопрос «Недели» — «не зачислять», как было.
+   * что отметка не ждёт сети. `accountId` — счёт зачисления («Пришла» по пушу, `useSalaryTap`); не задан —
+   * зарплата из пуша (вопрос «Недели» «Да, зарплата») зачисляется на счёт прошлой зарплаты, как «Пришла»
+   * (`/ux` Б2, вопрос 3, владелец 2026-10-19: одна отметка — один результат); строка выписки — «не зачислять».
    */
-  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient, accountId: string | null = null) {
+  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient, accountId?: string | null) {
     const op = ops.value[c.opId]
     if (!op) return
-    markByOperation(c, op, accountId)
+    const account =
+      accountId !== undefined
+        ? accountId
+        : c.kind === 'salary' && op.source === 'push'
+          ? (lastAccountFor(finance.payments, c.targetId, finance.accounts) ?? null)
+          : null
+    markByOperation(c, op, account)
     const match = ruleMatchOf(op)
     const saving = recategorize(match, { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
     const same = recentOperations(all.value).filter((o) => {

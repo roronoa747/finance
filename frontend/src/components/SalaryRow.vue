@@ -49,7 +49,7 @@ const emit = defineEmits<{
 
 const finance = useFinanceStore()
 
-const { target, record, own, fxSalary, due, mine, canMark, arrival, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation } = useSalaryTap(
+const { target, record, own, fxSalary, due, mine, canMark, arrival, title, sheet, markAmount, markAccount, markNote, firstTime, tap, openMore, onMarked, toAllocation } = useSalaryTap(
   () => props.personId,
   () => props.period,
 )
@@ -152,6 +152,7 @@ const toAccount = computed(() => {
     :amount="markAmount"
     :account="markAccount"
     :first-time="firstTime"
+    :amount-note="markNote"
     @close="sheet = null"
     @marked="onMarked"
     @allocate="toAllocation"

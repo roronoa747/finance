@@ -139,6 +139,22 @@ describe('e2e / приёмка Apple Pay Блок 2 — «Пришла» по п
     expect(useOperationsStore().all.some((o) => o.id === SALARY_PUSH.id)).toBe(false)
   })
 
+  it('«Да, зарплата» в вопросе «Недели» по пушу — на счёт прошлой зарплаты, как «Пришла» (`/ux` Б2, вопрос 3, владелец 2026-10-19)', async () => {
+    server = fakeServer(planFamilyDoc({ payments: [SEPT_SALARY] }))
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', SALARY_PUSH)
+    await pull(A)
+    on(A)
+    const ops = useOperationsStore()
+    const question = ops.pendingMatches.find((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')!
+    expect(question).toBeTruthy()
+    const before = card(A)
+    // «Неделя» зовёт `acceptMatch(c)` без счёта (`Week.vue`).
+    await ops.acceptMatch(question, A.client)
+    expect(salaryOct(A).map((p) => [p.amount, p.accountId, p.opId])).toEqual([[690_000, 'card', SALARY_PUSH.id]])
+    expect(card(A) - before).toBe(690_000)
+  })
+
   it('первая зарплата из пуша: «Пришла» открывает лист с суммой прихода; отметка на выбранный счёт, точка и вопрос уходят', async () => {
     server = fakeServer(planFamilyDoc())
     const A = await phone(server, st, 'a')
@@ -149,6 +165,9 @@ describe('e2e / приёмка Apple Pay Блок 2 — «Пришла» по п
     const sheet = await screen(A.pinia, Month, '/month', undefined, tap())
     expect(sheet).toContain('Отметить зарплату')
     expect(sheet.replace(/&nbsp;|[  ]/g, ' ')).toContain('690 000')
+    // Под суммой — откуда она (`/ux` Б2, вопрос 4, владелец 2026-10-19), а не оклад месяца и премия.
+    expect(sheet.replace(/&nbsp;|\s/g, ' ')).toContain('Пришло в Freedom · 14 октября')
+    expect(sheet).not.toContain('Оклад месяца')
     expect(salaryOct(A)).toEqual([])
 
     const seen: { amount?: unknown } = {}
