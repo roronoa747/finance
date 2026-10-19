@@ -267,7 +267,8 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(weekB).toContain('data-upload="lead"')
     for (const n of [22_500, 12_000, 7_000, 40_000]) expect(text(weekB)).not.toContain(sp(plain(n)))
     // Его траты она видит в «Месяце» — в разделе семьи (AU-02: строки — разделы, не участники): продукты — факт 42 000.
-    const spendB = text(between(await month(B, { opened: 'spend' }), 'data-spend-row="sc_food"', '</button>'))
+    // До суммы строки (`</b>`): кнопка строки — только название (RZ-10, ✦ рядом с ней), сумма — после неё.
+    const spendB = text(between(await month(B, { opened: 'spend' }), 'data-spend-row="sc_food"', '</b>'))
     expect(spendB).toContain(sp(plain(42_000)))
   })
 

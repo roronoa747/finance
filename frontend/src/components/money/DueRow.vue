@@ -2,6 +2,7 @@
 import { plain } from '@/lib/money'
 import type { PlanDue } from '@/lib/finance'
 import Avatar from '@/components/kit/Avatar.vue'
+import AdviceMark from '@/components/ai/AdviceMark.vue'
 
 /**
  * Строка платежа «Месяца» (Р-94; макет week-month.html «Платежи»): день, название, кружок плательщика, сумма — ✓ у
@@ -18,6 +19,8 @@ defineProps<{
   payerName: string
   note?: string
   canEdit: boolean
+  /** Номер совета ИИ про этот платёж (`ai.markFor`, бэклог «Разбор», RZ-10) — ✦ после названия; нет — ничего. */
+  mark?: number | null
 }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
 </script>
@@ -33,16 +36,22 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
     <span class="flex w-[38px] shrink-0 flex-col items-center leading-[1.05]" :class="due.paid ? 'text-ink-3' : 'text-ink-2'">
       <b class="font-num text-[18px] num">{{ due.day }}</b><span class="text-[11px] text-ink-2">{{ mon }}</span>
     </span>
-    <component
-      :is="canEdit ? 'button' : 'span'"
-      :type="canEdit ? 'button' : undefined"
-      class="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
-      :class="canEdit && 'row-open'"
-      :data-row-open="canEdit || undefined"
-    >
-      <span class="truncate text-[15.5px] font-semibold text-ink">{{ due.name }}</span>
+    <!-- Кнопка строки — название (растянута на строку `row-open`); ✦ совета ИИ — рядом, своей кнопкой поверх. -->
+    <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span class="flex min-w-0 items-center">
+        <component
+          :is="canEdit ? 'button' : 'span'"
+          :type="canEdit ? 'button' : undefined"
+          class="min-w-0 truncate text-left text-[15.5px] font-semibold text-ink"
+          :class="canEdit && 'row-open'"
+          :data-row-open="canEdit || undefined"
+        >
+          {{ due.name }}
+        </component>
+        <AdviceMark :n="mark ?? null" />
+      </span>
       <span v-if="note" class="text-[12.5px] text-ink-2">{{ note }}</span>
-    </component>
+    </span>
     <button
       v-if="canEdit && due.payer"
       type="button"

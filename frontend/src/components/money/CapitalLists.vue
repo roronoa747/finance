@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhSparkle, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
+import { useAiStore } from '@/stores/ai'
 import { money, moneyIn, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { calendarEvents, icsText } from '@/lib/calendar'
@@ -56,6 +57,7 @@ const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const fx = useFxStore()
+const ai = useAiStore()
 
 const key = computed(() => monthKey())
 const accounts = computed(() => liveAccounts(financeStore.accounts))
@@ -96,7 +98,9 @@ const subs = computed(() => subscriptionGroup(subItems.value, financeStore.oblig
 // Раскрытые — по «чья» (PN-27): «Общие · N», «<имя> · N»; одна часть — без подзаголовков.
 const subsByWho = computed(() => (subs.value ? subscriptionsByWho(subItems.value, financeStore.obligations, financeStore.people) : []))
 const subsOpen = ref(false)
-const inSubs = (o: Obligation) => !!subs.value && isSubscription(o)
+/** Совет ИИ про подписку группы (RZ-10) — ✦ у свёрнутой «Подписки · N». */
+const subsMarked = computed(() => subItems.value.some((x) => ai.markFor('obligation', x.obligation.id) !== null))
+const inSubs =(o: Obligation) => !!subs.value && isSubscription(o)
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
 // Один список по дню: открытые кредиты и обязательства (годовое — тоже: «раз в год · в <месяце>»); подписки —
@@ -277,12 +281,17 @@ watch(queryModalOpen, (open) => {
       :key="l.id"
       :item="l.item"
       :period="key"
+      :mark="ai.markFor(l.item.kind, l.id)"
       @open="l.item.kind === 'credit' ? (selectedCreditId = l.id) : (selectedObligationId = l.id)"
     />
     <div v-if="subs" class="border-b border-line last:border-b-0" data-subs>
       <button type="button" class="press flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" :aria-expanded="subsOpen" @click="subsOpen = !subsOpen">
         <span class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-surface-3 text-ink-2"><PhArrowsClockwise :size="17" /></span>
-        <span class="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">Подписки · {{ subs.count }}</span>
+        <!-- Совет ИИ про подписку внутри — ✦ у свёрнутой группы зовёт издалека (правило 12), кнопка — у самой подписки. -->
+        <span class="flex min-w-0 flex-1 items-center gap-1.5 text-[14.5px] font-medium text-ink">
+          <span class="truncate">Подписки · {{ subs.count }}</span>
+          <template v-if="subsMarked"><PhSparkle :size="12" weight="fill" class="shrink-0 text-brand" aria-hidden="true" data-subs-mark /><span class="sr-only">, есть совет ИИ</span></template>
+        </span>
         <span class="shrink-0 text-[14.5px] font-semibold num text-ink">{{ money(subs.total) }}</span>
         <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
       </button>
@@ -299,7 +308,15 @@ watch(queryModalOpen, (open) => {
             >
               {{ g.name }} ›
             </button>
-            <PaymentLine v-for="x in g.rows" :key="x.obligation.id" dense :item="{ kind: 'obligation', obligation: x.obligation }" :period="key" @open="selectedObligationId = x.obligation.id" />
+            <PaymentLine
+              v-for="x in g.rows"
+              :key="x.obligation.id"
+              dense
+              :item="{ kind: 'obligation', obligation: x.obligation }"
+              :period="key"
+              :mark="ai.markFor('obligation', x.obligation.id)"
+              @open="selectedObligationId = x.obligation.id"
+            />
           </template>
         </template>
       </div>

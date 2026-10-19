@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFacts } from '@/lib/aiFacts'
+import { demoReview } from '@/lib/demo'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
 import { countedPayments, liveSpendCategories, periodMonth, reviewWork, type ReviewFinding } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage, type AiAutoTry } from '@/lib/storage'
@@ -10,7 +11,7 @@ import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import type { AiAdvice, AiConsent, AiReview, Payment, ReviewReason } from '@/types/finance'
+import type { AiAdvice, AiConsent, AiReview, OpenTarget, Payment, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -310,6 +311,45 @@ export const useAiStore = defineStore('ai', () => {
     return !!r && r.id !== seenReview.value
   })
 
+  /**
+   * ✦ у предметов (бэклог «Разбор», Р-9, Р-23, RZ-10): предмет совета разбора v3 **текущего месяца** → номер совета
+   * (1…3, карточка отчёта `/month?review=1&card=<n>`). «Открыть» — `kind:id` цели, у продавца — ещё его раздел
+   * (`cat:<categoryId>`); «Сделать» — раздел, откуда (`cat:`), и мечта / подушка, куда (`goal:`), досрочка — кредит
+   * карточки долга очереди (`credit:`, как берёт `stepCandidates`). Первый совет на предмет побеждает. Отчёт открывается
+   * только с ИИ семьи (или в демо — по заготовке), иначе ✦ вёл бы в пустоту — меток нет; у v1/v2 советов нет.
+   */
+  const adviceMarks = computed(() => {
+    const out = new Map<string, number>()
+    if (!auth.ai && !auth.isDemo) return out
+    const key = monthKey()
+    const review = auth.isDemo ? demoReview(finance.householdDoc, finance.planInput(key)) : finance.aiReviewOf(key)
+    if (review?.v !== 3) return out
+    const put = (k: string, n: number) => {
+      if (!out.has(k)) out.set(k, n)
+    }
+    const debtCredit = () => finance.monthPlanOf(key).queue.find((q) => q.kind === 'debt' && q.creditId)?.creditId
+    ;(review.advices ?? []).forEach((a, i) => {
+      const n = i + 1
+      if (a.action.kind === 'open') {
+        const t = a.action.target
+        put(`${t.kind}:${t.id}`, n)
+        if (t.kind === 'seller' && t.categoryId) put(`cat:${t.categoryId}`, n)
+        return
+      }
+      const { from, to } = a.action.candidate.shift
+      if (from !== 'rest') put(`cat:${from.categoryId}`, n)
+      if (to !== 'debt') put(`goal:${to.goalId}`, n)
+      else {
+        const id = debtCredit()
+        if (id) put(`credit:${id}`, n)
+      }
+    })
+    return out
+  })
+  /** Номер совета про предмет или null — проп `n` у `AdviceMark`. */
+  const markFor = (kind: OpenTarget['kind'], id: string | null | undefined): number | null =>
+    (id ? adviceMarks.value.get(`${kind}:${id}`) : undefined) ?? null
+
   /** Предложения продавцам: запрос идёт или чем кончился последний (шапка пачки «Без раздела»). */
   const sellersState = ref<ReviewState>('idle')
   /** Предложения на этом телефоне по продавцу пачки (`match`); читаются заново при каждом открытии — выход их стирает. */
@@ -375,6 +415,8 @@ export const useAiStore = defineStore('ai', () => {
     seenReview,
     markReviewSeen,
     reviewUnseen,
+    adviceMarks,
+    markFor,
     sellersState,
     sellerHint,
     suggestSellers,
