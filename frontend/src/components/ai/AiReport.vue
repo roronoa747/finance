@@ -110,14 +110,24 @@ const advices = computed<AdviceRow[]>(() =>
   }),
 )
 
-/** «Работа ИИ» (Р-8): числа кода на момент разбора; «≈ X» — только когда X > 0. */
+/**
+ * «Работа ИИ» (Р-8; вид — владелец 2026-10-19, RZ-14): числа кода на момент разбора. Есть деньги находок советов (X > 0) —
+ * крупно «≈ X ₸», подпись «в год уходит на найденное», строкой «K находок из N операций»; X = 0 — крупно N операций,
+ * «нашёл K».
+ */
 const work = computed(() => {
   const w = v3.value ? props.review?.work : undefined
   if (!w) return null
+  if (w.yearly > 0)
+    return {
+      big: `≈ ${money(w.yearly)}`,
+      word: 'в год уходит на найденное',
+      line: `${w.found} ${plural(w.found, 'находка', 'находки', 'находок')} из ${plain(w.ops)} ${plural(w.ops, 'операции', 'операций', 'операций')}`,
+    }
   return {
-    ops: plain(w.ops),
-    opsWord: plural(w.ops, 'операция просмотрена', 'операции просмотрены', 'операций просмотрено'),
-    line: [`нашёл ${w.found}`, ...(w.yearly > 0 ? [`≈ ${money(w.yearly)} в год`] : [])].join(' · '),
+    big: plain(w.ops),
+    word: plural(w.ops, 'операция просмотрена', 'операции просмотрены', 'операций просмотрено'),
+    line: `нашёл ${w.found}`,
   }
 })
 
@@ -435,12 +445,12 @@ onUnmounted(() => {
           :inert="ci !== active"
         >
           <div class="mx-auto flex min-h-full w-full max-w-[480px] flex-col px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-6">
-            <!-- Работа ИИ (Р-8): одна крупная цифра — операций; «нашёл · ≈ в год» строкой -->
+            <!-- Работа ИИ (Р-8, RZ-14): одна крупная цифра — «≈ X ₸» в год (без денег — операций); остальное строкой -->
             <template v-if="c.kind === 'work'">
               <h2 class="type-h2-lg text-ink">Работа ИИ</h2>
               <template v-if="work">
-                <p class="mt-8 type-big num text-ink" data-review-ops>{{ work.ops }}</p>
-                <p class="mt-1.5 text-[15px] text-ink-2">{{ work.opsWord }}</p>
+                <p class="mt-8 whitespace-nowrap type-big num text-ink" data-review-big>{{ work.big }}</p>
+                <p class="mt-1.5 text-[15px] text-ink-2" data-review-work-word>{{ work.word }}</p>
                 <p class="mt-5 text-[17px] font-semibold text-ink num" data-review-work>{{ work.line }}</p>
               </template>
               <p v-if="whenLine" class="mt-auto pt-8 text-[13px] text-ink-2" data-review-when>{{ whenLine }}</p>

@@ -536,8 +536,10 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(kinds()).toEqual(['work', 'where', 'advice', 'advice'])
     expect(document.querySelectorAll('[data-report-progress] > span')).toHaveLength(4)
     expect(activeKind()).toBe('work')
-    expect(txt(q('[data-review-ops]'))).toMatch(/^1\s240$/)
-    expect(txt(q('[data-review-work]'))).toMatch(/^нашёл 4 · ≈ 720\s000 ₸ в год$/)
+    // RZ-14 (владелец 2026-10-19): крупно — деньги находок в год, операции — строкой.
+    expect(txt(q('[data-review-big]'))).toMatch(/^≈ 720\s000 ₸$/)
+    expect(txt(q('[data-review-work-word]'))).toBe('в год уходит на найденное')
+    expect(txt(q('[data-review-work]'))).toMatch(/^4 находки из 1\s240 операций$/)
     // Повод и день — тихо: «12 сентября · начался месяц».
     expect(txt(q('[data-review-when]'))).toBe('12 сентября · начался месяц')
     expect(txt(q('[data-review-where]'))).toBe('Кафе выросло — мечта отодвинулась.')
@@ -745,10 +747,21 @@ describe('RZ-07: отчёт разбора v3', () => {
     await vi.waitFor(() => expect(fill()).not.toBe('0%'))
   })
 
-  it('без находок в советах — счётчик без «≈»', async () => {
+  it('без находок в советах — счётчик без «≈»: крупно операции, «нашёл K» (RZ-14 — как было)', async () => {
     await openV3({ extra: { work: { ops: 12, found: 0, yearly: 0 } } })
-    expect(txt(q('[data-review-ops]'))).toBe('12')
+    expect(txt(q('[data-review-big]'))).toBe('12')
+    expect(txt(q('[data-review-work-word]'))).toBe('операций просмотрено')
     expect(txt(q('[data-review-work]'))).toBe('нашёл 0')
+  })
+
+  it('RZ-14: склонения строки «K находок из N операций» — 1 находка из 21 операции, 5 находок из 1 операции', async () => {
+    await openV3({ extra: { work: { ops: 21, found: 1, yearly: 12_000 } } })
+    expect(txt(q('[data-review-work]'))).toBe('1 находка из 21 операции')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await openV3({ extra: { work: { ops: 1, found: 5, yearly: 12_000 } } })
+    expect(txt(q('[data-review-work]'))).toBe('5 находок из 1 операции')
+    expect(txt(q('[data-review-big]'))).toMatch(/^≈ 12\s000 ₸$/)
   })
 
   it('viewer: «Открыть» есть, «Сделать» нет (текст совета остаётся), «Обновить» нет', async () => {

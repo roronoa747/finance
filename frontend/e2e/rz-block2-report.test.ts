@@ -139,7 +139,8 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
     const shown = visible(html)
     expect(shown).toContain('Работа ИИ')
-    expect(shown).toMatch(/нашёл \d+ · ≈ [\d ]+ ₸ в год/)
+    // RZ-14: крупно «≈ X ₸», «в год уходит на найденное», строка «K находок из N операций».
+    expect(shown).toMatch(/≈ [\d ]+ ₸ в год уходит на найденное \d+ наход\S* из [\d ]+ операц/)
     expect(shown).toContain('Куда ушло в октябре')
     // Полосы — разделы октября; кафе выше обычного — отмечено.
     expect([...html.matchAll(/data-where-row="([^"]+)"/g)].map((m) => m[1])).toEqual(['sc_cafe', 'sc_food'])
