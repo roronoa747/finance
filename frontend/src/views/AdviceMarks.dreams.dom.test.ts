@@ -102,6 +102,18 @@ const press = async (el: HTMLElement | null | undefined) => {
 const cards = () => all('[data-advice-mark]').map((b) => b.dataset.adviceCard)
 const notNested = () => all('[data-advice-mark]').forEach((b) => expect(b.parentElement!.closest('button')).toBeNull())
 const debtCredit = () => useFinanceStore().monthPlanOf(KEY).queue.find((x) => x.kind === 'debt')?.creditId
+/** Описание кнопки строки для читалки — тексты элементов `aria-describedby`; все они в той же строке (`/ux` Блока 3). */
+const described = (btn: Element | null | undefined, row: Element | null | undefined) => {
+  const ids = (btn?.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
+  expect(ids.length, 'aria-describedby').toBeGreaterThan(0)
+  return ids
+    .map((id) => {
+      const el = document.getElementById(id)
+      expect(!!el && !!row?.contains(el), id).toBe(true)
+      return txt(el)
+    })
+    .join(' · ')
+}
 
 describe('RZ-11: ✦ на мечтах, экране цели, долгах и в «Цели и фонды»', () => {
   it('«Мечты»: ✦ у героя и у строки мечты из совета, у желания — нет; кнопка не вложена в кнопку строки', async () => {
@@ -172,5 +184,37 @@ describe('RZ-11: ✦ на мечтах, экране цели, долгах и �
     const debtRow = all('[data-queue]').find((el) => !['trip', 'car', 'cushion'].includes(el.dataset.queue!))!
     expect(debtRow.querySelector<HTMLElement>('[data-advice-mark]')!.dataset.adviceCard).toBe('3')
     notNested()
+  })
+
+  it('читалка: кнопка строки — название, процент, остаток, отложено и подпись — описанием (`/ux` Блока 3)', async () => {
+    await mount('/', { ready: '[data-hero-line]' })
+    const car = all('[data-row-open]').find((b) => txt(b) === 'Машина')!
+    expect(described(car, car.closest('.fx-in'))).toMatch(/\d\s?%$/)
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    await mount('/money/debts', { ready: '[data-debt-rows]' })
+    const debt = q(`[data-debt="${debtCredit()}"]`)!
+    const debtText = described(debt.querySelector('[data-row-open]'), debt)
+    expect(debtText).toMatch(/\d.*₸ · .+/)
+    expect(debtText).not.toContain(txt(debt.querySelector('[data-row-open]')))
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    await mount('/month', { ready: '[data-sections]' })
+    await press(q('[data-section="queue"]'))
+    const trip = q('[data-queue="trip"]')!
+    expect(described(trip.querySelector('[data-row-open]'), trip)).toContain(txt(trip.querySelector('[data-given]')))
+  })
+
+  it('герой «Мечт» с ✦ — слева пустое место шириной ✦: строка «название · %» по центру фото (`/ux` Блока 3)', async () => {
+    await mount('/', { ready: '[data-hero-line]' })
+    const line = q('[data-hero-line]')!.parentElement!
+    expect(line.firstElementChild!.hasAttribute('data-hero-mark-pad')).toBe(true)
+    expect(line.lastElementChild!.hasAttribute('data-advice-mark')).toBe(true)
+    app!.unmount()
+    document.body.innerHTML = ''
+    await mount('/', { ready: '[data-hero-line]', doc: familyDoc([]) })
+    expect(q('[data-hero-mark-pad]')).toBeNull()
   })
 })

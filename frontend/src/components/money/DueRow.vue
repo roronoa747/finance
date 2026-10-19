@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue'
 import { plain } from '@/lib/money'
 import type { PlanDue } from '@/lib/finance'
 import Avatar from '@/components/kit/Avatar.vue'
@@ -23,6 +24,8 @@ defineProps<{
   mark?: number | null
 }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
+/** Кнопка строки — только название; подпись и сумму читалка слышит описанием (`aria-describedby`, `/ux` «Разбор» 3). */
+const uid = useId()
 </script>
 
 <template>
@@ -45,12 +48,13 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
           class="min-w-0 truncate text-left text-[15.5px] font-semibold text-ink"
           :class="canEdit && 'row-open'"
           :data-row-open="canEdit || undefined"
+          :aria-describedby="canEdit ? (note ? `${uid}-n ${uid}-a` : `${uid}-a`) : undefined"
         >
           {{ due.name }}
         </component>
         <AdviceMark :n="mark ?? null" />
       </span>
-      <span v-if="note" class="text-[12.5px] text-ink-2">{{ note }}</span>
+      <span v-if="note" :id="`${uid}-n`" class="text-[12.5px] text-ink-2">{{ note }}</span>
     </span>
     <button
       v-if="canEdit && due.payer"
@@ -62,7 +66,7 @@ const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
       <Avatar :id="due.payer" :name="payerName" :size="24" />
     </button>
     <Avatar v-else-if="due.payer" :id="due.payer" :name="payerName" :size="24" />
-    <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="due.paid ? 'font-semibold text-ink-2' : 'text-ink'">
+    <span :id="`${uid}-a`" class="font-num text-[15px] font-bold num whitespace-nowrap" :class="due.paid ? 'font-semibold text-ink-2' : 'text-ink'">
       <span v-if="due.paid" class="font-extrabold text-ok">✓ </span>{{ plain(due.amount) }}
     </span>
   </div>

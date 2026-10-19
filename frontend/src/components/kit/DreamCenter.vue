@@ -57,6 +57,8 @@ const percentText = (n: number) => `${n}${NBSP}%`
         <span v-if="author" class="absolute right-3 top-2 text-[11px]" :class="src ? 'text-on-photo opacity-75' : 'text-ink-2'">Фото: {{ author }}</span>
       </span>
       <span class="flex max-w-[300px] items-center justify-center">
+        <!-- Пустое место шириной ✦ слева — строка «название · %» остаётся по центру фото (`/ux` «Разбор» 3). -->
+        <span v-if="mark" class="w-7 shrink-0" aria-hidden="true" data-hero-mark-pad />
         <button type="button" class="row-open text-balance text-[20px] font-semibold leading-snug text-ink" :aria-label="`${title}: ${pct} %`" data-hero-line>
           {{ title }}{{ NBSP }}·{{ NBSP }}<span class="font-num font-bold num"><CountUp :value="pct" :format="percentText" /></span>
         </button>

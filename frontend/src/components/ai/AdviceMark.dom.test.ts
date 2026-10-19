@@ -113,6 +113,18 @@ const press = async (el: HTMLElement | null | undefined) => {
 }
 const mark = (row: string) => q(`${row} [data-advice-mark]`)
 const activeTitle = () => txt(q('[data-report-card][data-active] [data-review-advice-title]'))
+/** Описание кнопки строки для читалки — тексты элементов `aria-describedby`; все они в той же строке (`/ux` Блока 3). */
+const described = (btn: HTMLElement | null, row: HTMLElement | null) => {
+  const ids = (btn?.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean)
+  expect(ids.length, 'aria-describedby').toBeGreaterThan(0)
+  return ids
+    .map((id) => {
+      const el = document.getElementById(id)
+      expect(!!el && !!row?.contains(el), id).toBe(true)
+      return txt(el)
+    })
+    .join(' · ')
+}
 
 describe('RZ-10: ✦ у предметов на «Месяце» и «Деньгах»', () => {
   it('«Месяц»: свёрнутые разделы зовут ✦; раскрыл — ✦ у раздела и у платежа, кнопка рядом с кнопкой строки, не внутри', async () => {
@@ -173,6 +185,26 @@ describe('RZ-10: ✦ у предметов на «Месяце» и «Деньг
     await press(q('[data-section="spend"]'))
     await press(q('[data-section="dues"]'))
     expect(q('[data-advice-mark]')).toBeNull()
+  })
+
+  it('читалка: кнопка строки — название, сумма и подпись — описанием (`/ux` Блока 3: строка стала «название + ✦»)', async () => {
+    await mount()
+    await press(q('[data-section="spend"]'))
+    const cafe = q('[data-spend-row="sc_cafe"]')
+    expect(described(cafe!.querySelector('[data-row-open]'), cafe)).toBe(txt(cafe!.querySelector('[data-spend-amount]')))
+    await press(q('[data-section="dues"]'))
+    const rent = q('[data-due-id="obligation:rent"]')
+    const dueText = described(rent!.querySelector('[data-row-open]'), rent)
+    expect(dueText).toMatch(/\d/)
+    expect(dueText).not.toContain('Аренда')
+    app!.unmount()
+    document.body.innerHTML = ''
+
+    await mount({ path: '/money' })
+    const line = all('[data-payments] > [data-payment]').find((el) => txt(el).includes('Аренда'))!
+    const payText = described(line.querySelector('.row-open'), line)
+    expect(payText).toMatch(/-го · .*\d.*₸$/)
+    expect(payText).not.toContain('Аренда')
   })
 
   it('«Деньги»: ✦ у платежа и у подписки в группе (группа зовёт ✦); нажатие — «Месяц» с отчётом на карточке совета', async () => {

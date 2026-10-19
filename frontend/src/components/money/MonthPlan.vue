@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -351,6 +351,8 @@ const sectionMarked = computed(() => ({
   spend: compare.value.rows.some((r) => ai.markFor('cat', r.categoryId) !== null),
   queue: plan.value.queue.some((q) => queueMark(q) !== null),
 }))
+/** Кнопка строки раздела и очереди — только название; сумму и подпись читалка слышит описанием (`/ux` «Разбор» 3). */
+const uid = useId()
 // «Освободится» — подсказкой у своего платежа: в общем списке или у группы подписок, где он лежит.
 const freedAt = computed(() => {
   const id = extras.value.freed?.obligationId
@@ -712,13 +714,13 @@ function addFund(kind: 'reserve' | 'cushion') {
             >
               <span class="flex w-full items-center justify-between gap-2 text-[15px]">
                 <span class="flex min-w-0 items-center">
-                  <button type="button" class="row-open min-w-0 truncate text-left text-ink" data-row-open>
+                  <button type="button" class="row-open min-w-0 truncate text-left text-ink" data-row-open :aria-describedby="`${uid}-s-${r.categoryId}`">
                     {{ r.name
                     }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-spend-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
                   </button>
                   <AdviceMark :n="ai.markFor('cat', r.categoryId)" />
                 </span>
-                <span class="whitespace-nowrap num" data-spend-amount>
+                <span :id="`${uid}-s-${r.categoryId}`" class="whitespace-nowrap num" data-spend-amount>
                   <b v-if="r.amount !== null" class="font-semibold text-ink">{{ plain(r.amount) }}</b>
                   <span v-else class="text-ink-2">план {{ plain(r.plan ?? 0) }}</span>
                 </span>
@@ -773,12 +775,18 @@ function addFund(kind: 'reserve' | 'cushion') {
                     <!-- Кнопка строки — название (растянута `row-open`); ✦ совета ИИ про цель или долг — рядом (RZ-11). -->
                     <span class="flex min-w-0 flex-1 flex-col gap-px">
                       <span class="flex min-w-0 items-center">
-                        <button type="button" class="row-open min-w-0 truncate text-left text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'" data-row-open>
+                        <button
+                          type="button"
+                          class="row-open min-w-0 truncate text-left text-[15.5px] font-semibold"
+                          :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'"
+                          data-row-open
+                          :aria-describedby="statusOf(queueById.get(id)!) ? `${uid}-q-${id} ${uid}-g-${id}` : `${uid}-g-${id}`"
+                        >
                           {{ queueById.get(id)!.name }}
                         </button>
                         <AdviceMark :n="queueMark(queueById.get(id)!)" />
                       </span>
-                      <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
+                      <span v-if="statusOf(queueById.get(id)!)" :id="`${uid}-q-${id}`" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
                         {{ statusOf(queueById.get(id)!)!.text }}
                       </span>
                     </span>
@@ -801,6 +809,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                     </button>
                     <Avatar v-else-if="queueById.get(id)!.payer" :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
                     <span
+                      :id="`${uid}-g-${id}`"
                       class="font-num text-[15px] num whitespace-nowrap"
                       :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
                       data-given

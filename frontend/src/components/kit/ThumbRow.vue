@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import { useWideFit } from '@/lib/photos/fit'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
 
@@ -32,6 +32,8 @@ const props = withDefaults(
 const emit = defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
 const wideFit = useWideFit(() => props.src)
 const split = computed(() => props.clickable && props.mark !== undefined)
+/** Разделённая строка: кнопка — только название; подпись и `end` (процент) читалка слышит описанием (`/ux` «Разбор» 3). */
+const uid = useId()
 </script>
 
 <template>
@@ -48,12 +50,19 @@ const split = computed(() => props.clickable && props.mark !== undefined)
     </span>
     <span class="flex min-w-0 flex-1 flex-col gap-[5px]">
       <span v-if="split" class="flex min-w-0 items-center">
-        <button type="button" class="row-open min-w-0 truncate text-left text-[16px] font-semibold text-ink" data-row-open>{{ title }}</button>
+        <button
+          type="button"
+          class="row-open min-w-0 truncate text-left text-[16px] font-semibold text-ink"
+          data-row-open
+          :aria-describedby="`${uid}-d ${uid}-e`"
+        >{{ title }}</button>
         <AdviceMark :n="mark ?? null" />
       </span>
       <span v-else class="truncate text-[16px] font-semibold text-ink">{{ title }}</span>
-      <slot />
+      <span v-if="split" :id="`${uid}-d`" class="contents"><slot /></span>
+      <slot v-else />
     </span>
-    <slot name="end" />
+    <span v-if="split" :id="`${uid}-e`" class="contents"><slot name="end" /></span>
+    <slot v-else name="end" />
   </component>
 </template>
