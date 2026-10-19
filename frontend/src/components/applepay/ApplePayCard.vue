@@ -72,10 +72,12 @@ async function disconnect() {
       <Button v-if="!ap.connected" variant="secondary" size="sm" data-connect @click="sheet.open.value = true">Подключить</Button>
     </div>
 
-    <div v-if="ap.connected && !confirming" class="mt-3 flex items-center justify-end gap-1 border-t border-line pt-2">
-      <Button v-if="ap.isIPhone && ap.pushLink" variant="ghost" size="sm" data-push @click="pushSheet.open.value = true">Пуши банков</Button>
-      <Button v-if="ap.isIPhone" variant="ghost" size="sm" data-more @click="sheet.open.value = true">Подключить снова</Button>
-      <Button variant="ghost" size="sm" data-disconnect @click="confirming = true">Отключить</Button>
+    <!-- Три тихие в одну строку на 390 px: поля кнопок уже (px-2), ряд — на ширину полей (-mx-2); уже 390 — переносится
+         (стенд возврата: «Подключить снова» длиннее «Ещё iPhone», «Пуши банков» уходила за край). -->
+    <div v-if="ap.connected && !confirming" class="-mx-2 mt-3 flex flex-wrap items-center justify-end gap-0.5 border-t border-line pt-2" data-applepay-actions>
+      <Button v-if="ap.isIPhone && ap.pushLink" variant="ghost" size="sm" class="px-2" data-push @click="pushSheet.open.value = true">Пуши банков</Button>
+      <Button v-if="ap.isIPhone" variant="ghost" size="sm" class="px-2" data-more @click="sheet.open.value = true">Подключить снова</Button>
+      <Button variant="ghost" size="sm" class="px-2" data-disconnect @click="confirming = true">Отключить</Button>
     </div>
     <div v-if="confirming" class="mt-3 flex flex-col gap-2 border-t border-line pt-3" data-confirm>
       <p class="text-[14px] text-ink">Отключить? Траты перестанут приходить сами</p>

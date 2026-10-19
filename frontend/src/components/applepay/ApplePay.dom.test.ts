@@ -211,6 +211,9 @@ describe('настройки — карточка «Apple Pay»', () => {
     // Значок уже говорит «подключено» (`/ux` Б1, вопрос 3): один телефон — без числа и без «Подключено».
     expect(txt(q('[data-applepay-line]'))).toBe('Последняя трата 16 октября')
     expect(txt(q('[data-more]'))).toBe('Подключить снова')
+    // Три тихие — в строку на 390 px (стенд: «Подключить снова» длиннее «Ещё iPhone»): поля px-2, ряд на ширину полей, уже — перенос.
+    expect(q('[data-applepay-actions]')!.className).toMatch(/(^| )-mx-2( |$).*flex-wrap/)
+    for (const b of q('[data-applepay-actions]')!.querySelectorAll('button')) expect(b.className.split(' ')).toContain('px-2')
     // Дата не рвётся переносом (ux).
     expect(q('[data-applepay-line]')!.textContent).toContain('16 октября')
     expect(q('[data-connect]')).toBeNull()
