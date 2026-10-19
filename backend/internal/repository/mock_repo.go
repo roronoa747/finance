@@ -782,6 +782,9 @@ func (m *MockStatementRepo) nearest(userID string, at time.Time, window time.Dur
 	return best
 }
 
+// isTransfer: a transfer names its person — a repeat of it is also the same merchant (Р-9).
+func isTransfer(kind string) bool { return kind == "transfer-out" || kind == "transfer-in" }
+
 func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, w PhoneWindows) (PhoneInsert, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -791,7 +794,8 @@ func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, ho
 	kind := phoneKind(op)
 	// As in SQL: (1) the same source and money within Repeat is a repeat.
 	if m.nearest(userID, op.OccurredAt, w.Repeat, func(prev models.Operation) bool {
-		return prev.Source == op.Source && sameMoney(prev, op) && (op.Source == "tap" || prev.Bank == op.Bank && prev.Kind == kind)
+		return prev.Source == op.Source && sameMoney(prev, op) && (op.Source == "tap" || prev.Bank == op.Bank && prev.Kind == kind &&
+			(!isTransfer(kind) || prev.Merchant == op.Merchant))
 	}) != nil {
 		return PhoneRepeat, nil
 	}

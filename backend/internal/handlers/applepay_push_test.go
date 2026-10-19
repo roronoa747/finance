@@ -116,6 +116,33 @@ func TestPushPurchaseTransferIncome(t *testing.T) {
 	}
 }
 
+// Р-9, владелец 2026-10-19: two transfers of one sum to different people within 2 minutes are two
+// spends; the same push fired twice is one.
+func TestPushTransfersToDifferentPeopleAreTwo(t *testing.T) {
+	app, clock, key := setupTap(t)
+	if s := pushStatus(t, app.push(t, key, kaspi("Перевод: 5 090 ₸\nАйгерим С.\nДоступно: 1 ₸"))); s != "saved" {
+		t.Fatalf("first: %s", s)
+	}
+	clock.t = clock.t.Add(40 * time.Second)
+	if s := pushStatus(t, app.push(t, key, kaspi("Перевод: 5 090 ₸\nЕрлан Б.\nДоступно: 1 ₸"))); s != "saved" {
+		t.Fatalf("another person: %s", s)
+	}
+	clock.t = clock.t.Add(40 * time.Second)
+	if s := pushStatus(t, app.push(t, key, kaspi("Перевод: 5 090 ₸\nЕрлан Б.\nДоступно: 1 ₸"))); s != "duplicate" {
+		t.Fatalf("the same push again: %s", s)
+	}
+	names := map[string]bool{}
+	for _, o := range app.aliceOps(t) {
+		if o.Kind != "transfer-out" || o.Amount != -5090 {
+			t.Fatalf("op: %+v", o)
+		}
+		names[o.Merchant] = true
+	}
+	if len(app.aliceOps(t)) != 2 || !names["Перевод Айгерим С."] || !names["Перевод Ерлан Б."] {
+		t.Fatalf("two people, one sum: %+v", app.aliceOps(t))
+	}
+}
+
 // Р-9, Р-21: a tap and a push of one purchase are one operation, in any order, within 10 minutes.
 func TestPushMergesWithTap(t *testing.T) {
 	app, clock, key := setupTap(t)

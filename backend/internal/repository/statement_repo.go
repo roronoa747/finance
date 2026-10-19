@@ -277,7 +277,8 @@ const (
 type PhoneOperationRepository interface {
 	// InsertPhoneOperation writes the operation unless (1) the person already has one of the same
 	// source and money within Repeat of its moment (tenge — amount; a foreign currency —
-	// fx_currency and fx_amount; a push — also the same bank and kind) — a repeat; (2) it is a
+	// fx_currency and fx_amount; a push — also the same bank and kind, a transfer — also the same
+	// merchant: two people sent the same sum are two spends, владелец 2026-10-19, Р-9) — a repeat; (2) it is a
 	// purchase and the other source (a tap for a push, a push for a tap) has one with the same
 	// money within Pair — merged into the nearest one: the bank of the push, the merchant of the
 	// tap unless it is empty (Р-21), the section cleared when the merchant changes. (3) A
@@ -374,8 +375,10 @@ func (r *sqlStatementRepository) InsertPhoneOperation(ctx context.Context, userI
 			WHERE user_id = $1 AND source = $2 AND source <> 'statement' AND occurred_at BETWEEN $3 AND $4
 			  AND `+moneyMatch+`
 			  -- A push names its bank and kind: the same money in another bank is another push.
-			  AND ($2 = 'tap' OR bank = $7 AND kind = $8)
-		)`, userID, op.Source, op.OccurredAt.Add(-w.Repeat), op.OccurredAt.Add(w.Repeat), op.FxCurrency, money, op.Bank, kind).Scan(&repeated)
+			  AND ($2 = 'tap' OR bank = $7 AND kind = $8
+			    -- A transfer names its person: the same sum to another person is another transfer (Р-9).
+			    AND (kind NOT IN ('transfer-out', 'transfer-in') OR merchant = $9))
+		)`, userID, op.Source, op.OccurredAt.Add(-w.Repeat), op.OccurredAt.Add(w.Repeat), op.FxCurrency, money, op.Bank, kind, op.Merchant).Scan(&repeated)
 	if err != nil {
 		return "", fmt.Errorf("failed to find phone operation: %w", err)
 	}

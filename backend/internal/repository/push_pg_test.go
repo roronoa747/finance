@@ -188,6 +188,31 @@ func TestPostgresPhoneOwnTransferPair(t *testing.T) {
 	if done != PhoneSaved || done2 != PhoneSaved || done3 != PhoneSaved || ops[friend].Internal || ops[in2].Internal || ops[out2].Internal || ops[from].Internal {
 		t.Fatalf("a named half paired: %s %s %s %+v", done, done2, done3, ops)
 	}
+
+	// Р-9, владелец 2026-10-19: the same sum to two people within 2 minutes is two transfers; the
+	// same person again — the repeat of one push; a purchase repeat still ignores the merchant.
+	at := now.Add(5 * time.Hour)
+	for _, c := range []struct {
+		kind, merchant string
+		amount         int64
+		at             time.Time
+		want           PhoneInsert
+	}{
+		{"transfer-out", "Перевод Айгерим С.", -5090, at, PhoneSaved},
+		{"transfer-out", "Перевод Ерлан Б.", -5090, at.Add(time.Minute), PhoneSaved},
+		{"transfer-out", "Перевод Ерлан Б.", -5090, at.Add(90 * time.Second), PhoneRepeat},
+		{"transfer-in", "Перевод Айгерим С.", 7000, at, PhoneSaved},
+		{"transfer-in", "Перевод Ерлан Б.", 7000, at.Add(time.Minute), PhoneSaved},
+		{"transfer-in", "Перевод Ерлан Б.", 7000, at.Add(time.Minute), PhoneRepeat},
+		{"transfer-out", "Перевод", -6000, at, PhoneSaved},
+		{"transfer-out", "Перевод", -6000, at.Add(time.Minute), PhoneRepeat},
+		{"purchase", "MAGNUM", -1234, at, PhoneSaved},
+		{"purchase", "Magnum Cash&Carry", -1234, at.Add(time.Minute), PhoneRepeat},
+	} {
+		if _, done := insertNamed("halyk", c.kind, c.merchant, c.amount, c.at); done != c.want {
+			t.Errorf("%+v: %s", c, done)
+		}
+	}
 }
 
 func TestPostgresPushStatsAndMetrics(t *testing.T) {
