@@ -202,7 +202,7 @@ describe('e2e / Apple Pay Блок 1 — касание', () => {
     expect(A.calls.walletDisconnect).toHaveBeenCalledOnce()
     const after = text(await screen(A.pinia, Settings, '/settings'))
     expect(after).toContain('Подключить')
-    expect(after).toContain('Траты появятся сами после оплаты')
+    expect(after).toContain('Траты появятся сами')
     // На «Неделе» iPhone снова зовёт тихой строкой.
     expect(text(await screen(A.pinia, Week, '/week'))).toContain('Траты сами с Apple Pay')
   })

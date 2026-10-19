@@ -92,7 +92,7 @@ describe('лист подключения — вторая команда «Пу
   it('после шагов касания — тихая «Ещё — пуши банков»: шесть шагов с тем же ключом и ссылкой второй команды', async () => {
     const { connect, writeText } = await open('/settings?applepay=1')
     for (let i = 0; i < 4; i++) await main() // ключ → команда → «Добавить» → тумблер → «Готово»
-    expect(txt(q('[data-step-text]'))).toBe('Готово — оплатите что-нибудь телефоном')
+    expect(txt(q('[data-step-text]'))).toBe('Оплатите что-нибудь телефоном')
     expect(title()).toBe('Apple Pay')
     expect(q('[data-art]')!.dataset.art).toBe('done')
     // Брендовая — одна («Готово»); пуши — тихой кнопкой под ней (правило 12).
@@ -122,8 +122,12 @@ describe('лист подключения — вторая команда «Пу
       'Нажмите «Добавить» и вставьте ключ',
       'Выберите Kaspi, Freedom и Halyk',
       'Включите автоматизацию тумблером',
-      'Готово — покупки и переводы из пушей придут сами',
+      'Готово — траты из пушей придут сами',
     ])
+    // Kaspi QR — в подсказке у строки финала (`/ux` Б2, вопрос 1): пуша на него нет, придёт с выпиской.
+    q<HTMLButtonElement>('[data-step-hint] button')!.click()
+    await flush()
+    expect(txt(q('[role="note"]'))).toBe('Kaspi не присылает пуш на Kaspi QR — такие траты придут с выпиской')
     // На финале пушей второй раз «Ещё — пуши» не предлагается; схема — уведомление банка, не волны касания (ux Б2).
     expect(q('[data-more-push]')).toBeNull()
     expect(q('[data-art]')!.dataset.art).toBe('pushDone')
@@ -132,7 +136,7 @@ describe('лист подключения — вторая команда «Пу
   it('без ссылки второй команды и на iOS 26 — ни «Ещё — пуши банков», ни кнопки в карточке', async () => {
     await open('/settings?applepay=1', { status: { ...STATUS, push_shortcut_url: '' } })
     for (let i = 0; i < 4; i++) await main()
-    expect(txt(q('[data-step-text]'))).toBe('Готово — оплатите что-нибудь телефоном')
+    expect(txt(q('[data-step-text]'))).toBe('Оплатите что-нибудь телефоном')
     expect(q('[data-more-push]')).toBeNull()
     app?.unmount()
 

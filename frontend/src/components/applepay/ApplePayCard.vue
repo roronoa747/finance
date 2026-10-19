@@ -12,7 +12,8 @@ import ApplePaySheet from './ApplePaySheet.vue'
 /**
  * Карточка «Apple Pay» в настройках (AP-06, Р-6, Р-13): не подключено — строка и «Подключить» (лист `?applepay=1`);
  * ключ скопирован, а оплаты с ним ещё не было — «Ждём первую оплату» и та же «Подключить» (владелец 2026-10-19:
- * «Подключено» и число телефонов — только по ключам, которыми оплатили); подключено — когда пришла последняя трата, тихие «Ещё iPhone» и «Отключить» (подтверждение в один шаг; отключает
+ * «Подключено» и число телефонов — только по ключам, которыми оплатили); подключено — когда пришла последняя трата,
+ * тихие «Подключить снова» и «Отключить» (подтверждение в один шаг; отключает
  * все телефоны человека). Только member с ссылкой на команду для пути этого телефона (`available`); не iPhone — только
  * подключённая (`shown`).
  */
@@ -32,10 +33,12 @@ onMounted(() => void ap.load())
 
 const line = computed(() => {
   const s = ap.status
-  if (!s?.connected) return s?.waiting ? 'Ждём первую оплату' : 'Траты появятся сами после оплаты'
-  const phones = s.phones > 1 ? ` · ${s.phones} iPhone` : ''
+  if (!s?.connected) return s?.waiting ? 'Ждём первую оплату' : 'Траты появятся сами'
+  if (!s.last_used_at) return 'Подключено'
   // «16 октября» не рвётся переносом (ux: на 390 px «16» оставалось в первой строке).
-  return s.last_used_at ? `Подключено${phones} · последняя трата ${atLabel(s.last_used_at).replace(' ', ' ')}` : `Подключено${phones}`
+  const last = atLabel(s.last_used_at).replace(' ', ' ')
+  // Значок уже говорит «подключено» (`/ux` Б1, вопрос 3); один телефон — без числа.
+  return s.phones > 1 ? `${s.phones} iPhone · последняя трата ${last}` : `Последняя трата ${last}`
 })
 /**
  * Подключают только с iPhone (Р-3): на Android и компьютере карточка — только когда уже подключено (чтобы «Отключить»
@@ -65,12 +68,13 @@ async function disconnect() {
         <h2 class="type-h3 text-ink">Apple Pay</h2>
         <p class="text-[13.5px] leading-snug text-ink-2" data-applepay-line>{{ line }}</p>
       </div>
-      <Button v-if="!ap.connected" size="sm" data-connect @click="sheet.open.value = true">Подключить</Button>
+      <!-- Тихая, как «Создать код» карточки «С кем» (`/ux` Б1, вопрос 2): звать к Apple Pay умеет строка «Недели». -->
+      <Button v-if="!ap.connected" variant="secondary" size="sm" data-connect @click="sheet.open.value = true">Подключить</Button>
     </div>
 
     <div v-if="ap.connected && !confirming" class="mt-3 flex items-center justify-end gap-1 border-t border-line pt-2">
       <Button v-if="ap.isIPhone && ap.pushLink" variant="ghost" size="sm" data-push @click="pushSheet.open.value = true">Пуши банков</Button>
-      <Button v-if="ap.isIPhone" variant="ghost" size="sm" data-more @click="sheet.open.value = true">Ещё iPhone</Button>
+      <Button v-if="ap.isIPhone" variant="ghost" size="sm" data-more @click="sheet.open.value = true">Подключить снова</Button>
       <Button variant="ghost" size="sm" data-disconnect @click="confirming = true">Отключить</Button>
     </div>
     <div v-if="confirming" class="mt-3 flex flex-col gap-2 border-t border-line pt-3" data-confirm>

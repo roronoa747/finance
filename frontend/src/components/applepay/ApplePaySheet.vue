@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useApplePayStore } from '@/stores/applepay'
 import Sheet from '@/components/kit/Sheet.vue'
 import Stepper from '@/components/kit/Stepper.vue'
+import Hint from '@/components/kit/Hint.vue'
 import Button from '@/components/ui/Button.vue'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -25,13 +26,14 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-type Step = { art: StepArt; text: string; action?: 'copy' | 'open' | 'done' }
+/** `hint` — пояснение длиннее строки — в подсказку (?) у строки шага (правило 12). */
+type Step = { art: StepArt; text: string; action?: 'copy' | 'open' | 'done'; hint?: string }
 /** Имя команды не рвётся переносом строки (ux). */
 const NAME = '«Траты сами»'
 const KEY: Step = { art: 'key', text: 'Скопируйте ключ этого iPhone', action: 'copy' }
 const OPEN: Step = { art: 'open', text: `Откройте команду ${NAME}`, action: 'open' }
 const ADD: Step = { art: 'add', text: 'Нажмите «Добавить» и вставьте ключ' }
-const DONE: Step = { art: 'done', text: 'Готово — оплатите что-нибудь телефоном', action: 'done' }
+const DONE: Step = { art: 'done', text: 'Оплатите что-нибудь телефоном', action: 'done' }
 const STEPS: Record<'ios27' | 'legacy', Step[]> = {
   ios27: [KEY, OPEN, ADD, { art: 'toggle', text: 'Включите автоматизацию тумблером' }, DONE],
   legacy: [
@@ -40,7 +42,7 @@ const STEPS: Record<'ios27' | 'legacy', Step[]> = {
     ADD,
     { art: 'automation', text: 'Автоматизация → + → «Транзакция»' },
     { art: 'cards', text: 'Выберите карты и «Запускать сразу»' },
-    { art: 'action', text: `Действие «Запустить команду» → ${NAME}` },
+    { art: 'action', text: `«Запустить команду» → ${NAME}` },
     DONE,
   ],
 }
@@ -57,7 +59,12 @@ const PUSH_STEPS: Step[] = [
   ADD,
   { art: 'apps', text: 'Выберите Kaspi, Freedom и Halyk' },
   { art: 'toggle', text: 'Включите автоматизацию тумблером' },
-  { art: 'pushDone', text: 'Готово — покупки и переводы из пушей придут сами', action: 'done' },
+  {
+    art: 'pushDone',
+    text: 'Готово — траты из пушей придут сами',
+    action: 'done',
+    hint: 'Kaspi не присылает пуш на Kaspi QR — такие траты придут с выпиской',
+  },
 ]
 
 const ap = useApplePayStore()
@@ -153,7 +160,9 @@ async function copy() {
       <Stepper :n="index + 1" :k="steps.length" />
       <ApplePayStepArt :art="step.art" />
       <!-- Строке шага — место на две строки, тихому ряду ниже — одна высота: лист не прыгает от шага к шагу (ux). -->
-      <p class="flex min-h-[2lh] items-center justify-center text-center text-[16px] font-semibold text-ink" data-step-text>{{ step.text }}</p>
+      <p class="flex min-h-[2lh] items-center justify-center text-center text-[16px] font-semibold text-ink">
+        <span><span data-step-text>{{ step.text }}</span><Hint v-if="step.hint" label="Про Kaspi QR" class="ml-1.5 align-middle" data-step-hint>{{ step.hint }}</Hint></span>
+      </p>
 
       <template v-if="step.action === 'copy'">
         <p v-if="failed" role="alert" class="text-center text-[13.5px] text-warn">Не получилось. Проверьте сеть.</p>
@@ -186,10 +195,10 @@ async function copy() {
       <Button v-else-if="step.action === 'done'" class="w-full" data-main @click="emit('close')">Готово</Button>
       <Button v-else class="w-full" data-main @click="next">Дальше</Button>
 
-      <!-- Тихий ряд под главной кнопкой: «Скопировал — дальше», выбор старого iOS (версия не распознана — PWA с экрана
+      <!-- Тихий ряд под главной кнопкой: «Дальше» (буфер отказал), выбор старого iOS (версия не распознана — PWA с экрана
            «Домой»: путь iOS 27) или «Назад»; на первом и последнем шаге пустой — той же высоты. -->
       <div class="flex h-11 items-center justify-center">
-        <Button v-if="step.action === 'copy' && manual" variant="ghost" size="md" class="w-full" @click="next">Скопировал — дальше</Button>
+        <Button v-if="step.action === 'copy' && manual" variant="ghost" size="md" class="w-full" @click="next">Дальше</Button>
         <button
           v-else-if="step.action === 'copy' && legacyChoice && flow === 'tap'"
           type="button"

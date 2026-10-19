@@ -100,9 +100,10 @@ describe('настройки — карточка «Apple Pay»', () => {
     const writeText = vi.fn(async () => {})
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText }, userAgent: IPHONE_27 })
     const { connect } = await open(Settings, '/settings')
-    expect(txt(q('[data-applepay-line]'))).toBe('Траты появятся сами после оплаты')
-    // Брендовая кнопка на экране одна — «Подключить».
-    expect(document.querySelectorAll('button.bg-brand').length).toBe(1)
+    expect(txt(q('[data-applepay-line]'))).toBe('Траты появятся сами')
+    // «Подключить» — тихая, как «Создать код» (`/ux` Б1, вопрос 2, владелец 2026-10-19): звать умеет строка «Недели».
+    expect(q('[data-connect]')!.className).toContain('bg-surface-3')
+    expect(q('[data-connect]')!.className).not.toContain('bg-brand')
 
     q('[data-connect]')!.click()
     await flush()
@@ -168,6 +169,8 @@ describe('настройки — карточка «Apple Pay»', () => {
     await flush()
     expect(q<HTMLInputElement>('[data-key-manual]')?.value).toBe(KEY)
     expect(txt(q('[data-main]'))).toBe('Скопировать ещё раз')
+    // Тихий выход — «Дальше» (`/ux` Б1, вопрос 4: было «Скопировал — дальше»).
+    expect(txt(q('[data-main]')!.nextElementSibling)).toBe('Дальше')
     app?.unmount()
 
     const writeText = vi.fn(async () => {})
@@ -200,12 +203,14 @@ describe('настройки — карточка «Apple Pay»', () => {
 
     // Оплатили — «Подключено» и число телефонов, которыми платили.
     await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 2, last_used_at: '2026-10-16T05:00:00Z' } })
-    expect(txt(q('[data-applepay-line]'))).toBe('Подключено · 2 iPhone · последняя трата 16 октября')
+    expect(txt(q('[data-applepay-line]'))).toBe('2 iPhone · последняя трата 16 октября')
   })
 
   it('подключено — «Отключить» → подтверждение → отключено, снова «Подключить»', async () => {
     const { disconnect } = await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-16T05:00:00Z' } })
-    expect(txt(q('[data-applepay-line]'))).toBe('Подключено · последняя трата 16 октября')
+    // Значок уже говорит «подключено» (`/ux` Б1, вопрос 3): один телефон — без числа и без «Подключено».
+    expect(txt(q('[data-applepay-line]'))).toBe('Последняя трата 16 октября')
+    expect(txt(q('[data-more]'))).toBe('Подключить снова')
     // Дата не рвётся переносом (ux).
     expect(q('[data-applepay-line]')!.textContent).toContain('16 октября')
     expect(q('[data-connect]')).toBeNull()
@@ -237,6 +242,23 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(q('[data-disconnect]')).not.toBeNull()
     expect(q('[data-more]')).toBeNull()
     expect(q('[data-connect]')).toBeNull()
+  })
+})
+
+describe('лист подключения — слова (`/ux` Б1, вопрос 4, владелец 2026-10-19)', () => {
+  it('iOS 17–26: шаг 6 — «Запустить команду» → «Траты сами»; финал без второго «Готово»', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: vi.fn(async () => {}) }, userAgent: IPHONE_27 })
+    await open(Settings, '/settings?applepay=1', { ua: IPHONE_27.replace('Version/27.0', 'Version/26.0') })
+    const texts: string[] = []
+    for (let i = 0; i < 7; i++) {
+      texts.push(txt(q('[data-step-text]')))
+      if (i === 6) break
+      q('[data-main]')!.click()
+      await flush()
+    }
+    expect(texts[5]).toBe('«Запустить команду» → «Траты сами»')
+    expect(texts[6]).toBe('Оплатите что-нибудь телефоном')
+    expect(txt(q('[data-main]'))).toBe('Готово')
   })
 })
 
