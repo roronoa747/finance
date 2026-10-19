@@ -24,10 +24,14 @@ type PhoneKeyRepository interface {
 	Add(ctx context.Context, userID string, hash []byte) error
 	// DeleteAll revokes every key of the person ("Отключить").
 	DeleteAll(ctx context.Context, userID string) error
-	// Status is how many phones are connected and when a phone last called.
-	Status(ctx context.Context, userID string) (phones int, lastUsedAt *time.Time, err error)
-	// UserByHash finds the key's owner and marks the key used, in one statement.
+	// Status: paid — keys a payment came with (a phone that works), issued — all keys, lastUsedAt —
+	// the last payment of any of them (владелец 2026-10-19: «Подключено» only by keys that paid).
+	Status(ctx context.Context, userID string) (paid, issued int, lastUsedAt *time.Time, err error)
+	// UserByHash finds the key's owner; it does not mark the key used.
 	UserByHash(ctx context.Context, hash []byte) (string, error)
+	// MarkUsed marks the key used: only a payment written or recognised as a repeat (saved /
+	// duplicate) — not a skipped body, a limit or a refusal (ревью backend Н-5).
+	MarkUsed(ctx context.Context, hash []byte) error
 }
 
 type sqlPhoneKeyRepository struct{ db *sql.DB }
@@ -44,8 +48,8 @@ func (r *sqlPhoneKeyRepository) Add(ctx context.Context, userID string, hash []b
 	if _, err := tx.ExecContext(ctx, `SELECT 1 FROM app.users WHERE id = $1 FOR UPDATE`, userID); err != nil {
 		return fmt.Errorf("failed to lock user: %w", err)
 	}
-	// The one to go is the longest idle: never-used keys first (every opening of the connect
-	// sheet makes one), then the least recently used — a working phone is not pushed out by
+	// The one to go is the longest idle: never-used keys first (copied in the connect sheet, no
+	// payment came with it yet), then the least recently used — a working phone is not pushed out by
 	// sheets opened and closed (критик Б1).
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM app.phone_keys WHERE key_hash IN (
@@ -67,23 +71,30 @@ func (r *sqlPhoneKeyRepository) DeleteAll(ctx context.Context, userID string) er
 	return nil
 }
 
-func (r *sqlPhoneKeyRepository) Status(ctx context.Context, userID string) (int, *time.Time, error) {
-	var phones int
+func (r *sqlPhoneKeyRepository) Status(ctx context.Context, userID string) (int, int, *time.Time, error) {
+	var paid, issued int
 	var last sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT count(*), max(last_used_at) FROM app.phone_keys WHERE user_id = $1`, userID).
-		Scan(&phones, &last)
+	err := r.db.QueryRowContext(ctx, `SELECT count(last_used_at), count(*), max(last_used_at) FROM app.phone_keys WHERE user_id = $1`, userID).
+		Scan(&paid, &issued, &last)
 	if err != nil {
-		return 0, nil, fmt.Errorf("failed to read phone keys: %w", err)
+		return 0, 0, nil, fmt.Errorf("failed to read phone keys: %w", err)
 	}
 	if !last.Valid {
-		return phones, nil, nil
+		return paid, issued, nil, nil
 	}
-	return phones, &last.Time, nil
+	return paid, issued, &last.Time, nil
+}
+
+func (r *sqlPhoneKeyRepository) MarkUsed(ctx context.Context, hash []byte) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE app.phone_keys SET last_used_at = now() WHERE key_hash = $1`, hash); err != nil {
+		return fmt.Errorf("failed to mark phone key: %w", err)
+	}
+	return nil
 }
 
 func (r *sqlPhoneKeyRepository) UserByHash(ctx context.Context, hash []byte) (string, error) {
 	var userID string
-	err := r.db.QueryRowContext(ctx, `UPDATE app.phone_keys SET last_used_at = now() WHERE key_hash = $1 RETURNING user_id`, hash).
+	err := r.db.QueryRowContext(ctx, `SELECT user_id FROM app.phone_keys WHERE key_hash = $1`, hash).
 		Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrPhoneKeyNotFound
@@ -153,31 +164,45 @@ func (m *MockPhoneKeyRepo) DeleteAll(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (m *MockPhoneKeyRepo) Status(ctx context.Context, userID string) (int, *time.Time, error) {
+func (m *MockPhoneKeyRepo) Status(ctx context.Context, userID string) (int, int, *time.Time, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	phones := 0
+	paid, issued := 0, 0
 	var last *time.Time
 	for _, k := range m.keys {
 		if k.userID != userID {
 			continue
 		}
-		phones++
-		if k.lastUsed != nil && (last == nil || k.lastUsed.After(*last)) {
+		issued++
+		if k.lastUsed == nil {
+			continue
+		}
+		paid++
+		if last == nil || k.lastUsed.After(*last) {
 			t := *k.lastUsed
 			last = &t
 		}
 	}
-	return phones, last, nil
+	return paid, issued, last, nil
 }
 
-func (m *MockPhoneKeyRepo) UserByHash(ctx context.Context, hash []byte) (string, error) {
+func (m *MockPhoneKeyRepo) MarkUsed(ctx context.Context, hash []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, k := range m.keys {
 		if bytes.Equal(k.hash, hash) {
 			now := m.Now()
 			m.keys[i].lastUsed = &now
+		}
+	}
+	return nil
+}
+
+func (m *MockPhoneKeyRepo) UserByHash(ctx context.Context, hash []byte) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range m.keys {
+		if bytes.Equal(k.hash, hash) {
 			return k.userID, nil
 		}
 	}

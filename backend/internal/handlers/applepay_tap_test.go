@@ -163,6 +163,72 @@ func TestTapRepeatLimitAndRefusals(t *testing.T) {
 	}
 }
 
+// Н-5, владелец 2026-10-19: a key is "connected" only when a payment came with it — saved or a
+// repeat; a lookup, a skipped body, the limit and a refusal leave it waiting.
+func TestWalletKeyMarkedOnlyByPayment(t *testing.T) {
+	app, clock, key := setupTap(t)
+	waiting := func(when string) {
+		t.Helper()
+		if s := app.status(t); s.Connected || s.Phones != 0 || !s.Waiting || s.LastUsedAt != nil {
+			t.Fatalf("%s: want waiting, got %+v", when, s)
+		}
+	}
+	waiting("copied")
+	app.whoami(t, key)
+	waiting("lookup")
+	if out := tapStatus(t, app.tap(t, key, map[string]any{"merchant": "Kaspi Gold"})); out["status"] != "skipped" {
+		t.Fatalf("no amount: %v", out)
+	}
+	if out := tapStatus(t, app.call(t, http.MethodPost, "/api/wallet/push", "Bearer "+key, []byte(`{"app":"Kaspi.kz","title":"Kaspi.kz","body":"Новые бонусы"}`))); out["status"] != "skipped" {
+		t.Fatalf("not an operation push: %v", out)
+	}
+	waiting("skipped")
+	app.repos.Households.SetRole(app.familyID, app.aliceID, "viewer")
+	if rec := app.tap(t, key, map[string]any{"merchant": "Magnum", "amount": "5 000 ₸"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer: %d", rec.Code)
+	}
+	app.repos.Households.SetRole(app.familyID, app.aliceID, "member")
+	waiting("refused")
+	ctx := t.Context()
+	for i := range maxPhoneOpsPerDay {
+		_, _ = app.repos.Statements.InsertPhoneOperation(ctx, app.aliceID, app.familyID, repository.PhoneOperation{
+			ID: fmt.Sprintf("%016x", i+1), Bank: "kaspi", Date: "2026-10-16", Amount: -int64(i + 1), Merchant: "Loop",
+			Source: "tap", OccurredAt: clock.t,
+		}, repository.PhoneWindows{Repeat: tapRepeat})
+	}
+	if rec := app.tap(t, key, map[string]any{"merchant": "Magnum", "amount": "5 000 ₸"}); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("limit: %d", rec.Code)
+	}
+	waiting("limit")
+
+	// A repeat is a payment too: the trigger fired, the operation is there (a new day's store).
+	app.repos.Statements = repository.NewMockRepositories().Statements
+	app.handler.ops = app.repos.Statements
+	_, _ = app.repos.Statements.InsertPhoneOperation(ctx, app.aliceID, app.familyID, repository.PhoneOperation{
+		ID: "00000000000000aa", Bank: "card", Date: "2026-10-16", Amount: -1, Merchant: "Loop", Source: "tap", OccurredAt: clock.t,
+	}, repository.PhoneWindows{Repeat: tapRepeat})
+	clock.t = clock.t.Add(30 * time.Second)
+	if out := tapStatus(t, app.tap(t, key, map[string]any{"merchant": "Loop", "amount": "1 ₸"})); out["status"] != "duplicate" {
+		t.Fatalf("repeat: %v", out)
+	}
+	if s := app.status(t); !s.Connected || s.Phones != 1 || s.Waiting || s.LastUsedAt == nil || !s.LastUsedAt.Equal(clock.t) {
+		t.Fatalf("after a repeat: %+v", s)
+	}
+
+	// A second phone's key copied: still one phone, connected.
+	other := app.connect(t)
+	if s := app.status(t); s.Phones != 1 || !s.Connected || s.Waiting {
+		t.Fatalf("second key copied: %+v", s)
+	}
+	clock.t = clock.t.Add(time.Minute)
+	if out := tapStatus(t, app.tap(t, other, map[string]any{"merchant": "Magnum", "amount": "5 000 ₸"})); out["status"] != "saved" {
+		t.Fatalf("second phone pays: %v", out)
+	}
+	if s := app.status(t); s.Phones != 2 || !s.LastUsedAt.Equal(clock.t) {
+		t.Fatalf("second phone paid: %+v", s)
+	}
+}
+
 // Р-13а: the owner's command sends the whole transaction as text in "merchant".
 func TestTapWholeTransactionText(t *testing.T) {
 	app, clock, key := setupTap(t)

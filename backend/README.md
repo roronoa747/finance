@@ -71,12 +71,13 @@ REST API приложения: вход, домохозяйство, синхр�
   воронка семей за 28 дней (создали → выписка → цель → первый запуск), 8 недель Алматы (новые
   семьи, загрузки, `week_done`). `/auth/me` отдаёт `admin: true|false`.
 - Apple Pay (`handlers/applepay.go`, `internal/applepay`, `repository/phonekey_repo.go`, миграция `000008`, бэклог
-  «Apple Pay»): `GET /api/wallet` (member) — `{connected, phones, last_used_at?, shortcut_url, shortcut_url_legacy,
-  push_shortcut_url}`;
+  «Apple Pay»): `GET /api/wallet` (member) — `{connected, phones, waiting, last_used_at?, shortcut_url,
+  shortcut_url_legacy, push_shortcut_url}`: `connected` и `phones` — только по ключам, с которыми пришла оплата
+  (`saved`/`duplicate` ставит `last_used_at`; `skipped`, 429, 403 — нет), `waiting` — ключ скопирован, оплаты ещё не
+  было (владелец 2026-10-19);
   `POST /api/wallet/connect` — 201 `{key}` с `Cache-Control: no-store`, **единственный раз**, когда ключ `ffk_…`
   уходит с сервера: в базе только SHA-256 (`app.phone_keys`), свой ключ на каждый телефон, не больше 5 (шестой
-  вытесняет тот, что дольше всех не работал: сначала ни разу не использованный — каждое открытие листа подключения
-  делает ключ); `DELETE /api/wallet` — отзыв всех, 204. viewer — 403. `POST /api/wallet/tap` — вне JWT:
+  вытесняет тот, что дольше всех не работал: сначала ни разу не оплативший — ключ делает «Скопировать ключ» в листе); `DELETE /api/wallet` — отзыв всех, 204. viewer — 403. `POST /api/wallet/tap` — вне JWT:
   `Authorization: Bearer ffk_…`, роль и семья из базы на каждый запрос (нет / отозван — 401, viewer или без семьи —
   403); тело ≤ 4 КБ `{merchant?, amount?, card?, name?, at?, raw?}`, лишние поля игнорируются; без `amount` сумма
   ищется в тексте (команда шлёт всю транзакцию в `merchant`). Тенге — `amount` (тиыны отбрасываются), USD/EUR/RUB/CNY —

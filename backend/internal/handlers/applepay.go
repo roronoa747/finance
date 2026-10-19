@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -57,9 +58,12 @@ const (
 // almaty is Kazakhstan's single time zone (UTC+5): the day of a phone operation and of the limit.
 var almaty = time.FixedZone("Asia/Almaty", 5*60*60)
 
+// walletStatus: connected and phones count only the keys a payment came with (владелец
+// 2026-10-19); waiting — a key was copied, no payment yet ("Ждём первую оплату").
 type walletStatus struct {
 	Connected         bool       `json:"connected"`
 	Phones            int        `json:"phones"`
+	Waiting           bool       `json:"waiting"`
 	LastUsedAt        *time.Time `json:"last_used_at,omitempty"`
 	ShortcutURL       string     `json:"shortcut_url"`
 	ShortcutURLLegacy string     `json:"shortcut_url_legacy"`
@@ -72,14 +76,14 @@ func (h *WalletHandler) Status(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	phones, last, err := h.keys.Status(r.Context(), userID)
+	phones, issued, last, err := h.keys.Status(r.Context(), userID)
 	if err != nil {
 		log.Printf("wallet: status: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to read wallet status")
 		return
 	}
 	respondJSON(w, http.StatusOK, walletStatus{
-		Connected: phones > 0, Phones: phones, LastUsedAt: last,
+		Connected: phones > 0, Phones: phones, Waiting: phones == 0 && issued > 0, LastUsedAt: last,
 		ShortcutURL: h.shortcutURL, ShortcutURLLegacy: h.shortcutURLLegacy, PushShortcutURL: h.pushShortcutURL,
 	})
 }
@@ -119,6 +123,10 @@ func (h *WalletHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// phoneKeyCtx carries the caller's key hash from KeyAuth to save: the key is marked used only
+// when a payment is written or recognised as a repeat.
+type phoneKeyCtx struct{}
+
 // KeyAuth guards the phone endpoints: a live phone key (401 otherwise, no details), then the
 // household and role from the database on every request — a viewer or a person without a
 // household gets 403. The caller lands in the context like a JWT caller.
@@ -129,7 +137,8 @@ func (h *WalletHandler) KeyAuth(next http.Handler) http.Handler {
 			errorJSON(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		userID, err := h.keys.UserByHash(r.Context(), applepay.HashKey(plain))
+		hash := applepay.HashKey(plain)
+		userID, err := h.keys.UserByHash(r.Context(), hash)
 		if errors.Is(err, repository.ErrPhoneKeyNotFound) {
 			errorJSON(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -154,6 +163,7 @@ func (h *WalletHandler) KeyAuth(next http.Handler) http.Handler {
 			return
 		}
 		ctx := auth.WithMembership(r.Context(), userID, auth.Membership{HouseholdID: m.HouseholdID, Role: m.Role, Slot: m.Slot})
+		ctx = context.WithValue(ctx, phoneKeyCtx{}, hash)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -279,7 +289,7 @@ func (h *WalletHandler) Tap(w http.ResponseWriter, r *http.Request) {
 // save writes a phone operation of a tap or a push: the daily limit shared by both (Р-13), then
 // one repository call that finds a repeat, the other half of the same purchase (a tap and a
 // push, Р-21) or of a transfer between own banks (Р-8) under the person's lock. A repeat or a
-// merge answers "duplicate".
+// merge answers "duplicate". Saved or duplicate — the key paid: it is marked used (Н-5).
 func (h *WalletHandler) save(w http.ResponseWriter, r *http.Request, userID, householdID string, op repository.PhoneOperation, now time.Time) {
 	nowAlmaty := now.In(almaty)
 	dayStart := time.Date(nowAlmaty.Year(), nowAlmaty.Month(), nowAlmaty.Day(), 0, 0, 0, 0, almaty)
@@ -305,6 +315,11 @@ func (h *WalletHandler) save(w http.ResponseWriter, r *http.Request, userID, hou
 		log.Printf("wallet: %s save: %v", op.Source, err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save")
 		return
+	}
+	if hash, ok := r.Context().Value(phoneKeyCtx{}).([]byte); ok {
+		if err := h.keys.MarkUsed(r.Context(), hash); err != nil {
+			log.Printf("wallet: %s mark key: %v", op.Source, err) // the operation is written already
+		}
 	}
 	if done == repository.PhoneRepeat || done == repository.PhoneMerged {
 		tapResult(w, "duplicate", "")

@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -135,13 +136,23 @@ func (app walletApp) whoami(t *testing.T, key string) int {
 	return app.call(t, http.MethodGet, "/api/wallet/whoami", "Bearer "+key, nil).Code
 }
 
+// pay sends a tenge tap with the key and wants it written: the key has paid.
+func (app walletApp) pay(t *testing.T, key string, tenge int) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"merchant": "Magnum", "amount": fmt.Sprintf("%d ₸", tenge)})
+	rec := app.call(t, http.MethodPost, "/api/wallet/tap", "Bearer "+key, body)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"saved"`) {
+		t.Fatalf("pay %d: %d %s", tenge, rec.Code, rec.Body.String())
+	}
+}
+
 func TestWalletConnectStatusDisconnect(t *testing.T) {
 	app := setupWalletApp(t)
 	// Every key event a second apart: "the longest idle" is well defined.
 	tick := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
 	app.keys.Now = func() time.Time { tick = tick.Add(time.Second); return tick }
 
-	if s := app.status(t); s.Connected || s.Phones != 0 || s.ShortcutURL != testShortcut || s.ShortcutURLLegacy != testShortcutLegacy || s.PushShortcutURL != testPushShortcut || s.LastUsedAt != nil {
+	if s := app.status(t); s.Connected || s.Phones != 0 || s.Waiting || s.ShortcutURL != testShortcut || s.ShortcutURLLegacy != testShortcutLegacy || s.PushShortcutURL != testPushShortcut || s.LastUsedAt != nil {
 		t.Fatalf("fresh status: %+v", s)
 	}
 
@@ -161,12 +172,18 @@ func TestWalletConnectStatusDisconnect(t *testing.T) {
 	if app.whoami(t, first) != http.StatusOK || app.whoami(t, second) != http.StatusOK {
 		t.Fatal("two phones: both keys must work")
 	}
-	if s := app.status(t); !s.Connected || s.Phones != 2 || s.LastUsedAt == nil {
-		t.Fatalf("two phones: %+v", s)
+	// Copied, not paid with (владелец 2026-10-19): "Ждём первую оплату", not "Подключено".
+	if s := app.status(t); s.Connected || s.Phones != 0 || !s.Waiting || s.LastUsedAt != nil {
+		t.Fatalf("two keys, no payment: %+v", s)
+	}
+	app.pay(t, first, 1001)
+	app.pay(t, second, 1002)
+	if s := app.status(t); !s.Connected || s.Phones != 2 || s.Waiting || s.LastUsedAt == nil {
+		t.Fatalf("two phones paid: %+v", s)
 	}
 
-	// The sixth key pushes out the longest idle: a never-used key (the connect sheet opened and
-	// closed makes one), not a working phone (критик Б1).
+	// The sixth key pushes out the longest idle: a never-used key (copied, no payment), not a
+	// working phone (критик Б1).
 	var more []string
 	for range 4 {
 		more = append(more, app.connect(t))
@@ -174,14 +191,16 @@ func TestWalletConnectStatusDisconnect(t *testing.T) {
 	if app.whoami(t, more[0]) != http.StatusUnauthorized || app.whoami(t, first) != http.StatusOK || app.whoami(t, second) != http.StatusOK {
 		t.Fatal("sixth key: the oldest never-used key must die, the working phones live")
 	}
-	if s := app.status(t); s.Phones != 5 {
+	// The number is the phones that paid, not the keys.
+	if s := app.status(t); s.Phones != 2 || !s.Connected {
 		t.Fatalf("after six connects: %+v", s)
 	}
-	// All five used: the least recently used goes.
-	for _, k := range append(more[1:], first) {
-		if app.whoami(t, k) != http.StatusOK {
-			t.Fatal("a live key failed")
-		}
+	// All five paid: the least recently used goes.
+	for i, k := range append(more[1:], first) {
+		app.pay(t, k, 2001+i)
+	}
+	if s := app.status(t); s.Phones != 5 {
+		t.Fatalf("five paid: %+v", s)
 	}
 	app.connect(t)
 	if app.whoami(t, second) != http.StatusUnauthorized || app.whoami(t, first) != http.StatusOK {
@@ -197,7 +216,7 @@ func TestWalletConnectStatusDisconnect(t *testing.T) {
 	if app.whoami(t, second) != http.StatusUnauthorized {
 		t.Fatal("revoked key still works")
 	}
-	if s := app.status(t); s.Connected || s.Phones != 0 {
+	if s := app.status(t); s.Connected || s.Phones != 0 || s.Waiting {
 		t.Fatalf("after disconnect: %+v", s)
 	}
 }
