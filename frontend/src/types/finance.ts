@@ -1,5 +1,5 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
-import type { HabitTotal, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitTotal, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import type { StepCandidate } from '@/lib/finance'
 
@@ -34,7 +34,8 @@ export type AiReviewStep = { text: string; screen: string | null }
 
 /**
  * Разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09) — в общем документе: партнёр и viewer видят тот же текст без запроса.
- * `sent` — что ушло в модель («что ушло», Р-9): v1 — сводка, v2 — факты и кандидаты; `by` — кто запросил; месяц
+ * `sent` — что ушло в модель («что ушло», Р-9): v1 — сводка, v2 — факты и кандидаты, v3 — факты и действия; `by` — кто
+ * запросил; месяц
  * показывает последний по `at`. v2 (бэклог «ИИ-польза», AU-13): `steps` пуст, шаг один — `step` с кандидатом «Сделать»
  * (сумма и эффект пересчитываются при открытии); `reason` и `reasonKey` — повод (`month:<YYYY-MM>`,
  * `salary:<personId>:<YYYY-MM>`; у «Обновить» ключа нет): «один разбор на повод на семью» (Р-4, Р-20).
@@ -47,11 +48,29 @@ export type AiReview = Tracked & {
   good: string
   risk: string
   steps: AiReviewStep[]
-  sent: MonthSummaryAI | ReviewPayload | null
-  v?: 2
+  sent: MonthSummaryAI | ReviewPayload | ReviewPayloadV3 | null
+  v?: 2 | 3
   reason?: ReviewReason
   reasonKey?: string
   step?: { text: string; candidate: StepCandidate | null }
+  /** v3 (бэклог «Разбор», Р-15): строка модели к «Куда ушло». */
+  where?: string
+  /** v3: 1–3 совета, у каждого — кнопка (Р-6). */
+  advices?: AiAdvice[]
+  /** v3: счётчик работы на момент разбора (Р-8, Р-19) — операций, находок, ₸ в год у советов. */
+  work?: { ops: number; found: number; yearly: number }
+}
+
+/** Экран предмета находки для «Открыть» (бэклог «Разбор», Р-18): путь строит код (`openPath`). */
+export type OpenTarget = { kind: 'cat' | 'goal' | 'credit' | 'obligation' | 'seller'; id: string; name: string; categoryId?: string }
+
+/** Совет разбора v3 (Р-15): крупная цифра — присланный факт или null; кнопка — «Сделать» с кандидатом или «Открыть». */
+export type AiAdvice = {
+  title: string
+  text: string
+  /** `label` — короткая подпись под крупной цифрой (считает код, RZ-15); у разборов до RZ-15 нет — подпись `about`. */
+  figure: { about: string; value: string; label?: string } | null
+  action: { kind: 'do'; candidate: StepCandidate } | { kind: 'open'; target: OpenTarget }
 }
 
 /** Повод разбора v2 (бэклог «ИИ-польза», Р-20): первый вход в месяце, первая «Пришла» зарплаты, «Обновить». */
@@ -69,6 +88,15 @@ export type ReviewCandidate = { id: string; kind: 'move' | 'prepay' | 'cushion';
 
 /** Тело разбора v2 без повода: всё, что уходит в модель, и «что ушло» в листе (Р-9). */
 export type ReviewPayload = { facts: ReviewFact[]; candidates: ReviewCandidate[] }
+
+/**
+ * Действие разбора v3 (бэклог «Разбор», Р-6, Р-16): `do` — кандидат «Сделать» (`about` / `value` / `effect` как у v2),
+ * `open` — экран предмета находки (`about` без цифр, `value` и `effect` пустые).
+ */
+export type ReviewAction = { id: string; kind: 'do' | 'open'; about: string; value: string; effect: string }
+
+/** Тело разбора v3 без повода (Р-16): всё, что уходит в модель, и «что ушло». */
+export type ReviewPayloadV3 = { v: 3; facts: ReviewFact[]; actions: ReviewAction[] }
 
 /**
  * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,
@@ -709,6 +737,11 @@ export type SyncDoc = {
   planShifts?: PlanShift[]
   /** Итоги привычек трат участников за месяц (бэклог «ИИ-польза», Р-24, AU-27): только счётчик и сумма. До Блока 7 — без ключа. */
   habitTotals?: HabitTotal[]
+  /**
+   * Итоги находок участников за месяц (бэклог «Разбор», Р-13, RZ-01): продавцы, разделы, счётчики и суммы — без дат и
+   * людей. До Блока 1 «Разбор» — без ключа.
+   */
+  reviewFinds?: ReviewFind[]
   /** Переносы «в мечту» у образов (бэклог «ИИ-польза», Х-9, AU-31): отмена — надгробие. До AU-31 — без ключа. */
   imageMoves?: ImageMove[]
   /**

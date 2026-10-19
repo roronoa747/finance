@@ -4,6 +4,7 @@ import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { PhArrowUUpLeft, PhCamera, PhCaretRight, PhCheck, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useAiStore } from '@/stores/ai'
 import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
 import {
   INFLATION,
@@ -65,6 +66,7 @@ import PhotoPicker from '@/components/goals/PhotoPicker.vue'
 import StorySheet from '@/components/goals/StorySheet.vue'
 import TripCard from '@/components/goals/TripCard.vue'
 import Button from '@/components/ui/Button.vue'
+import AdviceMark from '@/components/ai/AdviceMark.vue'
 import { buttonVariants } from '@/components/ui/button'
 import Input from '@/components/ui/Input.vue'
 
@@ -142,6 +144,9 @@ const isFund = computed(() => financeStore.queue.find((x) => x.id === goalId.val
 const forecast = computed(() => (paused.value && plan.value ? planForecast(plan.value, financeStore.planState(), monthKey()) : null))
 const planItem = computed(() => (goal.value ? financeStore.monthPlanOf(monthKey()).queue.find((x) => x.goalId === goal.value!.id) : undefined))
 const term = computed(() => (goal.value ? goalTerm(planItem.value, goal.value, monthKey(), forecast.value ?? undefined) : null))
+/** ✦ у срока (бэклог «Разбор», RZ-11): совет разбора текущего месяца про эту цель — номер карточки отчёта. */
+const ai = useAiStore()
+const goalMark = computed(() => (goal.value ? ai.markFor('goal', goal.value.id) : null))
 const need = computed(() => term.value?.need ?? 0)
 const remaining = computed(() => term.value?.remaining ?? 0)
 const months = computed(() => term.value?.months ?? Infinity)
@@ -534,11 +539,12 @@ function share() {
     <Card v-else>
       <!-- Подушка (PN-20): «хватит на N месяцев» — заголовок, «нужно на M месяцев» строкой (сумма — в герое, /ux Б6); собрано — ✓ цветом «готово», «Собрано» не пишем. -->
       <template v-if="cover">
-        <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}</h2>
+        <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}<AdviceMark :n="goalMark" /></h2>
         <p class="mt-1.5 text-[15px] text-ink-2 num" data-cushion-need>нужно на {{ monthsLabel(cover.monthsNeeded) }}</p>
       </template>
       <template v-else>
-        <h2 class="type-h2 text-ink">{{ doneTitle }}</h2>
+        <!-- ✦ совета ИИ про эту цель (бэклог «Разбор», RZ-11) — у срока: нажатие — отчёт на карточке совета. -->
+        <h2 class="type-h2 text-ink" data-goal-term>{{ doneTitle }}<AdviceMark :n="goalMark" /></h2>
         <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
       </template>
       <!-- Метка «мечта сдвинулась» (AU-06, Р-6) и «Вернуть срок» у неё — тихо, главная остаётся «Пополнить» -->

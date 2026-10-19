@@ -72,6 +72,26 @@ export function normalizeMerchant(raw: string): string {
   return words.join(' ')
 }
 
+/**
+ * Короткое имя продавца для слов разбора и его показа (хвост Х-2 бэклога «Разбор»): правовая форма в начале и город /
+ * страна в конце снимаются, как в `normalizeMerchant`, но регистр и знаки внутри названия — как напечатал банк. Код
+ * терминала с цифрами — только перед городом («… AST1 ALMATY KZ»): цифры в конце без города — часть имени («Fitness
+ * Lab 24»). «MAGNUM ASTANA Q. KZ» → «MAGNUM», «YANDEX.GO ALMATY KZ» → «YANDEX.GO», «Кофейня G.ASTANA» → «Кофейня».
+ */
+export function shortMerchant(raw: string): string {
+  const words = sanitize(raw).split(' ').filter(Boolean)
+  const parts = (w: string) => w.toLowerCase().split(/[.,;:"'«»()*/\\]+/).filter(Boolean)
+  while (words.length > 1 && LEGAL_FORMS.has(parts(words[0]).join(''))) words.shift()
+  let place = false
+  while (words.length > 1) {
+    const last = parts(words[words.length - 1])
+    if (last.every((p) => PLACE_TAILS.has(p))) place = true
+    else if (!place || !last.every((p) => PLACE_TAILS.has(p) || /\d/.test(p))) break
+    words.pop()
+  }
+  return words.join(' ')
+}
+
 /** Имя получателя для правил «кому → что»: «Дана К.» → «дана к.». */
 export function normalizeCounterparty(raw: string): string {
   return sanitize(raw).toLowerCase()
@@ -386,7 +406,7 @@ const LATIN_PATRONYMIC = /(vich|vna|uly|kyzy|ogly)$/
  * до «Имя Ф.» (`sanitize`), поэтому человек — это одно-два слова после ИП, инициалы и город в конце не в счёт (и три
  * с латинским отчеством). «ИП Сулейменов Аптека Плюс» — три слова: название дела, уходит.
  */
-function entrepreneurName(name: string): boolean {
+export function entrepreneurName(name: string): boolean {
   const first = name.toLowerCase().replace(/[.,;:"'«»()*/\\]+/g, ' ').trim().split(' ')[0]
   if ((first !== 'ип' && first !== 'ip') || /\d/.test(name)) return false
   const words = normalizeMerchant(name)

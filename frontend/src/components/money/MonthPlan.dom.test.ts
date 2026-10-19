@@ -15,7 +15,7 @@ import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
-import type { Obligation, Payment, SyncDoc } from '@/types/finance'
+import type { AiAdvice, AiReview, Obligation, Payment, SyncDoc } from '@/types/finance'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -553,6 +553,28 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-month-past]')).not.toBeNull()
   })
 
+  it('RZ-13: прошлый месяц планом — лист раздела по `?month=&cat=` с названием месяца, без «Изменить»; текущий — с ним (критик Блока 3)', async () => {
+    const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
+    const doc = familyDoc()
+    await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08&cat=sc_food')
+    await flush()
+    expect(q('[data-month-past]')).toBeNull()
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(txt(q('[role="dialog"] [data-cat-month]'))).toBe('август')
+    expect(q('[role="dialog"] [data-cat-person="b"]')).not.toBeNull()
+    // План раздела общий на будущее — из прошлого месяца не правится.
+    expect(q('[role="dialog"] [data-cat-edit]')).toBeNull()
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', doc, '/month?cat=sc_food')
+    await flush()
+    // Текущий месяц не называется — он и так на экране (`/ux` Блока 3).
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(q('[role="dialog"] [data-cat-month]')).toBeNull()
+    expect(q('[role="dialog"] [data-cat-edit]')).not.toBeNull()
+  })
+
   it('прошлый месяц планом: цель по одной не отмечается (запись закрыла бы месяц сводкой) — только «Отложил всё» (критик)', async () => {
     const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
     const doc = familyDoc()
@@ -1015,6 +1037,33 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     }
   })
 
+  it('RZ-08: `?cat=sc_cafe` открывает лист раздела («Открыть» совета); закрытие снимает параметр; неизвестный раздел — ничего', async () => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: fullUploads } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_cafe')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('Кафе и рестораны')
+    await press(all('[role="dialog"] button').find((b) => b.getAttribute('aria-label') === 'Закрыть'))
+    const router = app!.config.globalProperties.$router
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'))
+    expect(q('[data-cat-amount]')).toBeNull()
+    // Строка раздела по-прежнему открывает лист нажатием, адрес не меняется.
+    await press(section('spend'))
+    await press(q('[data-spend-row="sc_cafe"]'))
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(router.currentRoute.value.fullPath).toBe('/month')
+    app!.unmount()
+    app = null
+    document.body.innerHTML = ''
+
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_nope')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).toBeNull()
+  })
+
   it('лист раздела: факт, обычно, план, «до плана» в мечту; «Изменить» — «Сколько в месяц» с суммой участника', async () => {
     const finance = await openSpend()
     const cafe = compareOf(finance).rows.find((r) => r.categoryId === 'sc_cafe')!
@@ -1065,5 +1114,78 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     await press(dialogButton('Готово'))
     expect(finance.householdDoc.spendPlans?.find((x) => x.id === 'a:sc_transport')?.amount).toBe(25_000)
     expect(q('[data-spend-row="sc_transport"]')).not.toBeNull()
+  })
+})
+
+/** RZ-07 (бэклог «Разбор», Р-17): отчёт разбора — оверлей по адресу `?review=1`. */
+describe('RZ-07: отчёт разбора по адресу', () => {
+  const review = { id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b' as const, good: 'Хорошо.', risk: 'Риск.', steps: [], sent: null, updatedAt: T0 }
+  const routerOf = () => app!.config.globalProperties.$router
+  async function openAt(path: string, role: 'member' | 'viewer' = 'member', doc = familyDoc({ aiReviews: [review] })) {
+    await open(role, doc, path)
+    useAuthStore().ai = true
+    await flush()
+  }
+
+  it('`?review=1` открывает отчёт и гасит точку «новый»; ✕ снимает параметр', async () => {
+    await openAt('/month')
+    expect(q('[data-review-dot]')).not.toBeNull()
+    expect(q('[data-report]')).toBeNull()
+    await routerOf().push('/month?review=1')
+    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull())
+    await flush()
+    expect(q('[data-review-dot]')).toBeNull()
+    await press(q('[data-report-close]'))
+    await vi.waitFor(() => expect(routerOf().currentRoute.value.fullPath).toBe('/month'))
+    expect(q('[data-report]')).toBeNull()
+  })
+
+  it('прошлый месяц по адресу (`?month=`) — отчёта нет: разбор только текущего', async () => {
+    await openAt('/month?month=2026-08&review=1')
+    expect(q('[data-report]')).toBeNull()
+  })
+
+  it('viewer без разбора — кнопки нет, `?review=1` ничего не открывает', async () => {
+    await openAt('/month?review=1', 'viewer', familyDoc())
+    expect(q('[data-review-open]')).toBeNull()
+    expect(q('[data-report]')).toBeNull()
+  })
+})
+
+/**
+ * RZ-16 (владелец 2026-10-19, Х-12 — «А»): у заголовка раздела одна метка — точка «есть что сделать», если она есть;
+ * ✦ совета ИИ — только когда точки нет. В раскрытом разделе ✦ остаётся у строки.
+ */
+describe('RZ-16: одна метка у заголовка раздела', () => {
+  const open1 = (target: { kind: 'goal' | 'cat'; id: string; name: string }): AiAdvice => ({
+    title: `Совет ${target.name}`, text: 'Текст.', figure: null, action: { kind: 'open', target },
+  })
+  /** Разбор v3 сентября: 1 — мечта «Отпуск» (в «Цели и фонды»), 2 — раздел «Продукты» (в «Тратах»). */
+  const review: AiReview = {
+    id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b', good: '', risk: '', steps: [], sent: null, updatedAt: T0,
+    v: 3, reason: 'month', where: '', work: { ops: 10, found: 2, yearly: 0 },
+    advices: [open1({ kind: 'goal', id: 'trip', name: 'Отпуск' }), open1({ kind: 'cat', id: 'sc_food', name: 'Продукты' })],
+  }
+
+  it('точка и совет — у заголовка только точка, ✦ у строки; точки нет — ✦ у заголовка', async () => {
+    await open('member', familyDoc({ aiReviews: [review] }))
+    useAuthStore().ai = true // ✦ — только с ИИ семьи
+    await flush()
+    // «Цели и фонды»: зарплата Ильяса пришла, взносы не отложены — точка; совет про «Отпуск» — ✦ у заголовка нет.
+    expect(q('[data-section="queue"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="queue"] [data-section-mark]')).toBeNull()
+    expect(txt(section('queue'))).toContain('есть что сделать')
+    expect(txt(section('queue'))).not.toContain('есть совет ИИ')
+    // «Траты»: выше обычного нет — точки нет, совет про «Продукты» — ✦ у заголовка.
+    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-mark]')).not.toBeNull()
+    expect(txt(section('spend'))).toContain('есть совет ИИ')
+    // Раскрыл — ✦ у строки «Отпуск», как раньше.
+    await press(section('queue'))
+    expect(q('[data-queue="trip"] [data-advice-mark]')).not.toBeNull()
+    // «Отложил всё» — точка ушла, у заголовка — ✦.
+    await press(q('[data-put-all]'))
+    expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-mark]')).not.toBeNull()
   })
 })

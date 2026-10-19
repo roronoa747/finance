@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { buildReviewFacts, factsLines, REVIEW_FACTS_MAX, REVIEW_TEXT_MAX } from './aiFacts'
+import { describe, expect, it, vi } from 'vitest'
+import { buildReviewFacts, factsLines, openPath, REVIEW_ACTIONS_MAX, REVIEW_FACTS_MAX, REVIEW_TEXT_MAX } from './aiFacts'
 import {
   cushionCover,
   debtsOverview,
@@ -22,7 +22,7 @@ import {
 } from './finance'
 import { monthBy } from './dates'
 import { money } from './money'
-import type { HabitId, HabitTotal, SpendTotal } from './statements/types'
+import type { HabitId, HabitTotal, ReviewFind, SpendTotal } from './statements/types'
 import { defaultSyncDoc } from '@/stores/finance'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import type { PersonId, ReviewFact, SpendPlan, SyncDoc } from '@/types/finance'
@@ -207,17 +207,18 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     expect(find(short.payload.facts, /прошлый месяц/)).toBeUndefined()
   })
 
-  it('кандидаты = `stepCandidates`: id c1…, сумма — `money`, эффект — `stepEffectText`; byId — сам кандидат', () => {
+  it('«Сделать» = `stepCandidates`: первыми, id a1…, сумма — `money`, эффект — `stepEffectText`; doById — сам кандидат', () => {
     const doc = family()
     const direct = stepCandidates(stateOf(doc), ctxOf(doc))
-    const { payload, byId } = build(doc)
+    const { payload, doById, byAction } = build(doc)
     expect(direct.length).toBeGreaterThan(0)
-    expect(payload.candidates.map((c) => c.id)).toEqual(direct.map((_, i) => `c${i + 1}`))
-    payload.candidates.forEach((c, i) => {
-      expect(byId.get(c.id)).toEqual(direct[i])
-      expect(c.kind).toBe(direct[i]!.kind)
+    const dos = payload.actions.filter((a) => a.kind === 'do')
+    expect(dos.map((c) => c.id)).toEqual(direct.map((_, i) => `a${i + 1}`))
+    dos.forEach((c, i) => {
+      expect(doById.get(c.id)).toEqual(direct[i])
       expect(c.value).toBe(money(direct[i]!.shift.amount))
       expect(c.effect).toBe(stepEffectText(direct[i]!))
+      expect(byAction.get(c.id)).toBeNull()
     })
   })
 
@@ -230,19 +231,20 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
       goals: [...base.goals, { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 0, have: 0, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }],
     })
     const direct = stepCandidates(stateOf(doc), ctxOf(doc))
-    const { payload } = build(doc)
-    const kinds = payload.candidates.map((c) => c.kind)
+    const { payload, doById } = build(doc)
+    const dos = payload.actions.filter((a) => a.kind === 'do')
+    const kinds = dos.map((c) => doById.get(c.id)!.kind)
     expect(kinds).toEqual(direct.map((c) => c.kind))
     expect(kinds.some((k) => k === 'prepay' || k === 'cushion')).toBe(true)
-    payload.candidates.forEach((c, i) => {
+    dos.forEach((c, i) => {
       expect(c.about, c.about).not.toContain('Дана')
       expect(c.about.replace(/«[^»]*»/g, ''), c.about).not.toMatch(/\d/)
       expect(c.value).toBe(money(direct[i]!.shift.amount))
       expect(c.effect).toBe(stepEffectText(direct[i]!))
     })
-    const prepay = payload.candidates.find((c) => c.kind === 'prepay')
+    const prepay = dos.find((c) => doById.get(c.id)!.kind === 'prepay')
     if (prepay) expect(prepay.about).toMatch(/^досрочно в «.+» из остатка месяца$/)
-    const cushion = payload.candidates.find((c) => c.kind === 'cushion')
+    const cushion = dos.find((c) => doById.get(c.id)!.kind === 'cushion')
     if (cushion) expect(cushion.about).toBe('из остатка месяца в подушку')
   })
 
@@ -261,14 +263,14 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
       expect(f.value.length, f.value).toBeLessThanOrEqual(REVIEW_TEXT_MAX)
       expect(f.about.replace(/«[^»]*»/g, ''), f.about).not.toMatch(/\d/)
     }
-    for (const c of payload.candidates) {
+    for (const c of payload.actions) {
       expect(c.about.length, c.about).toBeLessThanOrEqual(REVIEW_TEXT_MAX)
       expect(c.about.replace(/«[^»]*»/g, ''), c.about).not.toMatch(/\d/)
     }
     expect(find(payload.facts, /^новый платёж «Спортзал 2 очень/)).toBeDefined()
   })
 
-  it('сито: в about нет цифр; id по порядку f1…; не больше 30; value каждого денежного факта — `money(raw)`', () => {
+  it('сито: в about нет цифр; id по порядку f1…; не больше 40; value каждого денежного факта — `money(raw)`', () => {
     const { payload } = build(family(), 'month')
     expect(payload.facts.length).toBeGreaterThan(8)
     expect(payload.facts.length).toBeLessThanOrEqual(REVIEW_FACTS_MAX)
@@ -278,8 +280,8 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
       if (f.value.endsWith('₸') && typeof f.raw === 'number') expect(f.value).toBe(money(f.raw))
       if (typeof f.raw === 'string') expect(f.raw).toMatch(/^\d{4}-\d{2}$/)
     })
-    for (const c of payload.candidates) expect(c.about, c.about).not.toMatch(/\d/)
-    // Размер тела — несколько КБ (ручка берёт до 32 КБ, ТЗ — до 8 КБ).
+    for (const c of payload.actions) expect(c.about, c.about).not.toMatch(/\d/)
+    // Размер тела — несколько КБ (ручка берёт до 48 КБ, ТЗ — до 8 КБ).
     expect(JSON.stringify(payload).length).toBeLessThan(8 << 10)
   })
 
@@ -298,20 +300,225 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     }
   })
 
-  it('пустая семья — без падений, мало фактов и без кандидатов', () => {
-    const { payload, byId } = buildReviewFacts(defaultSyncDoc(), inputOf(defaultSyncDoc(), []), 'month')
+  it('пустая семья — без падений, мало фактов, без действий и находок', () => {
+    const { payload, doById, openById, findings } = buildReviewFacts(defaultSyncDoc(), inputOf(defaultSyncDoc(), []), 'month')
+    expect(payload.v).toBe(3)
     expect(payload.facts.length).toBeLessThanOrEqual(2)
-    expect(payload.candidates).toEqual([])
-    expect(byId.size).toBe(0)
+    expect(payload.actions).toEqual([])
+    expect(doById.size + openById.size + findings.length).toBe(0)
+  })
+})
+
+/**
+ * RZ-03: факты находок и сценария, действия «Открыть», `openPath`. К семье AU-11 — итоги находок двух участников:
+ * аптека — утечка в июле и августе, в октябре — новое регулярное «Fitness Lab», подорожавший «Кинопоиск», двойное
+ * «Sport Club» и верхушка «Кафе» с покупкой 40 000 (кафе 77 000 при обычных 90 000 — не выше: «раздуло» нет).
+ */
+describe('buildReviewFacts v3 — находки и действия (RZ-03)', () => {
+  const rf = (by: PersonId, period: string, kind: ReviewFind['kind'], key: string, rest: Partial<ReviewFind> = {}): ReviewFind => ({
+    id: `${by}:${period}:${kind}:${key}`, by, period, kind, name: key.toUpperCase(), categoryId: null, count: 1, amount: 1_000, updatedAt: T0, ...rest,
+  })
+  const FINDS: ReviewFind[] = [
+    rf('a', '2026-07', 'leak', 'apteka plus', { name: 'APTEKA PLUS', categoryId: 'sc_health', count: 7, amount: 10_500 }),
+    rf('b', '2026-08', 'leak', 'apteka plus', { name: 'APTEKA PLUS', categoryId: 'sc_health', count: 9, amount: 13_500 }),
+    rf('a', KEY, 'recurring', 'fitness lab', { name: 'FITNESS LAB 24', categoryId: 'sc_fun', count: 2, amount: 15_000 }),
+    rf('a', KEY, 'pricier', 'kinopoisk', { name: 'KINOPOISK', count: 1, amount: 2_990, was: 2_490, targetId: 'kino' }),
+    rf('b', KEY, 'double', 'sport club', { name: 'SPORT CLUB', categoryId: 'sc_fun', count: 2, amount: 12_000 }),
+  ]
+  const kino = { id: 'kino', name: 'Кинопоиск', note: '', day: 5, category: 'd4' as const, versions: [{ from: '2026-01', amount: 2_490 }], updatedAt: T0 }
+  const withFinds = (extra: Partial<SyncDoc> = {}) => {
+    const base = family()
+    return family({ reviewFinds: FINDS, obligations: [...base.obligations, kino], ...extra })
+  }
+  const digitsOutsideNames = (s: string) => /\d/.test(s.replace(/«[^»]*»/g, ''))
+
+  it('факты каждого вида находки и сценария первыми; raw согласован с value; about без цифр вне «»', () => {
+    const doc = withFinds()
+    const { payload, findings } = build(doc, 'month')
+    // Утечка и двойное — по 144 000 в год: порядок находок сохраняется.
+    expect(findings.map((f) => f.kind)).toEqual(['recurring', 'leak', 'double', 'pricier'])
+    const facts = payload.facts
+    // Утечка: (10 500 + 13 500) / 2 = 12 000 в месяц, 8 раз, 144 000 за год; образ — доля главной мечты.
+    expect(find(facts, 'частые траты у «APTEKA PLUS» — в месяц')).toMatchObject({ value: money(12_000), raw: 12_000 })
+    expect(find(facts, 'частые траты у «APTEKA PLUS» — раз в месяц')).toMatchObject({ value: '8 раз', raw: 8 })
+    expect(find(facts, 'частые траты у «APTEKA PLUS» — за год')).toMatchObject({ value: money(144_000), raw: 144_000 })
+    expect(find(facts, /^частые траты у «APTEKA PLUS» за год — доля мечты «.+»$/)?.value).toMatch(/^\d+ %$/)
+    expect(find(facts, 'новое регулярное списание «FITNESS LAB 24», которого нет в плане — в месяц')).toMatchObject({ raw: 15_000 })
+    expect(find(facts, 'новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toMatchObject({ raw: 180_000, value: money(180_000) })
+    expect(find(facts, 'подписка «Кинопоиск» стала дороже: было')).toMatchObject({ raw: 2_490 })
+    expect(find(facts, 'подписка «Кинопоиск» стала дороже: стало')).toMatchObject({ raw: 2_990 })
+    expect(find(facts, 'списание «SPORT CLUB» прошло дважды одной суммой')).toMatchObject({ raw: 12_000 })
+    // Сценарий — по самой дорогой из утечек, новых и двойных: «Fitness Lab» 180 000 в год → 15 000 в месяц в мечту.
+    const s = find(facts, /^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)!
+    expect(s.value).toBe(shiftSpan(s.raw as number))
+    // Находки — первыми, факты v2 — после.
+    expect(facts[0]!.about).toMatch(/^новое регулярное списание/)
+    expect(find(facts, 'доход месяца')).toBeDefined()
+    for (const f of facts) {
+      expect(digitsOutsideNames(f.about), f.about).toBe(false)
+      if (f.value.endsWith('₸') && typeof f.raw === 'number') expect(f.value).toBe(money(f.raw))
+    }
+  })
+
+  it('«раздуло» покупкой: факт прироста и что раздуло; «Открыть» — траты раздела', () => {
+    const doc = withFinds({
+      spendTotals: [...family().spendTotals!.filter((t) => !(t.period === KEY && t.categoryId === 'sc_cafe')), { id: `a:month:${KEY}:sc_cafe`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_cafe', amount: 150_000, ops: 9, updatedAt: T0 }],
+      reviewFinds: [...FINDS, rf('a', KEY, 'top', 'sc_cafe', { name: '', categoryId: 'sc_cafe', count: 9, amount: 150_000, top: [{ name: 'Restoran 7', amount: 40_000 }] })],
+    })
+    const { payload, openById, byFact } = build(doc)
+    expect(find(payload.facts, 'траты на «Кафе и рестораны» выше обычного на')).toMatchObject({ raw: 60_000 })
+    expect(find(payload.facts, 'что раздуло «Кафе и рестораны»: «Restoran 7»')).toMatchObject({ raw: 40_000, value: money(40_000) })
+    const cat = payload.actions.find((a) => a.about === 'открыть траты «Кафе и рестораны»')!
+    expect(openById.get(cat.id)).toEqual({ kind: 'cat', id: 'sc_cafe', name: 'Кафе и рестораны' })
+    // Оба факта «раздуло» стоят за своей находкой (ревью frontend Н-2).
+    for (const about of ['траты на «Кафе и рестораны» выше обычного на', 'что раздуло «Кафе и рестораны»: «Restoran 7»']) {
+      expect(byFact.get(find(payload.facts, about)!.id)).toMatchObject({ kind: 'grew', categoryId: 'sc_cafe' })
+    }
+  })
+
+  it('RZ-15: короткие подписи крупной цифры — у фактов находок и сценария, без «ёлочек»; у фактов v2 нет; в тело ручки не идут', () => {
+    const { payload, labels } = build(withFinds(), 'month')
+    const label = (about: string | RegExp) => labels.get(find(payload.facts, about)!.id)
+    expect(label('частые траты у «APTEKA PLUS» — в месяц')).toBe('в месяц · APTEKA PLUS')
+    expect(label('частые траты у «APTEKA PLUS» — раз в месяц')).toBe('в месяц · APTEKA PLUS')
+    expect(label('частые траты у «APTEKA PLUS» — за год')).toBe('за год · APTEKA PLUS')
+    expect(label(/^частые траты у «APTEKA PLUS» за год — доля мечты «.+»$/)).toMatch(/^мечты «.+» за год · APTEKA PLUS$/)
+    expect(label('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe('за год · FITNESS LAB 24')
+    expect(label('подписка «Кинопоиск» стала дороже: было')).toBe('было · Кинопоиск')
+    expect(label('подписка «Кинопоиск» стала дороже: стало')).toBe('стало · Кинопоиск')
+    expect(label('списание «SPORT CLUB» прошло дважды одной суммой')).toBe('дважды · SPORT CLUB')
+    expect(label(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toMatch(/^«.+» раньше · без FITNESS LAB 24$/)
+    expect(label('доход месяца')).toBeUndefined()
+    for (const f of payload.facts) expect(Object.keys(f).sort()).toEqual(['about', 'id', 'raw', 'value'])
+  })
+
+  it('RZ-15: подпись «раздуло» — «сверх обычного · <раздел>», покупка — «<продавец> · <раздел>»', () => {
+    const doc = withFinds({
+      spendTotals: [...family().spendTotals!.filter((t) => !(t.period === KEY && t.categoryId === 'sc_cafe')), { id: `a:month:${KEY}:sc_cafe`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_cafe', amount: 150_000, ops: 9, updatedAt: T0 }],
+      reviewFinds: [...FINDS, rf('a', KEY, 'top', 'sc_cafe', { name: '', categoryId: 'sc_cafe', count: 9, amount: 150_000, top: [{ name: 'Restoran 7', amount: 40_000 }] })],
+    })
+    const { payload, labels } = build(doc)
+    expect(labels.get(find(payload.facts, 'траты на «Кафе и рестораны» выше обычного на')!.id)).toBe('сверх обычного · Кафе и рестораны')
+    expect(labels.get(find(payload.facts, 'что раздуло «Кафе и рестораны»: «Restoran 7»')!.id)).toBe('Restoran 7 · Кафе и рестораны')
+  })
+
+  it('byFact: факт находки → её находка, факты сценария → находка сценария, у фактов v2 — нет (ревью frontend Н-2)', () => {
+    const { payload, findings, byFact } = build(withFinds(), 'month')
+    const owner = (about: string | RegExp) => byFact.get(find(payload.facts, about)!.id)
+    const of = (kind: string) => findings.find((f) => f.kind === kind)
+    expect(owner('частые траты у «APTEKA PLUS» — в месяц')).toBe(of('leak'))
+    expect(owner('частые траты у «APTEKA PLUS» — за год')).toBe(of('leak'))
+    expect(owner('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe(of('recurring'))
+    expect(owner('подписка «Кинопоиск» стала дороже: было')).toBe(of('pricier'))
+    expect(owner('подписка «Кинопоиск» стала дороже: стало')).toBe(of('pricier'))
+    expect(owner('списание «SPORT CLUB» прошло дважды одной суммой')).toBe(of('double'))
+    expect(owner(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toBe(of('recurring'))
+    expect(owner('доход месяца')).toBeUndefined()
+    expect(owner(/^главная мечта/)).toBeUndefined()
+  })
+
+  it('действия: «Сделать» первыми, «Открыть» — по одному на предмет, без дублей, ≤ 9, about без цифр; byAction — находка', () => {
+    const doc = withFinds()
+    const { payload, openById, byAction, findings } = build(doc)
+    const kinds = payload.actions.map((a) => a.kind)
+    expect(kinds.indexOf('open')).toBeGreaterThan(kinds.lastIndexOf('do'))
+    expect(payload.actions.length).toBeLessThanOrEqual(REVIEW_ACTIONS_MAX)
+    const opens = payload.actions.filter((a) => a.kind === 'open')
+    const targets = opens.map((a) => openById.get(a.id)!)
+    expect(new Set(targets.map((t) => `${t.kind}:${t.id}`)).size).toBe(targets.length)
+    expect(targets).toContainEqual({ kind: 'seller', id: 'apteka plus', name: 'APTEKA PLUS', categoryId: 'sc_health' })
+    expect(targets).toContainEqual({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })
+    expect(targets.some((t) => t.kind === 'goal')).toBe(true)
+    for (const a of opens) {
+      expect(a.value + a.effect).toBe('')
+      expect(digitsOutsideNames(a.about), a.about).toBe(false)
+      expect(a.about).toMatch(/^открыть (траты|покупки у|подписку|мечту|долг) «/)
+      expect(findings).toContain(byAction.get(a.id))
+    }
+    expect(opens.map((a) => a.about)).toContain('открыть покупки у «APTEKA PLUS»')
+    // Сценарий ведёт на мечту и стоит за находкой сценария.
+    const goal = opens.find((a) => openById.get(a.id)!.kind === 'goal')!
+    expect((byAction.get(goal.id) as { name: string }).name).toBe('FITNESS LAB 24')
+  })
+
+  it('без мечты — сценарий досрочкой: «процентов меньше» и «долг закроется раньше»; «Открыть» — долг', () => {
+    const doc = withFinds({ goals: [] })
+    const { payload, openById } = build(doc)
+    expect(find(payload.facts, /^если убрать «FITNESS LAB 24» — процентов банку меньше на$/)).toBeDefined()
+    expect(payload.actions.some((a) => openById.get(a.id)?.kind === 'credit')).toBe(true)
+  })
+
+  it('много находок — всего фактов ≤ 40, фактам v2 остаётся место; действий ≤ 9', () => {
+    const many = Array.from({ length: 12 }, (_, i) => rf('a', KEY, 'double', `club ${'abcdefghijkl'[i]}`, { name: `CLUB ${'ABCDEFGHIJKL'[i]}`, count: 2, amount: 3_000 + i }))
+    const { payload } = build(withFinds({ reviewFinds: [...FINDS, ...many] }), 'month')
+    expect(payload.facts.length).toBeLessThanOrEqual(REVIEW_FACTS_MAX)
+    expect(find(payload.facts, 'доход месяца')).toBeDefined()
+    expect(find(payload.facts, /^главная мечта/)).toBeDefined()
+    expect(payload.actions.length).toBe(REVIEW_ACTIONS_MAX)
+  })
+
+  it('сито: имена участников в названиях находок — «участник N»; длинные названия ≤ 40 в «»', () => {
+    const doc = withFinds({ reviewFinds: [...FINDS.slice(0, 2).map((f) => ({ ...f, name: `Аптека Ильяса ${'очень '.repeat(10)}` }))] })
+    const text = JSON.stringify(build(doc).payload)
+    expect(text).not.toContain('Ильяс')
+    // Название обрезано до 40 знаков с «…» (до замены имени).
+    expect(build(doc).payload.facts.some((f) => /«Аптека участник 1 очень[^»]*…»/.test(f.about))).toBe(true)
+  })
+
+  it('Х-2: продавец — коротким именем без города и страны: в фактах, в «Открыть» и в имени цели (раздел — как есть)', () => {
+    const doc = withFinds({ reviewFinds: FINDS.map((f) => (f.kind === 'leak' ? { ...f, name: 'APTEKA PLUS ASTANA Q. KZ' } : f)) })
+    const { payload, openById } = build(doc)
+    expect(find(payload.facts, 'частые траты у «APTEKA PLUS» — в месяц')).toBeDefined()
+    expect(JSON.stringify(payload)).not.toContain('ASTANA')
+    const open = payload.actions.find((a) => a.about === 'открыть покупки у «APTEKA PLUS»')!
+    expect(openById.get(open.id)).toEqual({ kind: 'seller', id: 'apteka plus', name: 'APTEKA PLUS', categoryId: 'sc_health' })
+  })
+
+  it('размер тела на семье с находками — ≤ 8 КБ', () => {
+    expect(JSON.stringify(build(withFinds(), 'month').payload).length).toBeLessThan(8 << 10)
+  })
+})
+
+describe('openPath — адреса «Открыть» (Р-18)', () => {
+  it('раздел, мечта, долг, платёж, продавец (с разделом и без)', () => {
+    expect(openPath({ kind: 'cat', id: 'sc_cafe', name: 'Кафе' })).toBe('/month?cat=sc_cafe')
+    expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' })).toBe('/goals/trip')
+    expect(openPath({ kind: 'credit', id: 'loan', name: 'Кредит' })).toBe('/money?credit=loan')
+    expect(openPath({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })).toBe('/money?obligation=kino')
+    expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA', categoryId: 'sc_health' })).toBe('/money/history?cat=sc_health')
+    expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA' })).toBe('/money/history')
+  })
+
+  it('RZ-13 (Х-9): раздел — лист месяца картинки: прошлый — `?month=&cat=`, текущий и без месяца — как было; прочим месяц не нужен', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
+    const cat = { kind: 'cat' as const, id: 'sc_cafe', name: 'Кафе' }
+    expect(openPath(cat, '2026-09')).toBe('/month?month=2026-09&cat=sc_cafe')
+    expect(openPath(cat, '2026-10')).toBe('/month?cat=sc_cafe')
+    expect(openPath(cat)).toBe('/month?cat=sc_cafe')
+    expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' }, '2026-09')).toBe('/goals/trip')
+    vi.useRealTimers()
   })
 })
 
 describe('factsLines — «что ушло» строками', () => {
-  it('about: value; шаги — с суммой и эффектом', () => {
+  it('v2: about: value; шаги — с суммой и эффектом', () => {
     const lines = factsLines({
       facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }],
       candidates: [{ id: 'c1', kind: 'move', about: 'из плана «Кафе» в мечту «Море»', value: '40 000 ₸', effect: 'на 2 недели раньше' }],
     })
     expect(lines).toEqual(['доход месяца: 1 200 000 ₸', 'шаг — из плана «Кафе» в мечту «Море»: 40 000 ₸ · на 2 недели раньше'])
+  })
+
+  it('v3: факты, шаги и «открыть — …»', () => {
+    const lines = factsLines({
+      v: 3,
+      facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }],
+      actions: [
+        { id: 'a1', kind: 'do', about: 'из остатка месяца в подушку', value: '40 000 ₸', effect: '' },
+        { id: 'a2', kind: 'open', about: 'открыть траты «Кафе»', value: '', effect: '' },
+      ],
+    })
+    expect(lines).toEqual(['доход месяца: 1 200 000 ₸', 'шаг — из остатка месяца в подушку: 40 000 ₸', 'открыть — траты «Кафе»'])
   })
 })

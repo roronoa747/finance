@@ -20,7 +20,8 @@ import {
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacedByStatement } from '@/lib/statements/phone'
-import type { HabitTotal, MerchantRule, Operation, ParsedStatement, SpendTotal } from '@/lib/statements/types'
+import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
+import type { HabitTotal, MerchantRule, Operation, ParsedStatement, ReviewFind, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
 import type { Goal, PersonId, TripSpend } from '@/types/finance'
 
@@ -420,7 +421,9 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
-    writeHabitTotals(periods.filter((p) => p.kind === 'month').map((p) => p.period))
+    const months = periods.filter((p) => p.kind === 'month').map((p) => p.period)
+    writeHabitTotals(months)
+    writeReviewFinds(months)
     if (!writes.length) return
     finance.mutateHouseholdDoc((doc) => {
       const merged = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
@@ -459,6 +462,60 @@ export const useOperationsStore = defineStore('operations', () => {
       for (const t of writes) merged.set(t.id, t)
       doc.habitTotals = [...merged.values()]
     })
+  }
+
+  /**
+   * Итоги находок участника (бэклог «Разбор», Р-13, RZ-01) — по схеме итогов привычек: те же месяцы, из всех своих
+   * операций; пропавшая находка обнуляется, месяцы старше окна — надгробия, тот же итог второй раз не пишется. Правила —
+   * личный документ, обязательства и кредиты — общий, курсы — книга (как `amountAt` в сторе).
+   */
+  function writeReviewFinds(months: string[]) {
+    if (!months.length) return
+    const by = me()
+    const at = new Date().toISOString()
+    const list = finance.householdDoc.reviewFinds ?? []
+    const mine = list.filter((t) => t.by === by && !t.deletedAt)
+    const from = findKeepFrom([...mine.map((t) => t.period), ...months])!
+    const byId = new Map(list.map((t) => [t.id, t]))
+    const ctx = {
+      rules: finance.merchantRules,
+      obligations: finance.obligations,
+      credits: finance.credits,
+      book: useFxStore().book,
+      categories: finance.householdDoc.spendCategories ?? [],
+    }
+    const writes: ReviewFind[] = []
+    for (const period of months.filter((m) => m >= from)) {
+      const next = reviewFinds(all.value, by, period, ctx, at)
+      const ids = new Set(next.map((t) => t.id))
+      for (const t of mine) if (t.period === period && !ids.has(t.id) && (t.count || t.amount)) writes.push({ ...t, count: 0, amount: 0, updatedAt: at })
+      for (const t of next) if (!sameFind(byId.get(t.id), t)) writes.push(t)
+    }
+    for (const t of mine) if (t.period < from) writes.push({ ...t, count: 0, amount: 0, deletedAt: at, updatedAt: at })
+    if (!writes.length) return
+    finance.mutateHouseholdDoc((doc) => {
+      const merged = new Map((doc.reviewFinds ?? []).map((t) => [t.id, t]))
+      for (const t of writes) merged.set(t.id, t)
+      doc.reviewFinds = [...merged.values()]
+    })
+  }
+
+  /**
+   * Месяцы своих операций в окне находок, по которым у участника нет ни одной записи, — досчитываются из всех своих
+   * операций (хотфикс RZ-HF3): итоги находок пишет только пересчёт итогов (загрузка, отметки, правки), стартовый `pull`
+   * — нет, а выписки владельца загружены до Блока 1 → у семьи ни утечек, ни верхушек, ни регулярных за закрытые месяцы
+   * (наблюдатели отметок берут лишь этот и прошлый месяц). Зовёт движок синка после подтянутого документа — правила,
+   * обязательства и разделы уже свежие; до `pull` операций на новом телефоне — нечего считать. Месяц с записью (хоть
+   * нулевой) считан — не трогаем; месяц без находок записи не получает и проверяется снова (пусто — дёшево).
+   */
+  function settleFinds() {
+    if (auth.isViewer || demo.value || !all.value.length) return
+    const by = me()
+    const months = [...new Set(all.value.map((o) => o.date.slice(0, 7)))]
+    const from = findKeepFrom(months)!
+    const have = new Set((finance.householdDoc.reviewFinds ?? []).filter((f) => f.by === by).map((f) => f.period))
+    const missing = months.filter((m) => m >= from && !have.has(m))
+    if (missing.length) writeReviewFinds(missing)
   }
 
   /** Снятые с поездки операции этого телефона (личный документ) — по цели. */
@@ -904,6 +961,7 @@ export const useOperationsStore = defineStore('operations', () => {
     seedDemoUploads,
     seedDemoOperations,
     writeTripTotals,
+    settleFinds,
     tripLists,
     clear,
   }

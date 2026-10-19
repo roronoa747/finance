@@ -5,37 +5,81 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFxStore } from '@/stores/fx'
 import { seedSpendCategories } from '@/lib/statements/model'
 import { addMonths, monthKey, weekKey, weekRange } from '@/lib/dates'
-import { monthPlan, planSave, termSnapOf } from '@/lib/finance'
+import { monthPlan, planSave, reviewWork, termSnapOf, type ReviewFinding } from '@/lib/finance'
 import { templateById, templateCredit } from '@/lib/goalTemplates'
 import { DEMO_PHOTO } from '@/lib/photos/store'
-import type { Operation, SpendTotal } from '@/lib/statements/types'
+import type { Operation, ReviewFind, SpendTotal } from '@/lib/statements/types'
 import { buildReviewFacts, type PlanInput } from '@/lib/aiFacts'
-import type { AiReview, SyncDoc } from '@/types/finance'
+import type { AiAdvice, AiReview, SyncDoc } from '@/types/finance'
 
 /**
- * Разбор месяца демо-семьи v2 (бэклог «ИИ-польза», Р-13, AU-14): заранее написанный, без запроса — в демо «Разобрать»
- * показывает его с пометкой «Пример». Хорошо · Риск · Шаг через мечту демо (поездка), **без цифр** — как живой разбор v2,
- * где цифры подставляет сервер; слова верны в любой день месяца (тест `demo.review.test.ts` сверяет на разных датах).
- * Шаг — «Сделать» с кандидатом демо-семьи `cushion` (подушки почти нет). Черновик слов — финал `/ux` с владельцем.
+ * Разбор месяца демо-семьи v3 (бэклог «Разбор», Р-12, RZ-09; v2 — «ИИ-польза», AU-14): заранее написанный, без запроса —
+ * в демо отчёт показывает его с пометкой «Пример». Слова **без цифр** — цифры только в крупной цифре совета (`figure` —
+ * готовый факт кода); слова верны в любой день месяца (`demo.review.test.ts` сверяет на разных датах). Советы: утечка
+ * «Магазин у дома» и новая подписка — «Открыть» покупки продавца; подушка — «Сделать» с кандидатом `cushion`. Где —
+ * какой факт и какое действие, ищется по `about` фактов и действий демо (`buildReviewFacts`). Черновик слов — финал
+ * `/ux` с владельцем.
  */
 export const DEMO_REVIEW = {
-  good: 'Копим на поездку в Японию каждый месяц.',
-  risk: 'Подушки почти нет — неожиданный расход ударит по поездке.',
-  step: 'Отложим остаток месяца в подушку',
-}
+  where: 'Мелкие покупки у дома за год складываются в заметную часть поездки.',
+  advices: [
+    {
+      title: 'Магазин у дома',
+      text: 'Частые мелкие покупки у дома за год — заметная часть поездки в Японию.',
+      figure: 'частые траты у «Магазин у дома» — за год',
+      action: 'открыть покупки у «Магазин у дома»',
+    },
+    {
+      title: 'Новое списание',
+      text: 'Появилась подписка, которой нет в плане, — проверьте, нужна ли она.',
+      figure: 'новое регулярное списание «Онлайн-кинотеатр», которого нет в плане — в месяц',
+      action: 'открыть покупки у «Онлайн-кинотеатр»',
+    },
+    { title: 'Отложить в подушку', text: 'Подушки почти нет — остаток месяца лучше отложить в неё.', figure: null, action: 'из остатка месяца в подушку' },
+  ],
+} as const
 
 /**
- * Разбор демо в форме v2: заготовка, кандидат «Сделать» — `cushion` из кандидатов кода демо-семьи (его нет — шаг без
- * кнопки), «что ушло» — факты демо (`buildReviewFacts`). В документ не пишется. Строится по документу без сдвигов этого
- * месяца — как разбор, сохранённый до «Сделать»: после подтверждения кандидат не пропадает, у шага — «✓ Сделано».
+ * Разбор демо v3: заготовка, факты и действия — демо-семьи (`buildReviewFacts`, «что ушло» — они же), крупная цифра —
+ * факт по `about`, кнопка — действие по `about` (нет действия — совета нет, Р-6), счётчик — `reviewWork` по находкам
+ * советов. В документ не пишется. Строится по документу без сдвигов этого месяца — как разбор, сохранённый до
+ * «Сделать»: после подтверждения кандидат не пропадает, у совета — «✓ Сделано».
  */
 export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' | 'month' | 'at' | 'by' | 'updatedAt'> {
   const key = input.ctx.key
   const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
   const before = { ...doc, planShifts }
-  const { payload, byId } = buildReviewFacts(before, { state: { ...input.state, planShifts }, ctx: input.ctx }, 'month')
-  const candidate = [...byId.values()].find((c) => c.kind === 'cushion') ?? null
-  return { v: 2, reason: 'month', good: DEMO_REVIEW.good, risk: DEMO_REVIEW.risk, steps: [], step: { text: DEMO_REVIEW.step, candidate }, sent: payload }
+  const state = { ...input.state, planShifts }
+  const { payload, doById, openById, findings, byFact, byAction, labels } = buildReviewFacts(before, { state, ctx: input.ctx }, 'month')
+  const advices: AiAdvice[] = []
+  const used: ReviewFinding[] = []
+  for (const a of DEMO_REVIEW.advices) {
+    const act = payload.actions.find((x) => x.about === a.action)
+    const candidate = act && doById.get(act.id)
+    const target = act && openById.get(act.id)
+    if (!act || (!candidate && !target)) continue
+    const fact = a.figure ? payload.facts.find((f) => f.about === a.figure) : undefined
+    const label = fact ? labels.get(fact.id) : undefined
+    advices.push({
+      title: a.title,
+      text: a.text,
+      figure: fact ? { about: fact.about, value: fact.value, ...(label ? { label } : {}) } : null,
+      action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
+    })
+    const finding = (fact ? byFact.get(fact.id) : undefined) ?? byAction.get(act.id)
+    if (finding) used.push(finding)
+  }
+  return {
+    v: 3,
+    reason: 'month',
+    good: '',
+    risk: '',
+    steps: [],
+    where: DEMO_REVIEW.where,
+    advices,
+    work: reviewWork(state, input.ctx, findings, used),
+    sent: payload,
+  }
 }
 
 /** День `ago` суток назад — как у демо-операций (`day` ниже): даты поездки и операции совпадают. */
@@ -381,6 +425,22 @@ export function startDemo(): boolean {
       const period = addMonths(month, n)
       return { id: `b:${period}:delivery`, by: 'b' as const, period, habit: 'delivery' as const, count: 4, amount, updatedAt: at }
     })
+    // Итоги находок b для разбора v3 (бэклог «Разбор», RZ-09) — руками, как её итоги разделов (свои находки a телефон
+    // пишет сам из демо-операций и обнулил бы чужие руками): утечка «Магазин у дома» три закрытых месяца (9 покупок
+    // ≈ 2 300 ₸ — ≈ 250 000 ₸ в год, ≈ 12 % поездки), новая подписка «Онлайн-кинотеатр» и две крупные покупки «Кафе» — за
+    // этот и прошлый месяц: месяц находок (`findMonth`) в первые дни — прошлый.
+    const find = (period: string, kind: ReviewFind['kind'], key: string, rest: Omit<ReviewFind, 'id' | 'by' | 'period' | 'kind' | 'updatedAt'>): ReviewFind => ({
+      id: `b:${period}:${kind}:${key}`, by: 'b', period, kind, updatedAt: at, ...rest,
+    })
+    doc.reviewFinds = [
+      ...([[-3, 20_700], [-2, 20_400], [-1, 21_000]] as const).map(([n, amount]) =>
+        find(addMonths(month, n), 'leak', 'магазин у дома', { name: 'Магазин у дома', categoryId: 'sc_food', count: 9, amount }),
+      ),
+      ...[addMonths(month, -1), month].flatMap((p) => [
+        find(p, 'recurring', 'онлайн-кинотеатр', { name: 'Онлайн-кинотеатр', categoryId: 'sc_subscriptions', count: 2, amount: 2_490 }),
+        find(p, 'top', 'sc_cafe', { name: '', categoryId: 'sc_cafe', count: 5, amount: 95_000, top: [{ name: 'Ресторан', amount: 38_000 }, { name: 'Доставка', amount: 12_500 }] }),
+      ]),
+    ]
     doc.spendTotals = [
       ...past,
       total('week', prevWeek, 'sc_food', 24_000, 5),

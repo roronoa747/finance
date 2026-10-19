@@ -19,7 +19,8 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * «›»): не только 1-го, а весь месяц, пока своя зарплата прошлого месяца не разложена.
  * (б) — расхождение приёмки, закрыто возвратом AU-33: пока точка нового разбора есть, «Месяц» ведёт в этот месяц.
  */
-const ANSWER = { good: 'Копим на «Машину».', risk: 'Подушки мало.', step: { text: 'Отложим в подушку', candidate: 'c1' as string | null } }
+/** Ответ ручки v3 (RZ-05): совет «Сделать» на первое действие семьи (`a1`). */
+const ANSWER = { where: 'Копим на «Машину».', advices: [{ title: 'Отложим в подушку', text: 'Подушки мало.', figure: null as string | null, action: 'a1' }] }
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
 /** Сентябрьская зарплата a пришла в евро («Пришла», ручная валютная) и не разложена — `salaryToAllocate` → сентябрь. */
 const septSalary: Payment = {
@@ -51,7 +52,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     at('2026-10-01T04:00:00Z')
     server = fakeServer(familyDoc())
     pv = fakePrivate()
-    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 2 } } })
+    pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
     aiReview = vi.fn(async (_body: unknown) => ANSWER)
   })
 
@@ -120,20 +121,27 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
 
   /**
    * Повторная приёмка (2026-10-17), п. 2 возврата AU-33 на стенде: телефон закрыли, пока ответ Claude не пришёл
-   * (5–11 с, до 55 с с повтором). Ответ оплачен, но в документ не попал. Перезапуск в тот же день — без нового
-   * запроса (попытка записана до запроса), назавтра — повод снова.
+   * (5–11 с, до 55 с с повтором). Ответ оплачен, но в документ не попал. До RZ-HF2 перезапуск в тот же день не платил
+   * (попытка записана до запроса) — владелец 2026-10-18 так остался без разбора на сутки. Теперь: в окне ответа (90 с)
+   * перезапуск молчит (запрос, возможно, ещё идёт), позже — попытка без исхода повторяется один раз, разбор приходит;
+   * назавтра повод закрыт документом — не платим.
    */
-  it('(г) закрыли телефон посреди запроса — в тот же день перезапуск не платит, назавтра — снова', async () => {
+  it('(г) закрыли телефон посреди запроса — в окне ответа перезапуск молчит, позже повтор один раз; назавтра — 0', async () => {
     aiReview = vi.fn(() => new Promise<typeof ANSWER>(() => {}))
     const one = await member({ waitReview: false })
     await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     expect(one.store.aiReviewOf('2026-10')).toBeFalsy()
 
     aiReview = vi.fn(async (_body: unknown) => ANSWER)
+    at('2026-10-01T04:01:00Z')
+    const soon = await member()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(soon.store.aiReviewOf('2026-10')).toBeFalsy()
+
     at('2026-10-01T13:00:00Z')
     const again = await member()
-    expect(aiReview).not.toHaveBeenCalled()
-    expect(again.store.aiReviewOf('2026-10')).toBeFalsy()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(again.store.aiReviewOf('2026-10')).toBeTruthy()
 
     at('2026-10-02T05:00:00Z')
     const tomorrow = await member()

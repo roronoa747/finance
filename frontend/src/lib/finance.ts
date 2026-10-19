@@ -1,16 +1,17 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove } from '@/types/finance'
+import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
-import type { HabitId, HabitTotal, Operation, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
 import { templateById } from '@/lib/goalTemplates'
 import { DEFAULT_SPEND_CATEGORIES, RK_GROUP_BY_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere, type RkGroup } from '@/lib/statements/dictionary'
-import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
+import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthBy, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
+import { maskNames } from '@/lib/aiSummary'
 /**
  * Расчётное ядро. Чистые функции: ни сети, ни состояния, ни ИИ.
  *
@@ -18,6 +19,10 @@ import { plural } from '@/lib/utils'
  * получает готовые результаты и только объясняет их словами — модель,
  * которой позволили считать аннуитет самой, ошибается, а ошибка в деньгах
  * стоит доверия ко всему приложению.
+ *
+ * Находки разбора (бэклог «Разбор», RZ-02) — тоже здесь: телефон пишет итоги находок участника
+ * (`lib/statements/finds.ts`), а находки семьи, цену в год, образы, сценарий и счётчик считает
+ * `reviewFindings` и соседи по документу; модель их только выбирает и объясняет.
  */
 
 /** Ежемесячная ставка из годовой. */
@@ -3240,6 +3245,8 @@ export type MonthPlanState = {
   book?: RateBook | null
   fxExchanges?: FxExchange[]
   planShifts?: PlanShift[]
+  /** Итоги находок участников (RZ-01) — вход `reviewFindings`. */
+  reviewFinds?: ReviewFind[]
 }
 
 export type MonthPlanCtx = {
@@ -4179,6 +4186,14 @@ export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup
   if (total <= 0) return null
   const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + t.amount, 0)
   return Math.round((part * 100) / total)
+}
+
+/**
+ * «План каждого» листа раздела (Р-81): строка раздела в `monthPlan().spend` каждого участника; у кого плана нет — 0.
+ * Один расчёт для листа «Месяца» и листа сводки прошлого месяца (RZ-13).
+ */
+export function spendPlansBy(plan: MonthPlan, people: { id: PersonId; name: string }[], categoryId: string): { by: PersonId; name: string; amount: number }[] {
+  return people.map((p) => ({ by: p.id, name: p.name, amount: plan.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === categoryId)?.plan ?? 0 }))
 }
 
 /** «на 5 дней» / «на 3 недели» / «на 2 месяца» раньше — подпись `days` рекомендации: < 14 — дни, < 61 — недели, дальше — месяцы. */
@@ -5655,7 +5670,7 @@ type ImageState = {
 }
 
 /** Мерка справочника — самая дорогая, что по карману сумме `amount`; дешевле суммы нет — null. */
-function measureFor(amount: number): ImagePrice | null {
+export function measureFor(amount: number): ImagePrice | null {
   const fit = MEASURES.map((id) => PRICES[id]).filter((p) => p.price <= amount).sort((a, b) => b.price - a.price)[0]
   return fit ? { from: 'ref', id: fit.id, name: fit.name, price: fit.price } : null
 }
@@ -5667,7 +5682,7 @@ export function coffeeCupCost(): number {
 }
 
 /** На сколько дней раньше соберём мечту при темпе +`amount` в месяц — рекомендация «Трат» (AU-01) и перенос образа (AU-29). */
-function earlierDays(goal: Goal, key: string, amount: number): number | null {
+export function earlierDays(goal: Goal, key: string, amount: number): number | null {
   const pace = goalPace(goal, key)
   const remaining = goalRemaining(goal)
   return pace > 0 && remaining > 0 && amount > 0 ? Math.round((remaining / pace - remaining / (pace + amount)) * 30.4) : null
@@ -5815,4 +5830,306 @@ export function imageMath(image: HabitImage | InterestImage): ImageMath {
   const a = image.action
   if (a?.kind === 'move') lines.push(`в мечту — ${IMAGE_MOVE_SHARE[image.habit]} % привычки: ${money(a.amount)} в месяц`)
   return out(lines)
+}
+
+/* ---------------- находки разбора v3 (бэклог «Разбор», Р-5, Р-13, Р-14, Р-19, Р-20, RZ-02) ---------------- */
+
+/** Находок семьи в разборе — не больше (Р-14). */
+export const REVIEW_FINDINGS_MAX = 12
+/** Утечек семьи — не больше; продавец — с утечкой в ≥ 2 из 3 закрытых месяцев (Р-14). */
+const LEAKS_MAX = 5
+const LEAK_MONTHS = 3
+const LEAK_MIN_MONTHS = 2
+/** «Чаще»: операций раздела ≥ ×1,3 среднего по месяцам «обычно» (в десятых — без дробей). */
+const OFTEN_TENTHS = 13
+/**
+ * Месяц находок — текущий, когда выписка хоть у кого-то дошла до 7-го числа; иначе прошлый: разбор 1-го числа говорит о
+ * закрытом месяце, а не о дне нового (уточнение исполнителя RZ-02, Handoff).
+ */
+const FIND_MONTH_MIN_DAY = 7
+
+/** Образ находки: доля главной мечты за год или мерка справочника (`measureFor`). */
+export type FindImage = { kind: 'dream'; goalId: string; name: string; share: number } | { kind: 'measure'; name: string; price: number }
+
+/**
+ * Находка семьи (Р-5): всё в целых тенге; `yearly` — цена в год по формулам Р-19; у «раздуло» — прирост месяца без × 12
+ * (разовый рост не повторяется каждый месяц; владелец 2026-10-18, `memory/decisions/rz-grew-yearly.md`).
+ */
+export type ReviewFinding =
+  | { kind: 'leak'; key: string; name: string; categoryId: string | null; monthly: number; count: number; months: number; yearly: number; image: FindImage | null }
+  | {
+      kind: 'grew'
+      categoryId: string
+      name: string
+      amount: number
+      usual: number
+      growth: number
+      yearly: number
+      why: { kind: 'purchases'; items: { name: string; amount: number }[] } | { kind: 'often'; count: number; usualCount: number }
+    }
+  | { kind: 'recurring'; key: string; name: string; categoryId: string | null; amount: number; count: number; yearly: number }
+  | { kind: 'pricier'; key: string; name: string; obligationId: string; amount: number; was: number; yearly: number }
+  | { kind: 'double'; key: string; name: string; categoryId: string | null; amount: number; count: number; yearly: number }
+
+/** Ключ находки участника — продавец или раздел после `участник:месяц:вид:`. */
+export const findKey = (f: Pick<ReviewFind, 'id' | 'by' | 'period' | 'kind'>) => f.id.slice(f.by.length + f.period.length + f.kind.length + 3)
+
+/** Месяц, о котором находки разбора месяца `ctx.key` (`FIND_MONTH_MIN_DAY`). */
+export function findMonth(ctx: Pick<MonthPlanCtx, 'key' | 'uploads'>): string {
+  const from = `${ctx.key}-01`
+  const day = `${ctx.key}-${String(FIND_MONTH_MIN_DAY).padStart(2, '0')}`
+  return ctx.uploads.some((u) => u.period_from.slice(0, 10) <= day && u.period_to.slice(0, 10) >= day && u.period_to.slice(0, 10) >= from)
+    ? ctx.key
+    : addMonths(ctx.key, -1)
+}
+
+/** Живые итоги находок живых участников с суммой. */
+const liveFinds = (state: MonthPlanState) => {
+  const people = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+  return (state.reviewFinds ?? []).filter((f) => !f.deletedAt && people.has(f.by) && f.count > 0 && f.amount > 0)
+}
+
+/** Самая крупная по `pick` запись на ключ (продавец двух участников — одна находка). */
+function bestBy<T>(list: T[], key: (x: T) => string, pick: (x: T) => number): T[] {
+  const out = new Map<string, T>()
+  for (const x of list) {
+    const prev = out.get(key(x))
+    if (!prev || pick(x) > pick(prev)) out.set(key(x), x)
+  }
+  return [...out.values()]
+}
+
+/**
+ * Находки семьи (Р-5, Р-14) по итогам участников в документе: утечки — по 3 закрытым месяцам до `ctx.key`; «что
+ * раздуло», новые и подорожавшие списания, двойные — за месяц находок (`findMonth`). Все вместе — до 12: «раздуло» по
+ * приросту, затем остальные по цене в год.
+ */
+export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): ReviewFinding[] {
+  const finds = liveFinds(state)
+  const people = (state.people ?? []).filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+  const main = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
+  const dream = main && main.need > 0 ? main : null
+
+  // Утечки: продавец с записью в ≥ 2 из 3 закрытых месяцев; среднее по месяцам с записью.
+  const closed = Array.from({ length: LEAK_MONTHS }, (_, i) => addMonths(ctx.key, -(i + 1)))
+  const leakGroups = new Map<string, ReviewFind[]>()
+  for (const f of finds) {
+    if (f.kind !== 'leak' || !closed.includes(f.period)) continue
+    const k = findKey(f)
+    leakGroups.set(k, [...(leakGroups.get(k) ?? []), f])
+  }
+  const leaks: ReviewFinding[] = []
+  for (const [key, list] of leakGroups) {
+    const months = new Set(list.map((f) => f.period)).size
+    if (months < LEAK_MIN_MONTHS) continue
+    const monthly = Math.round(list.reduce((s, f) => s + f.amount, 0) / months)
+    const count = Math.round(list.reduce((s, f) => s + f.count, 0) / months)
+    const yearly = monthly * 12
+    const last = list.reduce((a, b) => (b.period > a.period ? b : a))
+    const measure = dream ? null : measureFor(yearly)
+    const image: FindImage | null = dream
+      ? { kind: 'dream', goalId: dream.id, name: dream.name, share: Math.round((yearly * 100) / dream.need) }
+      : measure
+        ? { kind: 'measure', name: measure.name, price: measure.price }
+        : null
+    leaks.push({ kind: 'leak', key, name: last.name, categoryId: last.categoryId, monthly, count, months, yearly, image })
+  }
+  leaks.sort((a, b) => b.yearly - a.yearly)
+
+  // «Что раздуло»: раздел выше обычного и почему — 1–2 крупные покупки или частота; без причины — не находка (Р-1).
+  const month = findMonth(ctx)
+  const mctx = { ...ctx, key: month }
+  const grew: Extract<ReviewFinding, { kind: 'grew' }>[] = []
+  const usualOf = usualMonths(people, ctx.totals, ctx.uploads, month)
+  const opsOf = (categoryId: string, period: string) =>
+    ctx.totals
+      .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === period && t.categoryId === categoryId && people.some((p) => p.id === t.by))
+      .reduce((s, t) => s + t.ops, 0)
+  for (const r of spendCompare(state, mctx).rows) {
+    if (!r.over || SPEND_LAST.includes(r.categoryId) || r.amount === null || r.usual === null) continue
+    const growth = r.amount - r.usual
+    const items = finds
+      .filter((f) => f.kind === 'top' && f.period === month && f.categoryId === r.categoryId)
+      .flatMap((f) => f.top ?? [])
+      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name))
+    const picked = items.slice(0, items[0] && items[0].amount * 2 >= growth ? 1 : 2)
+    let why: Extract<ReviewFinding, { kind: 'grew' }>['why'] | null = null
+    if (picked.length && picked.reduce((s, i) => s + i.amount, 0) * 2 >= growth) why = { kind: 'purchases', items: picked }
+    else if (usualOf.length) {
+      const count = opsOf(r.categoryId, month)
+      const usualCount = Math.round(usualOf.reduce((s, m) => s + opsOf(r.categoryId, m), 0) / usualOf.length)
+      if (usualCount > 0 && count * 10 >= usualCount * OFTEN_TENTHS) why = { kind: 'often', count, usualCount }
+    }
+    if (why) grew.push({ kind: 'grew', categoryId: r.categoryId, name: spendCategoryName(named, r.categoryId), amount: r.amount, usual: r.usual, growth, yearly: growth, why })
+  }
+  grew.sort((a, b) => b.growth - a.growth)
+
+  // Списания месяца находок: по продавцу одна (большая сумма); новое регулярное того же продавца, что в плане, — мимо.
+  const obligations = (state.obligations ?? []).filter(alive)
+  const planned = new Set([...obligations, ...(state.credits ?? []).filter(alive)].map((x) => normalizeMerchant(x.name)))
+  const dues: ReviewFinding[] = []
+  const ofMonth = (kind: ReviewFind['kind']) =>
+    bestBy(
+      finds.filter((f) => f.kind === kind && f.period === month),
+      findKey,
+      (f) => f.amount,
+    )
+  for (const f of ofMonth('recurring')) {
+    const key = findKey(f)
+    if (planned.has(key) || planned.has(normalizeMerchant(f.name))) continue
+    dues.push({ kind: 'recurring', key, name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, yearly: f.amount * 12 })
+  }
+  for (const f of ofMonth('pricier')) {
+    const o = obligations.find((x) => x.id === f.targetId)
+    // Оценка («сумма плавает») — не цена: и запись телефона, который ещё не знает, что платёж стал оценкой.
+    if (!o || o.estimate || f.was === undefined || f.amount <= f.was) continue
+    dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, yearly: (f.amount - f.was) * (o.every === 'year' ? 1 : 12) })
+  }
+  for (const f of ofMonth('double')) {
+    if (f.count < 2) continue
+    dues.push({ kind: 'double', key: findKey(f), name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, yearly: f.amount * (f.count - 1) * 12 })
+  }
+
+  const rest = [...leaks.slice(0, LEAKS_MAX), ...dues].sort((a, b) => b.yearly - a.yearly)
+  return [...grew, ...rest].slice(0, REVIEW_FINDINGS_MAX)
+}
+
+/** Сценарий «если… — мечта раньше» (Р-5 (4)): мечта — на сколько дней раньше; иначе долг — на сколько месяцев и процентов. */
+export type ReviewScenario =
+  | { finding: ReviewFinding; monthly: number; days: number; goalId: string; goalName: string }
+  | { finding: ReviewFinding; monthly: number; months: number; saved: number; creditId: string; creditName: string }
+
+/** Разделы, трату которых «убрать» нельзя — платёж кредита, аренда, коммуналка: сценария по ним нет (замер RZ-06). */
+const SCENARIO_NOT: readonly string[] = ['sc_credit', 'sc_rent', 'sc_utilities']
+
+/**
+ * Сценарий по находке с наибольшей ценой в год среди утечек, новых и двойных списаний (кроме кредитов, аренды и
+ * коммуналки): `monthly = yearly / 12` в главную мечту с темпом (`earlierDays`), иначе досрочкой в самый дорогой
+ * процентный долг (`prepayOutcome`); иначе null.
+ */
+export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, findings: ReviewFinding[]): ReviewScenario | null {
+  const finding = findings
+    .filter((f) => (f.kind === 'leak' || f.kind === 'recurring' || f.kind === 'double') && !(f.categoryId && SCENARIO_NOT.includes(f.categoryId)))
+    .sort((a, b) => b.yearly - a.yearly)[0]
+  if (!finding) return null
+  const monthly = Math.round(finding.yearly / 12)
+  const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
+  const days = goal ? earlierDays(goal, ctx.key, monthly) : null
+  if (goal && days && days > 0) return { finding, monthly, days, goalId: goal.id, goalName: goal.name }
+  const credit = costliestCredits(state.credits ?? [])[0]
+  const out = credit ? prepayOutcome(credit, monthly, 'monthly') : null
+  if (credit && out && (out.monthsSaved > 0 || out.saved > 0)) {
+    return { finding, monthly, months: out.monthsSaved, saved: out.saved, creditId: credit.id, creditName: credit.name }
+  }
+  return null
+}
+
+/**
+ * Счётчик работы ИИ (Р-8, Р-19): `ops` — операций всех участников за `ctx.key` и до 3 месяцев «обычно»; `found` — находок
+ * семьи; `yearly` — сумма цен в год у находок советов (`used`, каждая один раз).
+ */
+export function reviewWork(
+  state: MonthPlanState,
+  ctx: MonthPlanCtx,
+  findings: ReviewFinding[],
+  used: ReviewFinding[] = findings,
+): { ops: number; found: number; yearly: number } {
+  const people = (state.people ?? []).filter(alive)
+  const months = new Set([ctx.key, ...usualMonths(people, ctx.totals, ctx.uploads, ctx.key, 3)])
+  const ops = ctx.totals
+    .filter((t) => !t.deletedAt && t.kind === 'month' && months.has(t.period) && people.some((p) => p.id === t.by))
+    .reduce((s, t) => s + t.ops, 0)
+  return { ops, found: findings.length, yearly: [...new Set(used)].reduce((s, f) => s + f.yearly, 0) }
+}
+
+/**
+ * Строка «Куда ушло» (Р-4): раздел, факт, «обычно», план, доля полосы 0…1 от самой длинной полосы картинки, места рисок
+ * «обычно» и плана на той же шкале (`usualShare`, `planShare`; нет числа или 0 — null) и `over` — выше обычного по тому же
+ * порогу, что точка раздела на «Месяце» (`spendCompare`; полоса — `--warn`, RZ-08).
+ */
+export type WhereRow = {
+  categoryId: string
+  name: string
+  amount: number
+  usual: number | null
+  plan: number | null
+  share: number
+  usualShare: number | null
+  planShare: number | null
+  over: boolean
+}
+
+/**
+ * «Куда ушло» (Р-4) за месяц находок (`findMonth`): разделы `spendCompare` с фактом, без переводов людям и наличных, по
+ * убыванию факта — до `n`; `share` — доля полосы от наибольшего из фактов, «обычно» и планов всех строк (геометрия, не
+ * деньги). Текста нет — его пишет модель.
+ */
+export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): WhereRow[] {
+  const rows = spendCompare(state, { ...ctx, key: findMonth(ctx) })
+    .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
+    .sort((a, b) => b.amount! - a.amount! || a.categoryId.localeCompare(b.categoryId))
+  const max = Math.max(0, ...rows.flatMap((r) => [r.amount!, r.usual ?? 0, r.plan ?? 0]))
+  const at = (v: number | null) => (v === null || max <= 0 ? null : v / max)
+  return rows.slice(0, n).map((r) => ({
+    categoryId: r.categoryId,
+    name: r.name,
+    amount: r.amount!,
+    usual: r.usual,
+    plan: r.plan,
+    share: at(r.amount)!,
+    // «Обычно» 0 (раздел новый) и план 0 — без риски: у левого края она читалась сбоем (`/ux` Блока 2).
+    usualShare: r.usual ? at(r.usual) : null,
+    planShare: r.plan ? at(r.plan) : null,
+    over: r.over,
+  }))
+}
+
+/** Итог прошлого месяца (Р-10, Р-20): советы «Сделать» — сделан / нет, разделы советов к «обычно», срок главной мечты. */
+export type ReviewOutcome = {
+  done: { title: string; done: boolean }[]
+  sections: { categoryId: string; name: string; amount: number; usual: number | null }[]
+  /** `was` / `now` — строки от одного месяца «сейчас»; `wasMonth` / `nowMonth` — ключи `YYYY-MM` для сравнения. */
+  dream: { name: string; was: string; now: string | null; wasMonth: string; nowMonth: string | null } | null
+}
+
+/**
+ * Итог прошлого месяца по его разбору v3 (Р-20): «Сделать» — `shiftMade` за тот месяц; разделы советов «Открыть»
+ * (`cat`) — траты того месяца (`monthSpendByCategory`) и «обычно» на сегодня (`usualSpend`); главная мечта — срок из
+ * присланного тогда факта «главная мечта … — срок» (`raw`) и сейчас (`goalTerm`), оба — от `ctx.key` (разбор декабря →
+ * итог января: тот же срок — одна строка). Имя мечты в факте прошло `nm` (без «») и `maskNames` — сверка тем же путём.
+ * Нет v3-разбора прошлого месяца — null.
+ */
+export function reviewOutcome(state: MonthPlanState, ctx: MonthPlanCtx, prev: AiReview | null): ReviewOutcome | null {
+  if (!prev || prev.v !== 3 || prev.month !== addMonths(ctx.key, -1)) return null
+  const advices = prev.advices ?? []
+  const done = advices.flatMap((a) =>
+    a.action.kind === 'do' ? [{ title: a.title, done: shiftMade(state.planShifts ?? [], { ...a.action.candidate.shift, period: prev.month }) }] : [],
+  )
+  const people = (state.people ?? []).filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+  const spent = monthSpendByCategory(people, ctx.totals, ctx.spendCategories, prev.month, ctx.uploads).rows
+  const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, ctx.key)
+  const cats = [...new Set(advices.flatMap((a) => (a.action.kind === 'open' && a.action.target.kind === 'cat' ? [a.action.target.id] : [])))]
+  const sections = cats.map((id) => ({
+    categoryId: id,
+    name: spendCategoryName(named, id),
+    amount: spent.find((r) => r.categoryId === id)?.amount ?? 0,
+    usual: usual ? usual.amounts.get(id) ?? 0 : null,
+  }))
+  const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
+  const sent = prev.sent && 'facts' in prev.sent ? prev.sent.facts : []
+  const asSent = goal ? maskNames(goal.name.replace(/[«»]/g, '').trim(), state.people ?? []).slice(0, 30) : ''
+  const was = goal
+    ? sent.find((f) => f.about.startsWith('главная мечта') && f.about.includes(asSent) && typeof f.raw === 'string' && /^\d{4}-\d{2}$/.test(f.raw))
+    : undefined
+  let dream: ReviewOutcome['dream'] = null
+  if (goal && was) {
+    const item = monthPlan(state, ctx).queue.find((q) => q.goalId === goal.id)
+    const term = goalTerm(item, goal, ctx.key)
+    const wasMonth = was.raw as string
+    const nowMonth = term.doneMonth ?? null
+    dream = { name: goal.name, was: monthBy(wasMonth, ctx.key), now: nowMonth ? monthBy(nowMonth, ctx.key) : null, wasMonth, nowMonth }
+  }
+  return { done, sections, dream }
 }

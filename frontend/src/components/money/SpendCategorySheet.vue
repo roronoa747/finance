@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { earlierLabel, type HabitImage, type ImageAction, type SpendCompareRow } from '@/lib/finance'
 import { RK_SPEND_GROUPS } from '@/lib/statements/dictionary'
 import { money, plain } from '@/lib/money'
+import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import type { PersonId } from '@/types/finance'
 import Hint from '@/components/kit/Hint.vue'
 import HabitImageRow from '@/components/money/HabitImageRow.vue'
@@ -23,7 +24,15 @@ const props = defineProps<{
   canEdit: boolean
   /** Образ привычки раздела (`habitImages`, AU-29); нет — строки нет. */
   image?: HabitImage | null
+  /** Месяц листа (`YYYY-MM`): не текущий — называется над цифрой (лист открывают и из отчёта за прошлый месяц, Х-9, RZ-13). */
+  month?: string
 }>()
+/** «сентябрь»; другого года — с годом; текущий месяц не называется — он и так на экране (`/ux` «Разбор» 3). */
+const monthName = computed(() => {
+  if (!props.month || props.month === monthKey()) return ''
+  const { year, month } = parseMonthKey(props.month)
+  return MONTHS_NOM[month].toLowerCase() + (year !== parseMonthKey(monthKey()).year ? ` ${year}` : '')
+})
 
 defineEmits<{
   (e: 'close'): void
@@ -49,13 +58,15 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
 <template>
   <Sheet :open="!!row" :title="row?.name ?? ''" @close="$emit('close')">
     <template v-if="row">
+      <p v-if="monthName" class="type-meta" data-cat-month>{{ monthName }}</p>
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-cat-amount>
         {{ money(row.amount ?? row.plan ?? 0) }}<span v-if="row.amount === null" class="ml-1.5 text-[15px] font-semibold text-ink-2">план</span>
       </p>
       <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">
         <span v-if="row.share" data-cat-share>{{ row.share }} % дохода</span>
         <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
-        <span data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
+        <!-- Выписок нет — план уже крупно («150 000 ₸ план»), второй раз строкой его не пишем (`/ux` «Разбор» 3). -->
+        <span v-if="row.amount !== null || row.plan === null" data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
       </div>
       <div v-if="adviceLine || imageInAdvice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
         <p v-if="adviceLine && row.advice" class="text-[14px] font-semibold text-ink num" data-cat-advice>

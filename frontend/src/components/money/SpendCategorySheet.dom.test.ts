@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import type { HabitImage, SpendCompareRow } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
@@ -20,13 +20,13 @@ const ROW: SpendCompareRow = {
 }
 const PLANS = [{ by: 'a' as PersonId, name: 'Ильяс', amount: 20_000 }, { by: 'b' as PersonId, name: 'Аруна', amount: 0 }]
 
-async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage } = {}) {
+async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string } = {}) {
   const edits: [PersonId, number][] = []
   const root = document.createElement('div')
   document.body.appendChild(root)
   app = createApp({
     render: () => h(SpendCategorySheet, {
-      row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null,
+      row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
       onEdit: (by: PersonId, amount: number) => edits.push([by, amount]),
     }),
   })
@@ -98,6 +98,9 @@ describe('SpendCategorySheet', () => {
     await mount({ amount: null, share: null, advice: { amount: 10_000, goalId: null, goalName: null, days: null } })
     expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в мечту`))
     expect(txt(q('[data-cat-amount]'))).toBe(norm(`${money(20_000)}план`))
+    // План уже крупно — второй раз строкой его нет (`/ux` Блока 3: шумная цифра); «обычно» — на месте.
+    expect(q('[data-cat-plan]')).toBeNull()
+    expect(q('[data-cat-usual]')).not.toBeNull()
     expect(q('[data-cat-share]')).toBeNull()
   })
 
@@ -124,5 +127,27 @@ describe('SpendCategorySheet', () => {
     await mount({}, { canEdit: false })
     expect(q('[data-cat-person="a"]')).not.toBeNull()
     expect(q('[data-cat-edit]')).toBeNull()
+  })
+
+  it('RZ-13: месяц листа — над цифрой: этого года — «январь», другого — с годом; текущий и без месяца — строки нет (критик, `/ux` Блока 3)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-03-05T07:00:00Z'))
+    await mount({}, { month: '2026-01' })
+    expect(txt(q('[data-cat-month]'))).toBe('январь')
+    app!.unmount()
+    document.body.innerHTML = ''
+    await mount({}, { month: '2025-12' })
+    expect(txt(q('[data-cat-month]'))).toBe('декабрь 2025')
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Текущий месяц не называется — он и так на экране.
+    await mount({}, { month: '2026-03' })
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(q('[data-cat-month]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    await mount()
+    expect(q('[data-cat-month]')).toBeNull()
+    vi.useRealTimers()
   })
 })

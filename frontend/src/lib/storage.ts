@@ -123,11 +123,14 @@ export const readAiReviewSeen = (): string | null => {
 export const writeAiReviewSeen = (id: string) => writeStorage(AI_REVIEW_SEEN_KEY, id)
 
 /**
- * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`) — когда пробовали в последний
- * раз (неудача — повтор не чаще раза в сутки) и спросили ли согласие v2 (закрыл лист — до следующего повода).
+ * Разбор сам на этом телефоне (бэклог «ИИ-польза», AU-13, Р-4): по поводу (`reasonKey`; замена старого разбора —
+ * `v3:month:<месяц>`, RZ-HF1) — когда пробовали в последний раз (`at`, пишется до запроса), дошёл ли исход до стора
+ * (`done`: ответ или ошибка; неудача — повтор не чаще раза в сутки), была ли эта попытка повтором оборванной (`retry`:
+ * страница не дожила до ответа — повторяем один раз, RZ-HF2) и спросили ли согласие новой версии (`asked`: закрыл
+ * лист — до следующего повода).
  */
 export const AI_AUTO_KEY = 'ff_ai_auto'
-export type AiAutoTry = { at?: string; asked?: boolean }
+export type AiAutoTry = { at?: string; done?: boolean; retry?: boolean; asked?: boolean }
 export const readAiAuto = (): Record<string, AiAutoTry> => {
   const v = readStorage<unknown>(AI_AUTO_KEY, {})
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, AiAutoTry>) : {}

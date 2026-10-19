@@ -111,7 +111,7 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
     const shell = await screen(partner.pinia, AppShell, '/settings')
     expect(shell).toContain('data-ai-consent')
-    expect(shell).toContain('Названия продавцов')
+    expect(shell).toContain('Продавцы и суммы частых трат')
   })
 
   it('(в) viewer семьи с ИИ: карточки нет, согласие не спрашивается', async () => {

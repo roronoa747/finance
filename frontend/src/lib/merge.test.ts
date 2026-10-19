@@ -1266,3 +1266,20 @@ describe('merge.ts — переносы образов (imageMoves)', () => {
     expect(defaultSyncDoc().imageMoves).toEqual([])
   })
 })
+
+// RZ-01 (Р-13): итоги находок — записи по id, поздняя побеждает; партнёра не затирают.
+describe('merge.ts — итоги находок (reviewFinds)', () => {
+  const f = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, by: 'a' as const, period: '2026-09', kind: 'leak' as const, name: 'APTEKA', categoryId: 'sc_health', count: 7, amount: 10_500, updatedAt: '2026-10-01T08:00:00.000Z', ...extra,
+  })
+
+  it('две записи одного участника — поздняя побеждает; запись партнёра остаётся', () => {
+    const one = { ...createEmptyDoc(), reviewFinds: [f('a:2026-09:leak:apteka'), f('b:2026-09:leak:kofe', { by: 'b' })] }
+    const two = { ...createEmptyDoc(), reviewFinds: [f('a:2026-09:leak:apteka', { count: 0, amount: 0, updatedAt: '2026-10-02T08:00:00.000Z' })] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.reviewFinds ?? []).map((x) => x.id).sort()).toEqual(['a:2026-09:leak:apteka', 'b:2026-09:leak:kofe'])
+      expect(merged.reviewFinds!.find((x) => x.id === 'a:2026-09:leak:apteka')).toMatchObject({ count: 0, amount: 0 })
+    }
+    expect(defaultSyncDoc().reviewFinds).toEqual([])
+  })
+})

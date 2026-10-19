@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain } from '@/lib/money'
@@ -15,6 +15,7 @@ import HistorySquare from '@/components/money/HistorySquare.vue'
  * Внизу тихое «Все записи ›» — прежняя лента (`HistorySquare`, Р-35), свёрнута. Числа — `historyMonths` (стор: `historyMonthsNow`).
  */
 const router = useRouter()
+const route = useRoute()
 const finance = useFinanceStore()
 
 const months = computed(() => finance.historyMonthsNow())
@@ -28,6 +29,20 @@ function title(key: string): string {
 const firstPut = computed(() => months.value.find((m) => m.put > 0)?.key ?? null)
 
 const feedOpen = ref(false)
+/**
+ * Раздел по адресу `?cat=<id>` («Открыть» совета про продавца, бэклог «Разбор», Р-18, RZ-08): лента раскрыта и на виду —
+ * чип раздела выбирает она сама (`HistorySquare`).
+ */
+const feed = ref<HTMLElement | null>(null)
+watch(
+  () => route.query.cat,
+  (v) => {
+    if (typeof v !== 'string' || !v) return
+    feedOpen.value = true
+    void nextTick(() => feed.value?.scrollIntoView?.({ block: 'start' }))
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -63,7 +78,7 @@ const feedOpen = ref(false)
     Все записи
     <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="feedOpen && 'rotate-90'" />
   </button>
-  <div v-show="feedOpen" class="flex flex-col gap-3" data-history-feed-body>
+  <div v-show="feedOpen" ref="feed" class="flex scroll-mt-4 flex-col gap-3" data-history-feed-body>
     <HistorySquare />
   </div>
 </template>
