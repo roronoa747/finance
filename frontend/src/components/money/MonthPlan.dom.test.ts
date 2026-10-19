@@ -929,6 +929,33 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     }
   })
 
+  it('RZ-08: `?cat=sc_cafe` открывает лист раздела («Открыть» совета); закрытие снимает параметр; неизвестный раздел — ничего', async () => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: fullUploads } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_cafe')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('Кафе и рестораны')
+    await press(all('[role="dialog"] button').find((b) => b.getAttribute('aria-label') === 'Закрыть'))
+    const router = app!.config.globalProperties.$router
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month'))
+    expect(q('[data-cat-amount]')).toBeNull()
+    // Строка раздела по-прежнему открывает лист нажатием, адрес не меняется.
+    await press(section('spend'))
+    await press(q('[data-spend-row="sc_cafe"]'))
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(router.currentRoute.value.fullPath).toBe('/month')
+    app!.unmount()
+    app = null
+    document.body.innerHTML = ''
+
+    await open('member', planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_nope')
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-cat-amount]')).toBeNull()
+  })
+
   it('лист раздела: факт, обычно, план, «до плана» в мечту; «Изменить» — «Сколько в месяц» с суммой участника', async () => {
     const finance = await openSpend()
     const cafe = compareOf(finance).rows.find((r) => r.categoryId === 'sc_cafe')!
@@ -979,5 +1006,40 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     await press(dialogButton('Готово'))
     expect(finance.householdDoc.spendPlans?.find((x) => x.id === 'a:sc_transport')?.amount).toBe(25_000)
     expect(q('[data-spend-row="sc_transport"]')).not.toBeNull()
+  })
+})
+
+/** RZ-07 (бэклог «Разбор», Р-17): отчёт разбора — оверлей по адресу `?review=1`. */
+describe('RZ-07: отчёт разбора по адресу', () => {
+  const review = { id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b' as const, good: 'Хорошо.', risk: 'Риск.', steps: [], sent: null, updatedAt: T0 }
+  const routerOf = () => app!.config.globalProperties.$router
+  async function openAt(path: string, role: 'member' | 'viewer' = 'member', doc = familyDoc({ aiReviews: [review] })) {
+    await open(role, doc, path)
+    useAuthStore().ai = true
+    await flush()
+  }
+
+  it('`?review=1` открывает отчёт и гасит точку «новый»; ✕ снимает параметр', async () => {
+    await openAt('/month')
+    expect(q('[data-review-dot]')).not.toBeNull()
+    expect(q('[data-report]')).toBeNull()
+    await routerOf().push('/month?review=1')
+    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull())
+    await flush()
+    expect(q('[data-review-dot]')).toBeNull()
+    await press(q('[data-report-close]'))
+    await vi.waitFor(() => expect(routerOf().currentRoute.value.fullPath).toBe('/month'))
+    expect(q('[data-report]')).toBeNull()
+  })
+
+  it('прошлый месяц по адресу (`?month=`) — отчёта нет: разбор только текущего', async () => {
+    await openAt('/month?month=2026-08&review=1')
+    expect(q('[data-report]')).toBeNull()
+  })
+
+  it('viewer без разбора — кнопки нет, `?review=1` ничего не открывает', async () => {
+    await openAt('/month?review=1', 'viewer', familyDoc())
+    expect(q('[data-review-open]')).toBeNull()
+    expect(q('[data-report]')).toBeNull()
   })
 })

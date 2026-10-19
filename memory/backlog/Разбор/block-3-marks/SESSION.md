@@ -21,8 +21,38 @@
 - Задачи: RZ-10 → RZ-11 → RZ-12. Стенд — §6 (Vite `:5261`, Go `:8161`); разбор v3 с советами всех видов — положить в
   документ стенда руками (без живого ключа).
 - Правило 12: ✦ — зов издалека точкой/значком у предмета, не блок; строки и крупные цифры не сдвигаются.
-- **Факты кода после Блока 2** (заполняет критик Блока 2): <поля `advices[].action`, адрес отчёта с `card`, компоненты
-  строк и их пропы/слоты>.
+- **Факты кода после Блока 2** (критик Блока 2, 2026-10-18; ветка `rz-block-2-report`, сводка — §6 индекса «После
+  Блока 2»):
+  - **Совет:** разбор месяца — `finance.aiReviewOf(monthKey())` (`AiReview`, `v === 3`; у v1/v2 советов нет — меток нет),
+    `advices[i]: AiAdvice {title, text, figure: {about, value} | null, action}`; `action` — `{kind: 'do', candidate:
+    StepCandidate}` (id `move:<categoryId>` — `shift.from {spend, categoryId}`, `shift.to {goalId}`; `prepay` — `to:
+    'debt'`; `cushion` — `to {goalId}`) или `{kind: 'open', target: OpenTarget {kind: 'cat' | 'goal' | 'credit' |
+    'obligation' | 'seller', id, name, categoryId?}}` (`seller`: `id` — ключ `normalizeMerchant`, `name` — короткое имя
+    `shortMerchant` (Х-2), `categoryId` — раздел продавца). Номер карточки совета — `i + 1`.
+  - **Демо:** разбора в документе нет — `MonthPlan.vue` берёт заготовку `demoReview(doc, input)` (`lib/demo.ts`; computed
+    `demoReview` ≈ :254, `review` :262): советы — `seller` «Магазин у дома» (`sc_food`), `seller` «Онлайн-кинотеатр»
+    (`sc_subscriptions`), `do` `cushion`. `adviceMarks` в демо — по той же заготовке (`auth.isDemo`), не по документу.
+  - **Отчёт на карточке:** `router.push({ path: '/month', query: { review: '1', card: String(n) } })` — `MonthPlan`
+    `useQuerySheet('review', ['card'])` + `reviewCard` (целое ≥ 1) → проп `card` у `AiReport` (`startIndex`: карточка
+    `advice` с `row.i === n - 1`, нет такой — первая; открытый отчёт переходит на новый `card` — `watch`). Закрытие (✕,
+    свайп, Escape, «Назад», любой переход) снимает `review` и `card`. Отчёт показывается только при `reviewShown` (текущий
+    месяц): с «Денег» / «Мечт» адрес без `?month=` — верно. Открыли — разбор «увиден» (точка гаснет).
+  - **Адреса «Открыть»** — `openPath(target)` (`lib/aiFacts.ts`): раздел `/month?cat=<id>` (лист раздела по адресу —
+    `useQueryValue('cat')` в `MonthPlan`; нажатие строки ставит значение руками, адрес не меняется), мечта `/goals/<id>`,
+    долг **`/money?credit=<id>`** (не `/money/debts` — лист долга живёт в `CapitalLists`), платёж `/money?obligation=<id>`,
+    продавец `/money/history?cat=<categoryId>` (чип раздела + раскрытая лента «Все записи»).
+  - **Строки для ✦ (номера строк — на `rz-block-2-report`):** раздел «Месяца» — `MonthPlan.vue` `:data-spend-row` ≈ :693
+    (`@click="catFor = r.categoryId"`); платежи «Месяца» — `<DueRow` ≈ :623 и :658; «Деньги» — `CapitalLists.vue`
+    `<PaymentLine` :275 и подписки :302; «Мечты» — `Dreams.vue` `DreamCenter` :146, `ThumbRow`; «Долги» — `DebtsWidget.vue`.
+    Пилюля «✦ Разбор» при `reviewShown` — строкой **под** кольцом (`data-review-open`, `data-review-dot`), не в слоте
+    `MonthRing`.
+  - **Механизмы, общие с другими листами:** `useQuerySheet(key, also)` / `useQueryValue(key, also)`
+    (`components/useQuerySheet.ts`: параметр ушёл с адреса — лист закрыт; `close()` снимает и `also`; закрытие отменяет
+    ещё не дошедший переход на параметр) — тест `useQuerySheet.dom.test.ts`; стек окон `kit/sheetStack.ts` (`pushSheet` /
+    `popSheet` / `isTopSheet`: Escape и жесты — верхнему окну, `html[data-sheet-open]` — пока открыто хоть одно; новый
+    полноэкранный слой — только через него, иначе тост «Отменить» уходит под слой).
+  - Тесты-образцы: `AiReport.dom.test.ts` (`open`, `openV3`, `savedV3`, `candidateOf`), e2e `rz-block2-report.test.ts`
+    (`familyDoc`, `answerFor` — три совета: `do` подушка, `open` раздел `sc_cafe`, `open` продавец аптеки `sc_health`).
 - Следующий шаг — `/critic Разбор 3`.
 
 ---

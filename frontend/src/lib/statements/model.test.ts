@@ -14,6 +14,7 @@ import {
   pairInternalTransfers,
   periodsOf,
   sanitize,
+  shortMerchant,
   seedSpendCategories,
   spendTotals,
   unknownGroups,
@@ -67,6 +68,28 @@ describe('sanitize', () => {
     expect(sanitize('12345\u00006789')).toBe('')
     expect(sanitize('a\tb\rc')).toBe('a b c')
     expect(normalizeMerchant('MAGNUM\u0000 ALMATY')).toBe('magnum')
+  })
+})
+
+describe('shortMerchant (Х-2 бэклога «Разбор»)', () => {
+  it('снимает город, страну, отметку города и код терминала; регистр и знаки внутри — как у банка', () => {
+    expect(shortMerchant('MAGAZIN SMALL MARKET ASTANA Q. KZ')).toBe('MAGAZIN SMALL MARKET')
+    expect(shortMerchant('YANDEX.GO ALMATY KZ')).toBe('YANDEX.GO')
+    expect(shortMerchant('ASKHANA ZIRA G.ASTANA KZ')).toBe('ASKHANA ZIRA')
+    expect(shortMerchant('SMALL SUPERMARKET AST1 ALMATY KZ')).toBe('SMALL SUPERMARKET')
+    expect(shortMerchant('Google One Mountain View US')).toBe('Google One')
+    expect(shortMerchant('TOO "KASPI MAGAZIN"')).toBe('"KASPI MAGAZIN"')
+    expect(shortMerchant('Кофейня у дома')).toBe('Кофейня у дома')
+  })
+
+  it('цифры в конце без города — часть имени, не код терминала', () => {
+    expect(shortMerchant('FITNESS LAB 24')).toBe('FITNESS LAB 24')
+    expect(shortMerchant('FITNESS LAB 24 ALMATY KZ')).toBe('FITNESS LAB')
+  })
+
+  it('не съедает название до пустоты', () => {
+    expect(shortMerchant('KZ')).toBe('KZ')
+    expect(shortMerchant('ALMATY KZ')).toBe('ALMATY')
   })
 })
 

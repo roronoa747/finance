@@ -439,6 +439,15 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
     expect(build(doc).payload.facts.some((f) => /«Аптека участник 1 очень[^»]*…»/.test(f.about))).toBe(true)
   })
 
+  it('Х-2: продавец — коротким именем без города и страны: в фактах, в «Открыть» и в имени цели (раздел — как есть)', () => {
+    const doc = withFinds({ reviewFinds: FINDS.map((f) => (f.kind === 'leak' ? { ...f, name: 'APTEKA PLUS ASTANA Q. KZ' } : f)) })
+    const { payload, openById } = build(doc)
+    expect(find(payload.facts, 'частые траты у «APTEKA PLUS» — в месяц')).toBeDefined()
+    expect(JSON.stringify(payload)).not.toContain('ASTANA')
+    const open = payload.actions.find((a) => a.about === 'открыть покупки у «APTEKA PLUS»')!
+    expect(openById.get(open.id)).toEqual({ kind: 'seller', id: 'apteka plus', name: 'APTEKA PLUS', categoryId: 'sc_health' })
+  })
+
   it('размер тела на семье с находками — ≤ 8 КБ', () => {
     expect(JSON.stringify(build(withFinds(), 'month').payload).length).toBeLessThan(8 << 10)
   })
@@ -448,7 +457,7 @@ describe('openPath — адреса «Открыть» (Р-18)', () => {
   it('раздел, мечта, долг, платёж, продавец (с разделом и без)', () => {
     expect(openPath({ kind: 'cat', id: 'sc_cafe', name: 'Кафе' })).toBe('/month?cat=sc_cafe')
     expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' })).toBe('/goals/trip')
-    expect(openPath({ kind: 'credit', id: 'loan', name: 'Кредит' })).toBe('/money/debts?credit=loan')
+    expect(openPath({ kind: 'credit', id: 'loan', name: 'Кредит' })).toBe('/money?credit=loan')
     expect(openPath({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })).toBe('/money?obligation=kino')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA', categoryId: 'sc_health' })).toBe('/money/history?cat=sc_health')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA' })).toBe('/money/history')

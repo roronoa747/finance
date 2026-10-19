@@ -1,12 +1,8 @@
-<script lang="ts">
-/** Открытые листы по порядку открытия: Escape закрывает только верхний. */
-const stack: symbol[] = []
-</script>
-
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, useId, watch } from 'vue'
 import { PhX } from '@phosphor-icons/vue'
 import { holdTips } from './tips'
+import { isTopSheet, popSheet, pushSheet } from './sheetStack'
 
 /**
  * Окно поверх экрана: на телефоне — лист снизу, на широком экране — по центру.
@@ -53,7 +49,7 @@ function close() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.defaultPrevented || stack[stack.length - 1] !== me) return
+  if (e.defaultPrevented || !isTopSheet(me)) return
   if (e.key === 'Escape') {
     e.preventDefault()
     close()
@@ -125,7 +121,7 @@ function busy(target: EventTarget | null) {
 function onTouchStart(e: TouchEvent) {
   gesture = 'skip'
   const c = card.value
-  if (!c || closing || e.touches.length !== 1 || stack[stack.length - 1] !== me) return
+  if (!c || closing || e.touches.length !== 1 || !isTopSheet(me)) return
   if (window.matchMedia?.('(min-width: 640px)').matches) return
   if (c.scrollTop > 0 || busy(e.target)) return
   const t = e.touches[0]
@@ -204,15 +200,9 @@ const scrimStyle = computed(() => {
   return pull.value ? { opacity: Math.max(0, 1 - pull.value / h), transition: settling.value ? 'opacity var(--motion-fast) var(--ease-out)' : 'none' } : undefined
 })
 
-/** Пока открыт хоть один лист, экран за ним не прокручивается (`style.css`, `html[data-sheet-open]`). */
-function lockScreen() {
-  if (stack.length) document.documentElement.dataset.sheetOpen = ''
-  else delete document.documentElement.dataset.sheetOpen
-}
-
+/** Пока открыт хоть один лист (или отчёт разбора), экран за ним не прокручивается — `sheetStack`. */
 function show() {
-  stack.push(me)
-  lockScreen()
+  pushSheet(me)
   releaseTips = holdTips()
   back = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
@@ -222,10 +212,7 @@ function show() {
 }
 
 function hide() {
-  const i = stack.indexOf(me)
-  if (i < 0) return
-  stack.splice(i, 1)
-  lockScreen()
+  if (!popSheet(me)) return
   releaseTips?.()
   releaseTips = null
   document.removeEventListener('keydown', onKeydown)

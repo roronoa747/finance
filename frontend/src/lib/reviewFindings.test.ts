@@ -19,6 +19,7 @@ import {
   reviewOutcome,
   reviewScenario,
   reviewWork,
+  spendCompare,
   usualMonths,
   whereRows,
   type MonthPlanCtx,
@@ -184,9 +185,9 @@ describe('reviewFindings — находки семьи', () => {
   })
 })
 
-describe('демо-семья (без находок демо — RZ-09)', () => {
+describe('демо-семья (находки демо — RZ-09)', () => {
   for (const day of ['2026-10-01T06:00:00Z', '2026-10-16T06:00:00Z']) {
-    it(`${day}: только «раздуло» или ничего, без падений; числа целые`, async () => {
+    it(`${day}: утечка, новое списание и «раздуло» (когда месяц находок текущий), без падений; числа целые`, async () => {
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(new Date(day))
       const map = new Map<string, string>()
@@ -202,7 +203,8 @@ describe('демо-семья (без находок демо — RZ-09)', () =>
       const finance = useFinanceStore()
       const { state, ctx } = finance.planInput(monthKey())
       const list = reviewFindings(state, ctx)
-      expect(list.every((f) => f.kind === 'grew')).toBe(true)
+      expect(list.map((f) => f.kind).filter((k) => k !== 'grew').sort()).toEqual(['leak', 'recurring'])
+      if (findMonth(ctx) === monthKey()) expect(list.some((f) => f.kind === 'grew')).toBe(true)
       expect(integers(list)).toEqual([])
       expect(reviewWork(state, ctx, list).ops).toBeGreaterThan(0)
       expect(whereRows(state, ctx).length).toBeGreaterThan(0)
@@ -265,7 +267,35 @@ describe('whereRows — «куда ушло»', () => {
     expect(rows[0]).toMatchObject({ amount: 450_000, usual: 380_000, share: 1 })
     for (const r of rows) expect(r.share).toBeLessThanOrEqual(1)
     expect(rows[1].share).toBeCloseTo(150_000 / 450_000)
-    expect(integers(rows.map(({ share: _s, ...r }) => r))).toEqual([])
+    // Риски «обычно» и плана — на той же шкале; выше обычного — тем же порогом, что точка «Месяца» (RZ-08).
+    expect(rows[0].usualShare).toBeCloseTo(380_000 / 450_000)
+    const compare = spendCompare(stateOf(doc), { ...ctxOf(doc), key: findMonth(ctxOf(doc)) }).rows
+    for (const r of rows) {
+      expect(r.over).toBe(compare.find((c) => c.categoryId === r.categoryId)!.over)
+      if (r.plan) expect(r.planShare).toBeCloseTo(r.plan / 450_000)
+      else expect(r.planShare).toBeNull()
+    }
+    expect(integers(rows.map(({ share: _s, usualShare: _u, planShare: _p, ...r }) => r))).toEqual([])
+  })
+
+  it('план раздела урезан «Сделать» до нуля — риски плана нет; план есть — риска на своей доле (критик Блока 2)', () => {
+    const plan = (categoryId: string, amount: number) => ({ id: `a:${categoryId}`, by: 'a' as const, categoryId, amount, updatedAt: T0 })
+    const cut = { id: 's1', period: KEY, by: 'a' as const, from: { spend: 'a' as const, categoryId: 'sc_fun' }, to: { goalId: 'trip' }, amount: 30_000, at: T0, updatedAt: T0 }
+    const doc = family({ spendPlans: [plan('sc_fun', 30_000), plan('sc_cafe', 120_000)], planShifts: [cut] })
+    const rows = whereRows(stateOf(doc), ctxOf(doc))
+    const fun = rows.find((r) => r.categoryId === 'sc_fun')!
+    expect(fun.plan).toBe(0)
+    expect(fun.planShare).toBeNull()
+    expect(rows.find((r) => r.categoryId === 'sc_cafe')!.planShare).toBeCloseTo(120_000 / 450_000)
+  })
+
+  it('раздел новый — «обычно» 0: риски «обычно» нет (у левого края читалась сбоем, `/ux` Блока 2)', () => {
+    const doc = family({ spendTotals: [...TOTALS, total('a', KEY, 'sc_health', 30_000, 2)] })
+    const rows = whereRows(stateOf(doc), ctxOf(doc))
+    const fresh = rows.find((r) => r.categoryId === 'sc_health')!
+    expect(fresh.usual).toBe(0)
+    expect(fresh.usualShare).toBeNull()
+    expect(rows.find((r) => r.categoryId === 'sc_food')!.usualShare).toBeCloseTo(380_000 / 450_000)
   })
 })
 

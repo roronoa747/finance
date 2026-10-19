@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, nextTick, type App, type Component } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
@@ -11,6 +11,7 @@ import { ruleMatchOf } from '@/lib/statements/model'
 import type { Operation } from '@/lib/statements/types'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
 import HistorySquare from './HistorySquare.vue'
+import HistoryMonths from './HistoryMonths.vue'
 
 /**
  * B2C-44: раздел задним числом из «Истории» — нажатие на операцию → лист «куда отнести?» с теми же
@@ -132,5 +133,59 @@ describe('B2C-58, B2C-89: записи денег в «Истории» (Р-85)'
     expect(plan.textContent).toContain('зарплата · Аруна')
     expect(text).toContain('Отпуск')
     expect(text).toContain('Досрочка в «Кредит»')
+  })
+})
+
+describe('RZ-08: раздел по адресу `?cat=<id>` («Открыть» совета про продавца)', () => {
+  async function mountAt(path: string, view: Component = HistorySquare) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs('member'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const ops = useOperationsStore()
+    ops.ops.o1 = { ...op('o1', '2026-09-11', -3_000, 'Аптека у дома'), categoryId: 'sc_health' }
+    ops.ops.o2 = { ...op('o2', '2026-09-12', -9_000, 'Магазин'), categoryId: 'sc_food' }
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push(path)
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(view)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    return router
+  }
+  const chip = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="group"] button')].find((b) => b.textContent?.trim() === label)!
+
+  it('чип раздела выбран, лента — его покупки; «Всё» снимает параметр и фильтр', async () => {
+    const router = await mountAt('/money/history?cat=sc_health')
+    expect(document.querySelector('[data-chip="sc_health"]')!.getAttribute('aria-pressed')).toBe('true')
+    expect(chip('Всё').getAttribute('aria-pressed')).toBe('false')
+    expect(document.body.textContent).toContain('Аптека у дома')
+    expect(document.body.textContent).not.toContain('Магазин')
+    chip('Всё').click()
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money/history'))
+    await nextTick()
+    expect(chip('Всё').getAttribute('aria-pressed')).toBe('true')
+    expect(document.body.textContent).toContain('Магазин')
+  })
+
+  it('«История» (месяцы): с `?cat` лента «Все записи» раскрыта, чип выбран; без — свёрнута', async () => {
+    await mountAt('/money/history?cat=sc_health', HistoryMonths)
+    expect(document.querySelector('[data-history-feed]')!.getAttribute('aria-expanded')).toBe('true')
+    expect(document.querySelector('[data-chip="sc_health"]')!.getAttribute('aria-pressed')).toBe('true')
+    app!.unmount()
+    app = null
+    document.body.innerHTML = ''
+    await mountAt('/money/history', HistoryMonths)
+    expect(document.querySelector('[data-history-feed]')!.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('раздела нет среди своих покупок (продавец партнёра) — чип всё равно виден и выбран', async () => {
+    await mountAt('/money/history?cat=sc_cafe')
+    expect(document.querySelector('[data-chip="sc_cafe"]')!.getAttribute('aria-pressed')).toBe('true')
+    expect(document.body.textContent).toContain('Здесь пока ничего.')
   })
 })

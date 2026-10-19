@@ -61,8 +61,8 @@ import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
-import AiReviewSheet from '@/components/ai/AiReviewSheet.vue'
-import { useQuerySheet } from '@/components/useQuerySheet'
+import AiReport from '@/components/ai/AiReport.vue'
+import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
@@ -242,13 +242,15 @@ watch(
 const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
 
 /*
- * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13): у остатка рядом с «Хватит?» ----------
- * Есть разбор месяца — лист с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
- * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Точка — разбор есть, а на этом
- * телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
+ * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13; v3 — «Разбор», RZ-07): у остатка
+ * рядом с «Хватит?» ----------
+ * Есть разбор месяца — отчёт с ним без запроса (партнёр, viewer); нет — согласие (Р-9), запрос (повод `month`), разбор в
+ * общий документ. Обычно он уже пришёл сам (`ai.autoReview`). Только текущий месяц. Отчёт — оверлей по адресу
+ * `?review=1[&card=<n>]` (Р-17): закрыли — параметры сняты; открыт с разбором — разбор «увиден». Точка — разбор есть, а
+ * на этом телефоне его не открывали (общее с точками «Плана» и «Месяца» — `ai.seenReview`).
  */
 const ai = useAiStore()
-/** Демо (Р-13, AU-14): заранее написанный разбор v2 с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
+/** Демо (Р-13, AU-14): заранее написанный разбор с «Сделать» и «что ушло» — фактами демо; без запроса, в документ не пишется. */
 const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
@@ -263,15 +265,38 @@ const reviewShown = computed(
   () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
 )
 const reviewDot = computed(() => !!review.value && review.value.id !== ai.seenReview)
-const reviewOpen = ref(false)
-function markReviewSeen() {
-  if (review.value) ai.markReviewSeen(review.value.id)
+const { open: reviewOpen, close: closeReview } = useQuerySheet('review', ['card'])
+/** Номер совета, с которого стартует отчёт (`&card=<n>` — ✦ у предмета, Блок 3). */
+const reviewCard = computed(() => {
+  const n = Number(route.query.card)
+  return Number.isInteger(n) && n >= 1 ? n : null
+})
+// Отчёт открыт и в нём разбор (открыли, ответ пришёл при открытом, «Обновить») — увиден. Закрыли, пока «Думаю…», —
+// не видели: позовёт точка (правило 12, `/ux`).
+watch(
+  [() => reviewOpen.value && reviewShown.value, () => review.value?.id],
+  ([shown]) => {
+    if (shown && review.value) ai.markReviewSeen(review.value.id)
+  },
+  { immediate: true },
+)
+// Ушли с адреса отчёта («Открыть» — экран предмета, в том числе `/month?cat=`) до того, как дошёл его собственный
+// `?review=1`, — закрыт: параметра «до» не было, и `useQuerySheet` сам этого не заметит.
+watch(
+  () => route.fullPath,
+  () => {
+    if (reviewOpen.value && route.query.review !== '1') reviewOpen.value = false
+  },
+)
+/** Отчёт — по адресу: «Назад» его закрывает, ✦ у предмета (Блок 3) ведёт сюда же. */
+function showReview() {
+  reviewOpen.value = true
+  if (route.query.review !== '1') void router.push({ query: { ...route.query, review: '1' } })
 }
 async function openReview() {
   if (review.value) {
     if (ai.reviewState !== 'thinking') ai.reviewState = 'idle'
-    reviewOpen.value = true
-    markReviewSeen()
+    showReview()
     return
   }
   if (!ai.available) return
@@ -279,16 +304,17 @@ async function openReview() {
     // Личный документ не подтянулся (нет сети) — сказать, а не молчать; «Не надо» и свайп — просто ничего.
     if (ai.consentFailed) {
       ai.reviewState = 'failed'
-      reviewOpen.value = true
+      showReview()
     }
     return
   }
-  reviewOpen.value = true
-  // Лист закрыли, пока «Думаю…», — разбор не видели: позовёт точка на ✦ (правило 12, `/ux`).
-  if ((await ai.runReview(props.monthKey, 'month')) && reviewOpen.value) markReviewSeen()
+  // «Думаю…» — до открытия: отчёт без разбора сразу показывает, что ответ в пути.
+  const run = ai.runReview(props.monthKey, 'month')
+  showReview()
+  await run
 }
 async function refreshReview() {
-  if ((await ai.ensureConsent()) && (await ai.runReview(props.monthKey, 'refresh')) && reviewOpen.value) markReviewSeen()
+  if (await ai.ensureConsent()) await ai.runReview(props.monthKey, 'refresh')
 }
 
 /* ---------- кто платит (Р-80) ---------- */
@@ -350,7 +376,8 @@ const categories = computed(() => {
 })
 const spendShare = (fact: number | null, planned: number | null) =>
   fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
-const catFor = ref<string | null>(null)
+/** Лист раздела: нажатие строки или адрес `?cat=<id>` («Открыть» совета и строка «Куда ушло» отчёта, Р-18, RZ-08); закрыли — параметр снят. */
+const { value: catFor, close: closeCat } = useQueryValue('cat')
 const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
 /** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
@@ -368,7 +395,7 @@ const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
 /** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
 function imageAct(a: ImageAction) {
   if (!canEdit.value) return
-  catFor.value = null
+  closeCat()
   if (a.kind === 'goal') {
     const tpl = templateById(a.template)
     const id = finance.addGoal({ name: a.name, need: a.need, monthly: a.monthly, hue: tpl?.hue ?? 'steel', template: a.template })
@@ -383,7 +410,7 @@ function imageAct(a: ImageAction) {
 }
 function editCatPlan(personId: PersonId, amount: number) {
   const id = catFor.value
-  catFor.value = null
+  closeCat()
   if (id) editSpend(personId, id, amount)
 }
 const spendEdit = ref<{ by: PersonId; categoryId: string; amount: string; fresh: boolean } | null>(null)
@@ -497,25 +524,28 @@ function addFund(kind: 'reserve' | 'cushion') {
       <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
       <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
       <!--
-        Действие у своего предмета (правило 12): «Хватит?» и разбор месяца — у остатка; слот кольца не ловит нажатия —
-        кнопкам свои. Разбор — круглая кнопка той же высоты: слово рядом с «Хватит?» в круг 150 px не помещается.
+        Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопкам свои.
+        С разбором ИИ обе кнопки — строкой под кольцом (Р-22): «Хватит?» и «✦ Разбор» рядом в круг 150 px не помещаются.
       -->
-      <span class="pointer-events-auto relative z-10 mt-1 flex items-center gap-1.5">
+      <span v-if="!reviewShown" class="pointer-events-auto relative z-10 mt-1 flex items-center">
         <Button variant="secondary" size="sm" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
-        <Button
-          v-if="reviewShown"
-          variant="secondary"
-          size="sm"
-          class="relative w-8 px-0"
-          :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
-          data-review-open
-          @click.stop="openReview"
-        >
-          <PhSparkle :size="16" />
-          <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
-        </Button>
       </span>
     </MonthRing>
+    <!-- Пилюля «✦ Разбор» (Р-3, Р-22, RZ-08): заметный вход в отчёт; точка — разбор новый на этом телефоне. -->
+    <div v-if="reviewShown" class="-mt-1 flex items-center justify-center gap-2">
+      <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        class="relative gap-1.5"
+        :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
+        data-review-open
+        @click="openReview"
+      >
+        <PhSparkle :size="14" weight="fill" class="text-brand" aria-hidden="true" />Разбор
+        <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
+      </Button>
+    </div>
 
     <!--
       Зарплаты: ✓ у суммы — пришла, валютная — «1 500 €» под суммой; строка нажимается — лист зарплаты (дата, «хватает
@@ -789,7 +819,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
-    <AiReviewSheet :open="reviewOpen" :month-key="monthKey" :review="review" :example="auth.isDemo" @close="reviewOpen = false" @refresh="refreshReview" />
+    <AiReport :open="reviewOpen && reviewShown" :month-key="monthKey" :review="review" :example="auth.isDemo" :card="reviewCard" @close="closeReview" @refresh="refreshReview" />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">
@@ -857,7 +887,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Sheet>
 
     <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="catFor = null" @edit="editCatPlan" @image="imageAct" />
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="closeCat" @edit="editCatPlan" @image="imageAct" />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->
