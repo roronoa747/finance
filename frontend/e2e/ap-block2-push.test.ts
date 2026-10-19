@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
-import { assignIds, unknownGroups } from '../src/lib/statements/model'
+import { assignIds, normalizeMerchant, unknownGroups } from '../src/lib/statements/model'
 import { useAuthStore } from '../src/stores/auth'
 import { useApplePayStore } from '../src/stores/applepay'
 import { useFinanceStore } from '../src/stores/finance'
@@ -145,6 +145,33 @@ describe('e2e / Apple Pay Блок 2 — пуши банков', () => {
     await A.store.syncHousehold(A.client)
     expect(opsOf(A).find((o) => o.id === 'c000000000000003')).toMatchObject({ internal: false, source: 'push' })
     expect(weekTotal(A)).toBe(7_000)
+  })
+
+  it('ответ «Без раздела» по заглушке «Перевод» — только этой строке, без правила семьи (`/ux` Б2, вопрос 5, владелец 2026-10-19)', async () => {
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', { id: 'g000000000000001', date: '2026-10-15', amount: -3_000, merchant: 'Перевод', kind: 'transfer-out', bank: 'kaspi' })
+    await pull(A)
+    expect(unknownGroups(opsOf(A)).map((g) => g.label)).toEqual(['Перевод'])
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    const rules = A.store.merchantRules.length
+    await ops.recategorizeAll(unknownGroups(opsOf(A)).map((g) => g.match), { categoryId: 'sc_fun' }, A.client)
+    expect(opsOf(A).find((o) => o.id === 'g000000000000001')).toMatchObject({ categoryId: 'sc_fun', internal: false })
+    expect(A.store.merchantRules.length).toBe(rules)
+    // Ответ дошёл до сервера: второе устройство и `pull` его не сбросят.
+    expect(st.ops.get('u-a')!.get('g000000000000001')?.category_id).toBe('sc_fun')
+
+    // Следующий перевод без получателя — снова вопрос, а не «Развлечения» по правилу.
+    minutes(30)
+    serverPush(st, 'u-a', { id: 'g000000000000002', date: '2026-10-15', amount: -4_000, merchant: 'Перевод', kind: 'transfer-out', bank: 'kaspi' })
+    await pull(A)
+    expect(opsOf(A).find((o) => o.id === 'g000000000000002')).toMatchObject({ categoryId: null })
+    expect(opsOf(A).find((o) => o.id === 'g000000000000001')).toMatchObject({ categoryId: 'sc_fun' })
+    // «Между своими» — тоже только этой строке.
+    await ops.recategorizeAll([{ merchant: normalizeMerchant('Перевод') }], { internal: true }, A.client)
+    expect(opsOf(A).find((o) => o.id === 'g000000000000002')).toMatchObject({ internal: true, categoryId: null })
+    expect(A.store.merchantRules.length).toBe(rules)
+    expect(weekTotal(A)).toBe(3_000)
   })
 
   it('приход зарплаты из пуша → точка у «Пришла» Ильяса; «Пришла» — отметка суммой прихода, точка ушла; у Аруны точки нет', async () => {

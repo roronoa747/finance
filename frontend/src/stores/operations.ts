@@ -10,6 +10,7 @@ import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, tripOps, trip
 import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
+  isPhoneStub,
   pairInternalTransfers,
   periodsOf,
   ruleFor,
@@ -645,10 +646,29 @@ export const useOperationsStore = defineStore('operations', () => {
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     return recategorizeAll([match], to, client)
   }
-  /** Пачкой (Р-58): все правила, один пересчёт, одни итоги и одна отправка. */
+  /**
+   * Пачкой (Р-58): все правила, один пересчёт, одни итоги и одна отправка. Заглушка пуша («Перевод» без получателя,
+   * `isPhoneStub`) — ответ только её строкам, без правила семьи (`/ux` Б2, вопрос 5, владелец 2026-10-19); правило
+   * пишется, если тем же «продавцом» назван кто-то ещё (строка выписки), — заглушку оно всё равно не тронет.
+   */
   async function recategorizeAll(matches: MerchantRule['match'][], to: MerchantRule['to'], client: ApiClient = apiClient) {
-    answerAll(matches, to)
-    const next = reapply(all.value)
+    const same = (o: Operation, m: MerchantRule['match']) => {
+      const r = ruleMatchOf(o)
+      return r.merchant === m.merchant && r.counterparty === m.counterparty
+    }
+    const direct = !('payment' in to)
+    const onlyStubs = (m: MerchantRule['match']) => {
+      const hit = all.value.filter((o) => same(o, m))
+      return direct && hit.length > 0 && hit.every(isPhoneStub)
+    }
+    const ruled = matches.filter((m) => !onlyStubs(m))
+    if (ruled.length) answerAll(ruled, to)
+    const answer = (o: Operation): Operation => {
+      if (!direct || !isPhoneStub(o) || o.amount >= 0 || o.internal || o.categoryId !== null || !matches.some((m) => same(o, m))) return o
+      if ('internal' in to) return { ...o, internal: true, categoryId: null }
+      return { ...o, categoryId: 'categoryId' in to ? to.categoryId : 'sc_people' }
+    }
+    const next = reapply(all.value.map(answer))
     const changed = next.filter((o, i) => o !== all.value[i])
     if (!changed.length) return
     remember(changed)
