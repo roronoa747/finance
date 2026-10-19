@@ -24,14 +24,24 @@ type PhoneKeyRepository interface {
 	Add(ctx context.Context, userID string, hash []byte) error
 	// DeleteAll revokes every key of the person ("Отключить").
 	DeleteAll(ctx context.Context, userID string) error
-	// Status: paid — keys a payment came with (a phone that works), issued — all keys, lastUsedAt —
-	// the last payment of any of them (владелец 2026-10-19: «Подключено» only by keys that paid).
-	Status(ctx context.Context, userID string) (paid, issued int, lastUsedAt *time.Time, err error)
+	// Status of the person's keys (владелец 2026-10-19: «Подключено» only by keys that paid).
+	Status(ctx context.Context, userID string) (PhoneKeyStatus, error)
 	// UserByHash finds the key's owner; it does not mark the key used.
 	UserByHash(ctx context.Context, hash []byte) (string, error)
-	// MarkUsed marks the key used: only a payment written or recognised as a repeat (saved /
-	// duplicate) — not a skipped body, a limit or a refusal (ревью backend Н-5).
-	MarkUsed(ctx context.Context, hash []byte) error
+	// MarkUsed marks the key used by a command — source "tap" or "push": only a payment written
+	// or recognised as a repeat (saved / duplicate) — not a skipped body, a limit or a refusal
+	// (ревью backend Н-5).
+	MarkUsed(ctx context.Context, hash []byte, source string) error
+}
+
+// PhoneKeyStatus: Paid — keys a payment came with, Issued — all keys, Tap / Push — a payment
+// came by a tap / by a bank push with any of them (владелец 2026-10-19: the card names the
+// commands, not the phones — one iPhone with both commands holds two keys), LastUsedAt — the
+// last payment of any of them.
+type PhoneKeyStatus struct {
+	Paid, Issued int
+	Tap, Push    bool
+	LastUsedAt   *time.Time
 }
 
 type sqlPhoneKeyRepository struct{ db *sql.DB }
@@ -71,22 +81,26 @@ func (r *sqlPhoneKeyRepository) DeleteAll(ctx context.Context, userID string) er
 	return nil
 }
 
-func (r *sqlPhoneKeyRepository) Status(ctx context.Context, userID string) (int, int, *time.Time, error) {
-	var paid, issued int
+func (r *sqlPhoneKeyRepository) Status(ctx context.Context, userID string) (PhoneKeyStatus, error) {
+	var s PhoneKeyStatus
 	var last sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT count(last_used_at), count(*), max(last_used_at) FROM app.phone_keys WHERE user_id = $1`, userID).
-		Scan(&paid, &issued, &last)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT count(last_used_at), count(*), coalesce(bool_or(tap_paid), false), coalesce(bool_or(push_paid), false), max(last_used_at)
+		FROM app.phone_keys WHERE user_id = $1`, userID).
+		Scan(&s.Paid, &s.Issued, &s.Tap, &s.Push, &last)
 	if err != nil {
-		return 0, 0, nil, fmt.Errorf("failed to read phone keys: %w", err)
+		return PhoneKeyStatus{}, fmt.Errorf("failed to read phone keys: %w", err)
 	}
-	if !last.Valid {
-		return paid, issued, nil, nil
+	if last.Valid {
+		s.LastUsedAt = &last.Time
 	}
-	return paid, issued, &last.Time, nil
+	return s, nil
 }
 
-func (r *sqlPhoneKeyRepository) MarkUsed(ctx context.Context, hash []byte) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE app.phone_keys SET last_used_at = now() WHERE key_hash = $1`, hash); err != nil {
+func (r *sqlPhoneKeyRepository) MarkUsed(ctx context.Context, hash []byte, source string) error {
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE app.phone_keys SET last_used_at = now(), tap_paid = tap_paid OR $2 = 'tap', push_paid = push_paid OR $2 = 'push'
+		WHERE key_hash = $1`, hash, source); err != nil {
 		return fmt.Errorf("failed to mark phone key: %w", err)
 	}
 	return nil
@@ -112,6 +126,8 @@ type mockPhoneKey struct {
 	userID   string
 	created  time.Time
 	lastUsed *time.Time
+	tap      bool
+	push     bool
 }
 
 // MockPhoneKeyRepo keeps hashes in memory, oldest first.
@@ -164,35 +180,38 @@ func (m *MockPhoneKeyRepo) DeleteAll(ctx context.Context, userID string) error {
 	return nil
 }
 
-func (m *MockPhoneKeyRepo) Status(ctx context.Context, userID string) (int, int, *time.Time, error) {
+func (m *MockPhoneKeyRepo) Status(ctx context.Context, userID string) (PhoneKeyStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	paid, issued := 0, 0
-	var last *time.Time
+	var s PhoneKeyStatus
 	for _, k := range m.keys {
 		if k.userID != userID {
 			continue
 		}
-		issued++
+		s.Issued++
+		s.Tap = s.Tap || k.tap
+		s.Push = s.Push || k.push
 		if k.lastUsed == nil {
 			continue
 		}
-		paid++
-		if last == nil || k.lastUsed.After(*last) {
+		s.Paid++
+		if s.LastUsedAt == nil || k.lastUsed.After(*s.LastUsedAt) {
 			t := *k.lastUsed
-			last = &t
+			s.LastUsedAt = &t
 		}
 	}
-	return paid, issued, last, nil
+	return s, nil
 }
 
-func (m *MockPhoneKeyRepo) MarkUsed(ctx context.Context, hash []byte) error {
+func (m *MockPhoneKeyRepo) MarkUsed(ctx context.Context, hash []byte, source string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for i, k := range m.keys {
 		if bytes.Equal(k.hash, hash) {
 			now := m.Now()
 			m.keys[i].lastUsed = &now
+			m.keys[i].tap = k.tap || source == "tap"
+			m.keys[i].push = k.push || source == "push"
 		}
 	}
 	return nil

@@ -40,7 +40,11 @@ CREATE TABLE IF NOT EXISTS app.phone_keys (
     key_hash BYTEA PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES app.users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at TIMESTAMPTZ NULL
+    last_used_at TIMESTAMPTZ NULL,
+    -- Which command paid with the key: a tap, a bank push (Блок 2) — the card names the commands,
+    -- not the phones (владелец 2026-10-19).
+    tap_paid BOOLEAN NOT NULL DEFAULT false,
+    push_paid BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE INDEX IF NOT EXISTS phone_keys_user_idx ON app.phone_keys (user_id);

@@ -230,8 +230,8 @@ func TestPostgresPhoneKeys(t *testing.T) {
 	keys := NewSQLPhoneKeyRepository(f.db)
 	hash := func(b byte) []byte { return []byte{b, 0xAA} }
 
-	if paid, issued, last, err := keys.Status(ctx, f.aliceID); err != nil || paid != 0 || issued != 0 || last != nil {
-		t.Fatalf("empty status: %d %d %v %v", paid, issued, last, err)
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s != (PhoneKeyStatus{}) {
+		t.Fatalf("empty status: %+v %v", s, err)
 	}
 	if _, err := keys.UserByHash(ctx, hash(1)); err != ErrPhoneKeyNotFound {
 		t.Fatalf("unknown key: %v", err)
@@ -254,15 +254,31 @@ func TestPostgresPhoneKeys(t *testing.T) {
 		t.Fatalf("second key: %q %v", user, err)
 	}
 	// Finding the key is not a payment (Н-5): five keys, none paid.
-	if paid, issued, last, err := keys.Status(ctx, f.aliceID); err != nil || paid != 0 || issued != 5 || last != nil {
-		t.Fatalf("status after lookup: %d %d %v %v", paid, issued, last, err)
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s != (PhoneKeyStatus{Issued: 5}) {
+		t.Fatalf("status after lookup: %+v %v", s, err)
 	}
-	if err := keys.MarkUsed(ctx, hash(2)); err != nil {
+	if err := keys.MarkUsed(ctx, hash(2), "tap"); err != nil {
 		t.Fatalf("mark: %v", err)
 	}
-	paid, issued, last, err := keys.Status(ctx, f.aliceID)
-	if err != nil || paid != 1 || issued != 5 || last == nil || time.Since(*last) > time.Minute {
-		t.Fatalf("status after a payment: %d %d %v %v", paid, issued, last, err)
+	s, err := keys.Status(ctx, f.aliceID)
+	if err != nil || s.Paid != 1 || s.Issued != 5 || !s.Tap || s.Push || s.LastUsedAt == nil || time.Since(*s.LastUsedAt) > time.Minute {
+		t.Fatalf("status after a payment: %+v %v", s, err)
+	}
+	// The commands, not the phones (владелец 2026-10-19): a push with the same key adds "push", a
+	// tap again keeps both; another person's push is not Alice's.
+	for _, src := range []string{"push", "tap"} {
+		if err := keys.MarkUsed(ctx, hash(2), src); err != nil {
+			t.Fatalf("mark %s: %v", src, err)
+		}
+	}
+	if err := keys.MarkUsed(ctx, hash(9), "push"); err != nil {
+		t.Fatalf("mark bob: %v", err)
+	}
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s.Paid != 1 || !s.Tap || !s.Push {
+		t.Fatalf("one key, both commands: %+v %v", s, err)
+	}
+	if s, err := keys.Status(ctx, f.bobID); err != nil || s.Paid != 1 || s.Tap || !s.Push {
+		t.Fatalf("bob, push only: %+v %v", s, err)
 	}
 	// A working key outlives never-used ones (критик Б1): the next drops the oldest never-used (3), not 2.
 	if err := keys.Add(ctx, f.aliceID, hash(7)); err != nil {
@@ -277,8 +293,8 @@ func TestPostgresPhoneKeys(t *testing.T) {
 	if err := keys.DeleteAll(ctx, f.aliceID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if paid, issued, _, _ := keys.Status(ctx, f.aliceID); paid != 0 || issued != 0 {
-		t.Fatalf("after delete: %d %d", paid, issued)
+	if s, _ := keys.Status(ctx, f.aliceID); s != (PhoneKeyStatus{}) {
+		t.Fatalf("after delete: %+v", s)
 	}
 	if user, err := keys.UserByHash(ctx, hash(9)); err != nil || user != f.bobID {
 		t.Fatalf("Bob's key after Alice disconnected: %q %v", user, err)

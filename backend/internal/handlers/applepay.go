@@ -59,11 +59,15 @@ const (
 var almaty = time.FixedZone("Asia/Almaty", 5*60*60)
 
 // walletStatus: connected and phones count only the keys a payment came with (владелец
-// 2026-10-19); waiting — a key was copied, no payment yet ("Ждём первую оплату").
+// 2026-10-19); waiting — a key was copied, no payment yet ("Ждём первую оплату"); tap / push —
+// which commands paid (the card names them, not the phones: one iPhone with both commands holds
+// two keys).
 type walletStatus struct {
 	Connected         bool       `json:"connected"`
 	Phones            int        `json:"phones"`
 	Waiting           bool       `json:"waiting"`
+	Tap               bool       `json:"tap"`
+	Push              bool       `json:"push"`
 	LastUsedAt        *time.Time `json:"last_used_at,omitempty"`
 	ShortcutURL       string     `json:"shortcut_url"`
 	ShortcutURLLegacy string     `json:"shortcut_url_legacy"`
@@ -76,14 +80,14 @@ func (h *WalletHandler) Status(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	phones, issued, last, err := h.keys.Status(r.Context(), userID)
+	s, err := h.keys.Status(r.Context(), userID)
 	if err != nil {
 		log.Printf("wallet: status: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to read wallet status")
 		return
 	}
 	respondJSON(w, http.StatusOK, walletStatus{
-		Connected: phones > 0, Phones: phones, Waiting: phones == 0 && issued > 0, LastUsedAt: last,
+		Connected: s.Paid > 0, Phones: s.Paid, Waiting: s.Paid == 0 && s.Issued > 0, Tap: s.Tap, Push: s.Push, LastUsedAt: s.LastUsedAt,
 		ShortcutURL: h.shortcutURL, ShortcutURLLegacy: h.shortcutURLLegacy, PushShortcutURL: h.pushShortcutURL,
 	})
 }
@@ -317,7 +321,7 @@ func (h *WalletHandler) save(w http.ResponseWriter, r *http.Request, userID, hou
 		return
 	}
 	if hash, ok := r.Context().Value(phoneKeyCtx{}).([]byte); ok {
-		if err := h.keys.MarkUsed(r.Context(), hash); err != nil {
+		if err := h.keys.MarkUsed(r.Context(), hash, op.Source); err != nil {
 			log.Printf("wallet: %s mark key: %v", op.Source, err) // the operation is written already
 		}
 	}

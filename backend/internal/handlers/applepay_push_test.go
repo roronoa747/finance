@@ -352,3 +352,39 @@ func TestPushSkippedCountedAndGuarded(t *testing.T) {
 		t.Errorf("limit: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// One iPhone, both commands (критик возврата 2026-10-19; владелец 2026-10-19 — «считать команды, а
+// не телефоны»): the touch command with one key, «Пуши банков» from the card with another; the
+// status names the commands that paid — a tap and a push — whatever the number of keys. A push
+// that is not an operation is not the push command yet.
+func TestWalletStatusNamesCommands(t *testing.T) {
+	app, clock, tapKey := setupTap(t)
+	if out := tapStatus(t, app.tap(t, tapKey, map[string]any{"merchant": "Magnum", "amount": "5 000 ₸"})); out["status"] != "saved" {
+		t.Fatalf("tap: %v", out)
+	}
+	if s := app.status(t); !s.Connected || !s.Tap || s.Push {
+		t.Fatalf("tap only: %+v", s)
+	}
+	pushKey := app.connect(t)
+	if s := pushStatus(t, app.push(t, pushKey, kaspi("Новые бонусы"))); !strings.HasPrefix(s, "skipped") {
+		t.Fatalf("not an operation: %s", s)
+	}
+	if s := app.status(t); !s.Tap || s.Push {
+		t.Fatalf("a skipped push: %+v", s)
+	}
+	// The same purchase by push 30 s later — one operation, both commands paid.
+	clock.t = clock.t.Add(30 * time.Second)
+	if s := pushStatus(t, app.push(t, pushKey, kaspi("Покупка: 5 000 ₸\nMAGNUM\nДоступно: 1 ₸"))); s != "duplicate" {
+		t.Fatalf("the same purchase by push: %s", s)
+	}
+	if s := app.status(t); !s.Connected || !s.Tap || !s.Push || s.Waiting {
+		t.Fatalf("tap and push: %+v", s)
+	}
+	// "Отключить" forgets the commands too.
+	if rec := app.call(t, http.MethodDelete, "/api/wallet", "Bearer "+app.alice, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("disconnect: %d", rec.Code)
+	}
+	if s := app.status(t); s.Connected || s.Tap || s.Push {
+		t.Fatalf("after disconnect: %+v", s)
+	}
+}

@@ -170,6 +170,12 @@ export interface WalletStatus {
   phones: number
   /** Ключ скопирован, оплаты с ним ещё не было — «Ждём первую оплату». Старый сервер поля не отдаёт. */
   waiting?: boolean
+  /**
+   * Какими командами оплатили: касанием (`tap`), пушем банка (`push`). Карточка называет команды, а не телефоны
+   * (владелец 2026-10-19: один iPhone с двумя командами держит два ключа). Старый сервер полей не отдаёт.
+   */
+  tap?: boolean
+  push?: boolean
   last_used_at?: string
   shortcut_url: string
   shortcut_url_legacy: string

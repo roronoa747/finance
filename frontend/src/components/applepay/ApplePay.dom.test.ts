@@ -189,21 +189,41 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(writeText).toHaveBeenCalledWith(KEY)
   })
 
-  it('ключ скопирован, оплаты не было — «Ждём первую оплату» и та же «Подключить»; строка «Недели» остаётся', async () => {
-    await open(Settings, '/settings', { status: { ...STATUS, waiting: true } })
+  it('ключ скопирован, оплаты не было — «Ждём первую оплату», та же «Подключить» и тихая «Отключить»; строка «Недели» остаётся', async () => {
+    const { disconnect } = await open(Settings, '/settings', { status: { ...STATUS, waiting: true } })
     expect(txt(q('[data-applepay-line]'))).toBe('Ждём первую оплату')
     expect(q('[data-connect]')).not.toBeNull()
-    expect(q('[data-disconnect]')).toBeNull()
     expect(q('[data-applepay-card]')!.dataset.connected).toBe('false')
+    // Скопированный ключ жив — отозвать можно (владелец 2026-10-19); «Подключить снова» и «Пуши банков» — только у подключённой.
+    expect(txt(q('[data-applepay-actions]'))).toBe('Отключить')
+    expect(q('[data-disconnect]')!.className).toContain('px-2')
+    q('[data-disconnect]')!.click()
+    await flush()
+    expect(txt(q('[data-confirm]'))).toContain('Отключить?')
+    q('[data-confirm-yes]')!.click()
+    await flush()
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(txt(q('[data-applepay-line]'))).toBe('Траты появятся сами')
+    expect(q('[data-disconnect]')).toBeNull()
     app?.unmount()
 
     await open(Week, '/week', { status: { ...STATUS, waiting: true } })
     expect(txt(q('[data-applepay-week]'))).toBe('Траты сами с Apple Pay')
     app?.unmount()
 
-    // Оплатили — «Подключено» и число телефонов, которыми платили.
-    await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 2, last_used_at: '2026-10-16T05:00:00Z' } })
-    expect(txt(q('[data-applepay-line]'))).toBe('2 iPhone · последняя трата 16 октября')
+    // Оплатили — команды, а не телефоны (владелец 2026-10-19): один iPhone с касанием и пушами держит два ключа.
+    const paid = { ...STATUS, connected: true, phones: 2, last_used_at: '2026-10-16T05:00:00Z' }
+    for (const [kinds, line] of [
+      [{ tap: true, push: true }, 'Касание и пуши · трата 16 октября'],
+      [{ push: true }, 'Пуши · трата 16 октября'],
+      [{ tap: true }, 'Последняя трата 16 октября'],
+      [{}, 'Последняя трата 16 октября'], // старый сервер полей не отдаёт
+    ] as const) {
+      app?.unmount()
+      await open(Settings, '/settings', { status: { ...paid, ...kinds } })
+      expect(txt(q('[data-applepay-line]'))).toBe(line)
+    }
+    expect(q('[data-applepay-card]')!.textContent).not.toContain('iPhone')
   })
 
   it('ждали первую оплату, оплатили, пока приложение в фоне, — возврат: строки «Недели» нет, карточка — «Последняя трата» (критик возврата 2026-10-19)', async () => {
@@ -263,6 +283,13 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(q('[data-applepay-card]')).not.toBeNull()
     expect(q('[data-disconnect]')).not.toBeNull()
     expect(q('[data-more]')).toBeNull()
+    expect(q('[data-connect]')).toBeNull()
+    app?.unmount()
+
+    // Ключ скопирован на iPhone, оплаты не было — отозвать можно и отсюда (владелец 2026-10-19), подключить — нет.
+    await open(Settings, '/settings', { ua: ANDROID, status: { ...STATUS, waiting: true } })
+    expect(txt(q('[data-applepay-line]'))).toBe('Ждём первую оплату')
+    expect(q('[data-disconnect]')).not.toBeNull()
     expect(q('[data-connect]')).toBeNull()
   })
 })
