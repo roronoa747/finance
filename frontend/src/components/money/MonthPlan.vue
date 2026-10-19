@@ -33,6 +33,7 @@ import {
   rkShare,
   spendCompare,
   spendFact,
+  spendPlansBy,
   untilPayday,
   type ImageAction,
   type PlanDue,
@@ -395,13 +396,7 @@ const { value: catFor, close: closeCat } = useQueryValue('cat')
 const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
 /** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
-const catPlans = computed(() =>
-  people.value.map((p) => ({
-    by: p.id,
-    name: p.name,
-    amount: plan.value.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0,
-  })),
-)
+const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value, catFor.value) : []))
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
 const images = computed(() => habitImages(state.value, props.monthKey))
 const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)

@@ -4167,6 +4167,14 @@ export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup
   return Math.round((part * 100) / total)
 }
 
+/**
+ * «План каждого» листа раздела (Р-81): строка раздела в `monthPlan().spend` каждого участника; у кого плана нет — 0.
+ * Один расчёт для листа «Месяца» и листа сводки прошлого месяца (RZ-13).
+ */
+export function spendPlansBy(plan: MonthPlan, people: { id: PersonId; name: string }[], categoryId: string): { by: PersonId; name: string; amount: number }[] {
+  return people.map((p) => ({ by: p.id, name: p.name, amount: plan.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === categoryId)?.plan ?? 0 }))
+}
+
 /** «на 5 дней» / «на 3 недели» / «на 2 месяца» раньше — подпись `days` рекомендации: < 14 — дни, < 61 — недели, дальше — месяцы. */
 export function earlierLabel(days: number): string {
   if (days < 14) return `${days} ${plural(days, 'день', 'дня', 'дней')}`

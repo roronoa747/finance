@@ -122,7 +122,21 @@ describe('RZ-13: лист раздела того месяца, что на ка
     await vi.waitFor(() => expect(sheet()).not.toBeNull())
     expect(txt(sheet()!.querySelector('[data-cat-month]'))).toBe('август')
     expect(txt(sheet()!.querySelector('[data-cat-amount]'))).toMatch(/^90\s000 ₸$/)
+    // План каждого — тот же общий план раздела (критик Блока 3: строка участника не пустая).
+    expect(txt(sheet()!.querySelector('[data-cat-person="a"]'))).toMatch(/40\s000/)
     expect(sheet()!.querySelector('[data-cat-edit]')).toBeNull()
+  })
+
+  it('неверный месяц в адресе (не месяц, дальше года назад, будущий) — лист раздела текущего месяца с «Изменить» (критик Блока 3)', async () => {
+    for (const month of ['2026-8', 'abc', '2025-01', '2027-03']) {
+      await mount(`/month?month=${month}&cat=sc_cafe`)
+      await vi.waitFor(() => expect(sheet()).not.toBeNull())
+      expect(txt(sheet()!.querySelector('[data-cat-month]')), month).toBe('сентябрь')
+      expect(sheet()!.querySelector('[data-cat-edit]'), month).not.toBeNull()
+      app!.unmount()
+      app = null
+      document.body.innerHTML = ''
+    }
   })
 
   it('лист текущего месяца — «сентябрь», его цифра и «Изменить» у участника', async () => {
@@ -145,7 +159,14 @@ describe('RZ-13: лист раздела того месяца, что на ка
     }
     const active = () => txt(q('[data-report-card][data-active] [data-review-advice-title]'))
     expect(active()).toBe('Кафе')
-    await go(q('[data-report-card][data-active] [data-review-link]'))
+    // Карточка записана в перехвате — раньше обработчика самой ссылки (`RouterLink`): на телефоне переход успевает
+    // создать новую запись истории до всплытия (стенд Х-10). Слушатель цели ставится после `RouterLink` — видит то,
+    // что было записано до него (критик Блока 3: мутант «всплытие вместо перехвата» — красный).
+    const link = q('[data-report-card][data-active] [data-review-link]')!
+    let atLink: unknown = 'не нажато'
+    link.addEventListener('click', () => (atLink = window.history.state?.reportCard), { once: true })
+    await go(link)
+    expect(atLink).toBe(3)
     expect(router.currentRoute.value.fullPath).toBe('/month?month=2026-08&cat=sc_cafe')
     await vi.waitFor(() => expect(q('[data-report]')).toBeNull())
 
@@ -157,5 +178,23 @@ describe('RZ-13: лист раздела того месяца, что на ка
 
     // Память одноразовая: прочитали — из записи истории стёрто.
     expect(window.history.state.reportCard).toBeUndefined()
+  })
+
+  it('Х-10 без веб-истории (память роутера): «Открыть» → «Назад» — отчёт как раньше, с первой карточки, без ошибок (критик Блока 3)', async () => {
+    window.history.replaceState(null, '', '/')
+    await mount('/month?review=1&card=2')
+    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull(), { timeout: 5000 })
+    await flush()
+    expect(txt(q('[data-report-card][data-active] [data-review-advice-title]'))).toBe('Кафе')
+    await go(q('[data-report-card][data-active] [data-review-link]'))
+    await vi.waitFor(() => expect(q('[data-report]')).toBeNull())
+    expect(window.history.state).toBeNull()
+
+    router.back()
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?review=1&card=2'), { timeout: 5000 })
+    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull(), { timeout: 5000 })
+    await flush()
+    // Памяти нет — старт по адресу: `card=2` — снова совет «Кафе».
+    expect(txt(q('[data-report-card][data-active] [data-review-advice-title]'))).toBe('Кафе')
   })
 })

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
-import { monthPlan, monthPlanPast, rkShare, spendCompare } from '@/lib/finance'
+import { monthPlan, monthPlanPast, rkShare, spendCompare, spendPlansBy } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
@@ -35,13 +35,9 @@ const { value: catFor, close: closeCat } = useQueryValue('cat')
 const input = computed(() => finance.planInput(props.monthKey))
 const catRow = computed(() => (catFor.value ? (spendCompare(input.value.state, input.value.ctx).rows.find((r) => r.categoryId === catFor.value) ?? null) : null))
 const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, input.value.ctx, catRow.value.group) : null))
-const catPlans = computed(() => {
-  if (!catRow.value) return []
-  const spend = monthPlan(input.value.state, input.value.ctx).spend
-  return finance.people
-    .filter((p) => !p.deletedAt)
-    .map((p) => ({ by: p.id, name: p.name, amount: spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0 }))
-})
+const catPlans = computed(() =>
+  catRow.value ? spendPlansBy(monthPlan(input.value.state, input.value.ctx), finance.people.filter((p) => !p.deletedAt), catRow.value.categoryId) : [],
+)
 </script>
 
 <template>
