@@ -569,7 +569,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     document.body.innerHTML = ''
     await open('member', doc, '/month?cat=sc_food')
     await flush()
-    expect(txt(q('[role="dialog"] [data-cat-month]'))).toBe('сентябрь')
+    // Текущий месяц не называется — он и так на экране (`/ux` Блока 3).
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(q('[role="dialog"] [data-cat-month]')).toBeNull()
     expect(q('[role="dialog"] [data-cat-edit]')).not.toBeNull()
   })
 

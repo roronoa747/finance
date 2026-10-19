@@ -131,7 +131,8 @@ describe('RZ-13: лист раздела того месяца, что на ка
     for (const month of ['2026-8', 'abc', '2025-01', '2027-03']) {
       await mount(`/month?month=${month}&cat=sc_cafe`)
       await vi.waitFor(() => expect(sheet()).not.toBeNull())
-      expect(txt(sheet()!.querySelector('[data-cat-month]')), month).toBe('сентябрь')
+      // Лист текущего месяца: месяц не называется (`/ux` Блока 3 — он и так на экране), «Изменить» есть.
+      expect(sheet()!.querySelector('[data-cat-month]'), month).toBeNull()
       expect(sheet()!.querySelector('[data-cat-edit]'), month).not.toBeNull()
       app!.unmount()
       app = null
@@ -139,10 +140,10 @@ describe('RZ-13: лист раздела того месяца, что на ка
     }
   })
 
-  it('лист текущего месяца — «сентябрь», его цифра и «Изменить» у участника', async () => {
+  it('лист текущего месяца — без названия месяца (он и так на экране, `/ux` Блока 3), его цифра и «Изменить» у участника', async () => {
     await mount('/month?cat=sc_cafe')
     await vi.waitFor(() => expect(sheet()).not.toBeNull())
-    expect(txt(sheet()!.querySelector('[data-cat-month]'))).toBe('сентябрь')
+    expect(sheet()!.querySelector('[data-cat-month]')).toBeNull()
     // Выписка сентября до 7-го не дошла — у раздела план.
     expect(txt(sheet()!.querySelector('[data-cat-amount]'))).toContain('план')
     expect(sheet()!.querySelector('[data-cat-edit]')).not.toBeNull()

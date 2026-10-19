@@ -98,6 +98,9 @@ describe('SpendCategorySheet', () => {
     await mount({ amount: null, share: null, advice: { amount: 10_000, goalId: null, goalName: null, days: null } })
     expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в мечту`))
     expect(txt(q('[data-cat-amount]'))).toBe(norm(`${money(20_000)}план`))
+    // План уже крупно — второй раз строкой его нет (`/ux` Блока 3: шумная цифра); «обычно» — на месте.
+    expect(q('[data-cat-plan]')).toBeNull()
+    expect(q('[data-cat-usual]')).not.toBeNull()
     expect(q('[data-cat-share]')).toBeNull()
   })
 
@@ -126,15 +129,21 @@ describe('SpendCategorySheet', () => {
     expect(q('[data-cat-edit]')).toBeNull()
   })
 
-  it('RZ-13: месяц листа — над цифрой: этого года — «сентябрь», другого — с годом; без месяца — строки нет (критик Блока 3)', async () => {
+  it('RZ-13: месяц листа — над цифрой: этого года — «январь», другого — с годом; текущий и без месяца — строки нет (критик, `/ux` Блока 3)', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-01-05T07:00:00Z'))
+    vi.setSystemTime(new Date('2026-03-05T07:00:00Z'))
     await mount({}, { month: '2026-01' })
     expect(txt(q('[data-cat-month]'))).toBe('январь')
     app!.unmount()
     document.body.innerHTML = ''
     await mount({}, { month: '2025-12' })
     expect(txt(q('[data-cat-month]'))).toBe('декабрь 2025')
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Текущий месяц не называется — он и так на экране.
+    await mount({}, { month: '2026-03' })
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(q('[data-cat-month]')).toBeNull()
     app!.unmount()
     document.body.innerHTML = ''
     await mount()
