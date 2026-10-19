@@ -64,11 +64,12 @@ export const useApplePayStore = defineStore('applepay', () => {
 
   /**
    * Статус — раз за сессию (`force` — после подключения и отключения: новый запрос, даже если прежний ещё в пути — его
-   * ответ уже устарел, критик Б1).
+   * ответ уже устарел, критик Б1). Ждём первую оплату (`waiting`) — не кэшируется: первая оплата приходит, пока
+   * приложение в фоне (критик возврата 2026-10-19).
    */
   async function load(client: ApiClient = apiClient, force = false) {
     if (!canUse.value) return
-    if (status.value && !force) return
+    if (status.value && !force && !status.value.waiting) return
     const token = auth.token
     if (loading && !force && loadingFor === token) return loading
     const mine = ++asked
@@ -104,5 +105,13 @@ export const useApplePayStore = defineStore('applepay', () => {
     legacyChosen.value = on
   }
 
-  return { userAgent, status, isIPhone, iosMajor, pathKnown, path, link, pushLink, available, connected, load, connect, disconnect, chooseLegacy }
+  /**
+   * Возврат в приложение (`syncEngine`): ждали первую оплату — статус спрашивается снова. Иначе после оплаты карточка
+   * писала бы «Ждём первую оплату», а «Неделя» — «Траты сами с Apple Pay» рядом с самой тратой до перезапуска PWA.
+   */
+  function refreshWaiting(client: ApiClient = apiClient) {
+    return status.value?.waiting ? load(client) : undefined
+  }
+
+  return { userAgent, status, isIPhone, iosMajor, pathKnown, path, link, pushLink, available, connected, load, connect, disconnect, chooseLegacy, refreshWaiting }
 })

@@ -171,4 +171,33 @@ describe('stores/applepay', () => {
     expect(calls.walletDisconnect).toHaveBeenCalledOnce()
     expect(ap.status).toMatchObject({ connected: false, phones: 0 })
   })
+
+  it('ждём первую оплату — статус не кэшируется: вход и возврат спрашивают снова, оплатили — подключено (критик возврата 2026-10-19)', async () => {
+    signIn()
+    const ap = useApplePayStore()
+    const { client, calls } = fakeClient()
+    // Не подключено и ключа не копировали — раз за сессию, как было.
+    await ap.load(client)
+    await ap.load(client)
+    expect(ap.refreshWaiting(client)).toBeUndefined()
+    expect(calls.walletStatus).toHaveBeenCalledTimes(1)
+
+    // «Скопировать ключ» — ждём первую оплату; вход в «Неделю» или настройки спрашивает снова.
+    calls.walletStatus.mockResolvedValue({ ...STATUS, waiting: true })
+    await ap.connect(client)
+    await vi.waitFor(() => expect(ap.status?.waiting).toBe(true))
+    await ap.load(client)
+    expect(calls.walletStatus).toHaveBeenCalledTimes(3)
+
+    // Оплатили, пока приложение в фоне, — возврат в приложение: подключено.
+    calls.walletStatus.mockResolvedValue({ ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-19T05:00:00Z' })
+    await ap.refreshWaiting(client)
+    expect(ap.connected).toBe(true)
+    expect(calls.walletStatus).toHaveBeenCalledTimes(4)
+
+    // Подключено — снова раз за сессию.
+    await ap.load(client)
+    expect(ap.refreshWaiting(client)).toBeUndefined()
+    expect(calls.walletStatus).toHaveBeenCalledTimes(4)
+  })
 })

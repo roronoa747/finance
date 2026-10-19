@@ -206,6 +206,25 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(txt(q('[data-applepay-line]'))).toBe('2 iPhone · последняя трата 16 октября')
   })
 
+  it('ждали первую оплату, оплатили, пока приложение в фоне, — возврат: строки «Недели» нет, карточка — «Последняя трата» (критик возврата 2026-10-19)', async () => {
+    const week = await open(Week, '/week', { status: { ...STATUS, waiting: true } })
+    expect(q('[data-applepay-week]')).not.toBeNull()
+    week.status.mockResolvedValue({ ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-19T05:00:00Z' })
+    await useApplePayStore().refreshWaiting()
+    await flush()
+    expect(q('[data-applepay-week]')).toBeNull()
+    app?.unmount()
+
+    // Настройки, открытые до оплаты: тот же возврат — «Последняя трата», без «Подключить».
+    const settings = await open(Settings, '/settings', { status: { ...STATUS, waiting: true } })
+    expect(txt(q('[data-applepay-line]'))).toBe('Ждём первую оплату')
+    settings.status.mockResolvedValue({ ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-19T05:00:00Z' })
+    await useApplePayStore().refreshWaiting()
+    await flush()
+    expect(txt(q('[data-applepay-line]'))).toBe('Последняя трата 19 октября')
+    expect(q('[data-connect]')).toBeNull()
+  })
+
   it('подключено — «Отключить» → подтверждение → отключено, снова «Подключить»', async () => {
     const { disconnect } = await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 1, last_used_at: '2026-10-16T05:00:00Z' } })
     // Значок уже говорит «подключено» (`/ux` Б1, вопрос 3): один телефон — без числа и без «Подключено».

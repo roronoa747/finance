@@ -4,6 +4,7 @@ import { useAuthStore, DEMO_TOKEN } from './auth'
 import { useFinanceStore } from './finance'
 import { useOperationsStore } from './operations'
 import { useAiStore } from './ai'
+import { useApplePayStore } from './applepay'
 import { apiClient } from '@/api/client'
 import { startSyncEngine, resetSyncEngineForTests, afterFamilyLoaded, BACKGROUND_SYNC_MS } from './syncEngine'
 import { fillWishPhotos } from '@/lib/photos/wishLinkPhotos'
@@ -126,6 +127,18 @@ describe('startSyncEngine — правки партнёра без собств�
     const demoBack = vi.spyOn(useOperationsStore(), 'pullOnReturn').mockImplementation(() => {})
     demo.doc.dispatchEvent(new Event('visibilitychange'))
     expect(demoBack).not.toHaveBeenCalled()
+  })
+
+  it('возврат в приложение — ждали первую оплату Apple Pay: статус спрашивается снова; скрытие — нет (критик возврата 2026-10-19)', () => {
+    const { doc } = setup('real-token')
+    vi.spyOn(useOperationsStore(), 'pullOnReturn').mockImplementation(() => {})
+    const refresh = vi.spyOn(useApplePayStore(), 'refreshWaiting').mockImplementation(() => undefined)
+    doc.visibilityState = 'hidden'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(refresh).not.toHaveBeenCalled()
+    doc.visibilityState = 'visible'
+    doc.dispatchEvent(new Event('visibilitychange'))
+    expect(refresh).toHaveBeenCalledTimes(1)
   })
 
   it('AU-13: разбор сам — после подтянутого документа; pull без документа (сеть, сбой) — нет', async () => {

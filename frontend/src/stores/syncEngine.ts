@@ -5,6 +5,7 @@ import { useOperationsStore } from './operations'
 import { useFxStore } from './fx'
 import { useEventsStore } from './events'
 import { useAiStore } from './ai'
+import { useApplePayStore } from './applepay'
 import { docCurrencies } from '@/lib/finance'
 import { readDemoPending } from '@/lib/storage'
 
@@ -128,8 +129,11 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
   doc.addEventListener('visibilitychange', () => {
     if (doc.visibilityState !== 'visible') return
     sync()
-    // Вернулся после оплаты телефоном (Apple Pay, Р-19) — трата уже в «Неделе».
-    if (signedIn()) useOperationsStore().pullOnReturn()
+    // Вернулся после оплаты телефоном (Apple Pay, Р-19) — трата уже в «Неделе»; ждали первую оплату — статус заново.
+    if (signedIn()) {
+      useOperationsStore().pullOnReturn()
+      void useApplePayStore().refreshWaiting()
+    }
   })
   win.setInterval(() => {
     if (doc.visibilityState === 'visible') sync()
