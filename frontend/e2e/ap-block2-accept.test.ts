@@ -222,6 +222,53 @@ describe('e2e / приёмка Apple Pay Блок 2 — «Пришла» по п
     expect(salaryOct(A).map((p) => [p.amount, p.accountId, p.opId])).toEqual([[690_000, 'card', SALARY_PUSH.id]])
   })
 
+  it('лист первой зарплаты из «Да» закрыли — ничего не записано, правила нет, вопрос остался; «Да» снова открывает лист (критик 2026-10-19, вечер)', async () => {
+    server = fakeServer(planFamilyDoc())
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', SALARY_PUSH)
+    await pull(A)
+    on(A)
+    const question = useOperationsStore().pendingMatches.find((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')!
+    const yes = () => screenMixin({}, (s) => (s.acceptMatch as (c: unknown) => void)(question))
+    /** Крестик листа отметки: `MarkSheet` шлёт `close` — «Неделя» закрывает лист. */
+    const closeMark = screenMixin({}, (s) => {
+      void (s.salary && s.mode === 'mark' ? s.confirmMark : s.notThisSheet)
+      ;(s.emit as (e: 'close') => void)('close')
+    })
+    const rules = A.store.merchantRules.length
+    const before = card(A)
+
+    await screen(A.pinia, Week, '/week', undefined, [yes(), closeMark])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(salaryOct(A)).toEqual([])
+    expect(A.store.merchantRules.length).toBe(rules)
+    expect(card(A)).toBe(before)
+    on(A)
+    expect(useOperationsStore().pendingMatches.some((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')).toBe(true)
+    expect(await screen(A.pinia, Week, '/week', undefined, [yes()])).toContain('Спрашиваем один раз')
+  })
+
+  it('валютная зарплата: «Да» по пушу без прошлой отметки — по-старому, без листа (лист в тенге отметил бы $690 000)', async () => {
+    const T = '2026-09-01T00:00:00.000Z'
+    server = fakeServer(planFamilyDoc({
+      people: [
+        { id: 'a', name: 'Ильяс', salary: 700_000, payday: 10, salaryVersions: [{ from: '2026-01', amount: 1_500, currency: 'USD', rate: 460 }], updatedAt: T },
+        { id: 'b', name: 'Аруна', salary: 500_000, payday: 20, updatedAt: T },
+      ],
+    }))
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', SALARY_PUSH)
+    await pull(A)
+    on(A)
+    const question = useOperationsStore().pendingMatches.find((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')!
+    expect(question).toBeTruthy()
+    vi.spyOn(apiClient, 'upsertOperations').mockImplementation(A.client.upsertOperations)
+    const html = await screen(A.pinia, Week, '/week', undefined, [screenMixin({}, (s) => (s.acceptMatch as (c: unknown) => void)(question))])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(html).not.toContain('Отметить зарплату')
+    expect(salaryOct(A).map((p) => [p.amount, p.accountId, p.opId, p.foreign])).toEqual([[690_000, null, SALARY_PUSH.id, undefined]])
+  })
+
   it('viewer и демо: ни точки, ни запросов статуса Apple Pay (viewer — и без «Пришла») — даже когда у Ильяса есть приход из пуша', async () => {
     server = fakeServer(planFamilyDoc({ payments: [SEPT_SALARY] }))
     serverPush(st, 'u-a', SALARY_PUSH)
