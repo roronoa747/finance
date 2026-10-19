@@ -61,8 +61,9 @@ describe('DEMO_REVIEW v3 — без цифр, верен в любой день,
       expect(r.where).toBe(DEMO_REVIEW.where)
       expect(r.advices!.map((a) => a.title)).toEqual(['Магазин у дома', 'Новое списание', 'Отложить в подушку'])
       expect(r.advices!.map((a) => a.action.kind)).toEqual(['open', 'open', 'do'])
-      expect(r.advices![0].figure).toEqual({ about: 'частые траты у «Магазин у дома» — за год', value: money(248_400) })
-      expect(r.advices![1].figure).toEqual({ about: DEMO_REVIEW.advices[1].figure, value: money(2_490) })
+      // Подпись крупной цифры — коротко, кодом (RZ-15).
+      expect(r.advices![0].figure).toEqual({ about: 'частые траты у «Магазин у дома» — за год', value: money(248_400), label: 'за год · Магазин у дома' })
+      expect(r.advices![1].figure).toEqual({ about: DEMO_REVIEW.advices[1].figure, value: money(2_490), label: 'в месяц · Онлайн-кинотеатр' })
       expect(r.advices![2].figure).toBeNull()
       expect(r.advices![0].action).toEqual({ kind: 'open', target: { kind: 'seller', id: 'магазин у дома', name: 'Магазин у дома', categoryId: 'sc_food' } })
       // Счётчик — по находкам советов: утечка и подписка (2 490 × 12).

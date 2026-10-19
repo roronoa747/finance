@@ -142,7 +142,7 @@ export const useAiStore = defineStore('ai', () => {
     if (inflight) return inflight
     inflight = (async () => {
       const input = finance.planInput(key)
-      const { payload, doById, openById, findings, byFact, byAction } = buildReviewFacts(finance.householdDoc, input, reason)
+      const { payload, doById, openById, findings, byFact, byAction, labels } = buildReviewFacts(finance.householdDoc, input, reason)
       // Фактов или кнопок нет (пустая семья; совета без кнопки не бывает, Р-6) — ручка ответит 400: не спрашиваем.
       if (!payload.facts.length || !payload.actions.length) return 'ai_failed'
       try {
@@ -155,10 +155,11 @@ export const useAiStore = defineStore('ai', () => {
           const target = openById.get(a.action)
           if (!candidate && !target) continue
           const f = a.figure ? facts.get(a.figure) : undefined
+          const label = f ? labels.get(f.id) : undefined
           advices.push({
             title: a.title,
             text: a.text,
-            figure: f ? { about: f.about, value: f.value } : null,
+            figure: f ? { about: f.about, value: f.value, ...(label ? { label } : {}) } : null,
             action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
           })
           // В X — находка, о которой совет: сначала его крупная цифра, без неё — кнопка (Р-19; у «Сделать» — null).

@@ -106,7 +106,9 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     const r = one.store.aiReviewOf('2026-10')!
     expect(r).toMatchObject({ v: 3, reason: 'month', reasonKey: 'month:2026-10', where: 'Аптека у дома тянет больше, чем кажется.' })
     expect(r.advices!.map((a) => a.action.kind)).toEqual(['do', 'open'])
-    expect(r.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA PLUS» — за год' }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka plus', categoryId: 'sc_health' } } })
+    // Подпись крупной цифры — коротко, кодом (RZ-15); в тело ручки не уходит.
+    expect(JSON.stringify(aiReview.mock.calls[0][0])).not.toContain('label')
+    expect(r.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA PLUS» — за год', label: 'за год · APTEKA PLUS' }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka plus', categoryId: 'sc_health' } } })
     // Счётчик: находок — сколько нашёл код; ₸ в год — утечка совета (11 000 в месяц × 12).
     expect(r.work).toMatchObject({ found: 1, yearly: 132_000 })
     await sync(one)
@@ -120,7 +122,9 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     expect(html.match(/data-review-advice(?=[\s=>])/g)).toHaveLength(2)
     expect(html).toMatch(doBtn)
     expect(html).toContain('data-review-link')
-    expect(visible(html)).toContain('операций просмотрено')
+    // RZ-14: деньги находок в год — крупно, операции — строкой.
+    expect(visible(html)).toContain('в год уходит на найденное')
+    expect(visible(html)).toMatch(/1 находка из [\d ]+ операц/)
   })
 
   it('(в)(г) «Сделать» → сдвиг месяца у обоих, «✓ Сделано»; «Открыть» ведёт на историю с разделом продавца', async () => {

@@ -68,7 +68,8 @@ export type OpenTarget = { kind: 'cat' | 'goal' | 'credit' | 'obligation' | 'sel
 export type AiAdvice = {
   title: string
   text: string
-  figure: { about: string; value: string } | null
+  /** `label` — короткая подпись под крупной цифрой (считает код, RZ-15); у разборов до RZ-15 нет — подпись `about`. */
+  figure: { about: string; value: string; label?: string } | null
   action: { kind: 'do'; candidate: StepCandidate } | { kind: 'open'; target: OpenTarget }
 }
 

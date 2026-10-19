@@ -472,8 +472,8 @@ onUnmounted(() => {
                 <h2 class="mt-2 type-h2-lg text-ink" data-review-advice-title>{{ c.row.a.title }}</h2>
                 <template v-if="c.row.a.figure">
                   <p class="mt-6 type-big num text-ink" data-review-figure>{{ c.row.a.figure.value }}</p>
-                  <!-- Переносом, не обрезкой: единица («— за год») стоит в конце подписи (`/ux`). -->
-                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ c.row.a.figure.about }}</p>
+                  <!-- Короткая подпись кода (RZ-15: «за год · Магазин у дома»); разбор до неё — `about`, переносом, не обрезкой (`/ux`). -->
+                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ c.row.a.figure.label ?? c.row.a.figure.about }}</p>
                 </template>
                 <p class="mt-5 text-[17px] leading-snug text-ink num" data-review-advice-text>{{ keep(c.row.a.text) }}</p>
                 <div class="mt-6">

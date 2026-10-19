@@ -747,6 +747,19 @@ describe('RZ-07: отчёт разбора v3', () => {
     await vi.waitFor(() => expect(fill()).not.toBe('0%'))
   })
 
+  it('RZ-15: подпись крупной цифры — короткая подпись кода (`label`); разбор без неё — `about`', async () => {
+    const c = await openV3()
+    app!.unmount()
+    document.body.innerHTML = ''
+    const [first, second] = advices(c)
+    const labelled = { ...second, figure: { ...second.figure!, label: 'сверх обычного · Кафе' } }
+    await open({ doc: withFund({ aiReviews: [savedV3(c, { advices: [first, labelled] })] }) })
+    await router.push('/month?review=1&card=2')
+    await vi.waitFor(() => expect(dialog()).not.toBeNull(), { timeout: 5000 })
+    await flush()
+    expect(txt(q('[data-report-card][data-active] [data-review-figure-about]'))).toBe('сверх обычного · Кафе')
+  })
+
   it('без находок в советах — счётчик без «≈»: крупно операции, «нашёл K» (RZ-14 — как было)', async () => {
     await openV3({ extra: { work: { ops: 12, found: 0, yearly: 0 } } })
     expect(txt(q('[data-review-big]'))).toBe('12')
