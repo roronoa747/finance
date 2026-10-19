@@ -736,6 +736,13 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(q('[data-review-where-empty]')).toBeNull()
     // Строка — ссылка на лист раздела, листание по ней не срабатывает.
     expect(q('[data-where-row="sc_cafe"]')!.getAttribute('href')).toBe('/month?cat=sc_cafe')
+    // Рост полос — когда карточку видно, не за кадром (все карточки монтируются сразу, `/ux`).
+    const fill = () => q('[data-where-row="sc_food"] [data-where-fill]')!.style.width
+    await new Promise((r) => setTimeout(r, 120))
+    expect(fill()).toBe('0%')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }))
+    await flush()
+    await vi.waitFor(() => expect(fill()).not.toBe('0%'))
   })
 
   it('без находок в советах — счётчик без «≈»', async () => {

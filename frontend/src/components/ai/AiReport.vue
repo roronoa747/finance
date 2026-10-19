@@ -133,6 +133,8 @@ const whenLine = computed(() =>
 /* ---------- «Куда ушло» (Р-4): полосы считает код за месяц находок ---------- */
 const whereMonth = computed(() => `в ${monthIn(findMonth(input.value.ctx), false)}`)
 const rows = computed(() => (v3.value ? whereRows(input.value.state, input.value.ctx) : []))
+/** Полосы растут, когда карточку «Куда ушло» впервые видно: карточки монтируются сразу, рост шёл за кадром (`/ux`). */
+const whereSeen = ref(false)
 
 /* ---------- «Итог прошлого месяца» (Р-10, Р-20): только по v3 прошлого месяца ---------- */
 const outcome = computed(() => {
@@ -199,6 +201,9 @@ const startIndex = () => {
   const i = n ? cards.value.findIndex((c) => c.kind === 'advice' && c.row.i === n - 1) : -1
   return i < 0 ? 0 : i
 }
+watch(active, (i) => {
+  if (cards.value[i]?.kind === 'where') whereSeen.value = true
+})
 // Разбор сменился («Обновить») — карточек стало меньше: активная не выходит за ленту.
 watch(
   () => cards.value.length,
@@ -326,6 +331,7 @@ function show() {
 function hide() {
   sentOpen.value = false
   doCandidate.value = null
+  whereSeen.value = false
   if (!popSheet(me)) return
   releaseTips?.()
   releaseTips = null
@@ -423,7 +429,7 @@ onUnmounted(() => {
             <template v-else-if="c.kind === 'where'">
               <h2 class="type-h2-lg text-ink">Куда ушло</h2>
               <p class="mt-1 text-[15px] text-ink-2" data-review-where-month>{{ whereMonth }}</p>
-              <WhereBars v-if="rows.length" class="mt-5" :rows="rows" />
+              <WhereBars v-if="rows.length" class="mt-5" :rows="rows" :play="whereSeen" />
               <p v-else class="mt-6 text-[15px] text-ink-2" data-review-where-empty>Выписок за месяц ещё нет</p>
               <p v-if="review?.where" class="mt-6 text-[17px] leading-snug text-ink num" data-review-where>{{ keep(review.where) }}</p>
             </template>

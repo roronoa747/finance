@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, h, nextTick, type App } from 'vue'
+import { createApp, h, nextTick, ref, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { routes } from '@/router'
@@ -30,7 +30,9 @@ const ROWS: WhereRow[] = [
   { categoryId: 'sc_fun', name: 'Развлечения', amount: 45_000, usual: null, plan: null, share: 0.1, usualShare: null, planShare: null, over: false },
 ]
 
-async function mount(rows = ROWS) {
+const play = ref(true)
+async function mount(rows = ROWS, playing = true) {
+  play.value = playing
   const pinia = createPinia()
   setActivePinia(pinia)
   useFinanceStore().setHouseholdDoc(planFamilyDoc({ spendCategories: DEFAULT_SPEND_CATEGORIES.map((c) => ({ ...c, updatedAt: T0 })) }), 1)
@@ -39,7 +41,7 @@ async function mount(rows = ROWS) {
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp({ render: () => h(WhereBars, { rows }) })
+  app = createApp({ render: () => h(WhereBars, { rows, play: play.value }) })
   app.use(pinia)
   app.use(router)
   app.mount(root)
@@ -82,6 +84,15 @@ describe('RZ-08: WhereBars — «Куда ушло» картинкой', () => 
     expect(rowEl('sc_food').querySelector('[data-where-dot]')).toBeNull()
     // Легенда — того, что нарисовано.
     expect([...document.querySelectorAll('[data-where-legend] > span')].map(txt)).toEqual(['обычно', 'план'])
+  })
+
+  it('`play: false` — полосы ждут на нуле; включили — растут (отчёт: когда карточку видно, `/ux`)', async () => {
+    await mount(ROWS, false)
+    await new Promise((r) => setTimeout(r, 120))
+    expect(rowEl('sc_food').querySelector<HTMLElement>('[data-where-fill]')!.style.width).toBe('0%')
+    play.value = true
+    await nextTick()
+    expect(await grownWidth('sc_food')).toBe('100%')
   })
 
   it('нет рисок — нет легенды', async () => {

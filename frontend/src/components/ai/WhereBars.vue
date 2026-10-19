@@ -13,7 +13,8 @@ import { useGrow } from '@/lib/motion'
  * и план (`--brand`), их числа — в листе раздела (правило 12: нет шумных цифр). Нажатие строки — лист раздела «Месяца»
  * (`/month?cat=<id>`, Р-18) у любой роли: это чтение. Геометрию считает `whereRows` (`finance.ts`), здесь — показ.
  */
-const props = defineProps<{ rows: WhereRow[] }>()
+/** `play` — расти сейчас: отчёт монтирует все карточки сразу и включает рост, когда «Куда ушло» впервые видно (`/ux`). */
+const props = withDefaults(defineProps<{ rows: WhereRow[]; play?: boolean }>(), { play: true })
 
 const grown = useGrow()
 const pct = (share: number) => `${Math.max(0, Math.min(1, share)) * 100}%`
@@ -41,7 +42,7 @@ const legend = computed(() => ({ usual: props.rows.some((r) => r.usualShare !== 
         <i
           class="absolute inset-y-0 left-0 block rounded-pill transition-[width] duration-(--motion-fill) ease-(--ease-out)"
           :class="r.over ? 'bg-warn' : 'bg-ink-3'"
-          :style="{ width: grown ? pct(r.share) : '0%' }"
+          :style="{ width: grown && play ? pct(r.share) : '0%' }"
           data-where-fill
         />
         <!-- Обводка цветом фона: риска плана на `--warn` / `--ink-3` и «обычно» на `--warn` в тёмной теме — 1,2–1,6 : 1 (`/ux`). -->
