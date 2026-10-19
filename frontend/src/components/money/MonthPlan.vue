@@ -917,7 +917,18 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Sheet>
 
     <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="closeCat" @edit="editCatPlan" @image="imageAct" />
+    <!-- Прошлый месяц (план до отложенной зарплаты) — без «Изменить»: план раздела общий на будущее (Х-9, RZ-13). -->
+    <SpendCategorySheet
+      :row="catRow"
+      :rk="catRk"
+      :plans="catPlans"
+      :can-edit="canEdit && monthKey >= monthNow()"
+      :image="catImage"
+      :month="monthKey"
+      @close="closeCat"
+      @edit="editCatPlan"
+      @image="imageAct"
+    />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->

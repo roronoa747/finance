@@ -39,7 +39,7 @@ import {
 } from '@/lib/finance'
 import { maskNames } from '@/lib/aiSummary'
 import { shortMerchant } from '@/lib/statements/model'
-import { addMonths, monthBy } from '@/lib/dates'
+import { addMonths, monthBy, monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
 
@@ -338,11 +338,12 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
  * Адрес «Открыть» (Р-18): раздел — лист раздела «Месяца», мечта — экран цели, долг и платёж — листы «Денег» по адресу,
  * продавец — история с чипом его раздела (экрана продавца нет). Лист долга по `?credit=` открывает «Капитал»
  * (`CapitalLists`), не квадрат «Долги»: Р-18 писал `/money/debts?credit=`, там адрес ничего не открывал (стенд RZ-08) —
- * `/money?credit=`, как «Изменить платёж» долга на «Месяце».
+ * `/money?credit=`, как «Изменить платёж» долга на «Месяце». Раздел — лист **того месяца, что на картинке** (`month` —
+ * месяц находок; Х-9, владелец 2026-10-19, RZ-13): не текущий — `/month?month=<месяц>&cat=<id>`, иначе `/month?cat=<id>`.
  */
-export function openPath(target: OpenTarget): string {
+export function openPath(target: OpenTarget, month?: string): string {
   const q = encodeURIComponent
-  if (target.kind === 'cat') return `/month?cat=${q(target.id)}`
+  if (target.kind === 'cat') return month && month !== monthKey() ? `/month?month=${q(month)}&cat=${q(target.id)}` : `/month?cat=${q(target.id)}`
   if (target.kind === 'goal') return `/goals/${q(target.id)}`
   if (target.kind === 'credit') return `/money?credit=${q(target.id)}`
   if (target.kind === 'obligation') return `/money?obligation=${q(target.id)}`

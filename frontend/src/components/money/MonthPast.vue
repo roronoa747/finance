@@ -3,9 +3,11 @@ import { computed } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
-import { monthPlanPast } from '@/lib/finance'
+import { monthPlan, monthPlanPast, rkShare, spendCompare } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
+import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import { useQueryValue } from '@/components/useQuerySheet'
 
 /**
  * Прошлый месяц сводкой (Р-85, макет month-plan.html «Сентябрь»): только чтение — пришло, платежи, траты,
@@ -24,6 +26,22 @@ const parts = computed(() => [
   { key: 'saved', amount: past.value.put, color: '--s3' },
 ])
 const income = computed(() => past.value.cameBy.map((x) => ({ ...x, came: true })))
+
+/*
+ * Лист раздела прошлого месяца по адресу `?month=<месяц>&cat=<id>` — строка «Куда ушло» и «Открыть» отчёта за месяц
+ * находок (Х-9, владелец 2026-10-19, RZ-13): цифры того месяца, только чтение (закрытый месяц — без «Изменить»).
+ */
+const { value: catFor, close: closeCat } = useQueryValue('cat')
+const input = computed(() => finance.planInput(props.monthKey))
+const catRow = computed(() => (catFor.value ? (spendCompare(input.value.state, input.value.ctx).rows.find((r) => r.categoryId === catFor.value) ?? null) : null))
+const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, input.value.ctx, catRow.value.group) : null))
+const catPlans = computed(() => {
+  if (!catRow.value) return []
+  const spend = monthPlan(input.value.state, input.value.ctx).spend
+  return finance.people
+    .filter((p) => !p.deletedAt)
+    .map((p) => ({ by: p.id, name: p.name, amount: spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0 }))
+})
 </script>
 
 <template>
@@ -52,5 +70,7 @@ const income = computed(() => past.value.cameBy.map((x) => ({ ...x, came: true }
         <span class="font-num text-[15px] font-bold num text-ink">{{ plain(g.amount) }}</span>
       </div>
     </Card>
+
+    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="false" :month="monthKey" @close="closeCat" />
   </div>
 </template>

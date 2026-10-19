@@ -88,6 +88,8 @@ const live = computed(() => (auth.isViewer ? [] : stepCandidates(input.value.sta
 
 /* ---------- v3: советы ---------- */
 const v3 = computed(() => props.review?.v === 3)
+/** Месяц картинки «Куда ушло» — месяц находок; строки и «Открыть» раздела ведут в лист этого месяца (Х-9, RZ-13). */
+const pictureMonth = computed(() => findMonth(input.value.ctx))
 type AdviceRow = { i: number; a: AiAdvice; made: boolean; fresh: StepCandidate | null; path: string | null }
 /**
  * Кнопка совета (Р-6): «Открыть» — экран предмета; «Сделать» — участнику, кандидат ещё применим; сделан — «✓ Сделано».
@@ -97,7 +99,8 @@ type AdviceRow = { i: number; a: AiAdvice; made: boolean; fresh: StepCandidate |
  */
 const advices = computed<AdviceRow[]>(() =>
   (v3.value ? props.review?.advices ?? [] : []).map((a, i) => {
-    if (a.action.kind === 'open') return { i, a, made: false, fresh: null, path: openPath(a.action.target) }
+    // Раздел — лист того месяца, что на картинке «Куда ушло» (Х-9, RZ-13).
+    if (a.action.kind === 'open') return { i, a, made: false, fresh: null, path: openPath(a.action.target, pictureMonth.value) }
     const c = a.action.candidate
     const isMade = made(c)
     const fresh = isMade || auth.isViewer ? null : live.value.find((x) => x.id === c.id) ?? null
@@ -131,7 +134,7 @@ const whenLine = computed(() =>
 )
 
 /* ---------- «Куда ушло» (Р-4): полосы считает код за месяц находок ---------- */
-const whereMonth = computed(() => `в ${monthIn(findMonth(input.value.ctx), false)}`)
+const whereMonth = computed(() => `в ${monthIn(pictureMonth.value, false)}`)
 const rows = computed(() => (v3.value ? whereRows(input.value.state, input.value.ctx) : []))
 /** Полосы растут, когда карточку «Куда ушло» впервые видно: карточки монтируются сразу, рост шёл за кадром (`/ux`). */
 const whereSeen = ref(false)
@@ -190,10 +193,28 @@ function onScroll() {
 }
 /** Нажатие по правой трети — следующая, по левой — предыдущая; по кнопкам и ссылкам — их действие. */
 function onTap(e: MouseEvent) {
+  if (e.target instanceof Element && e.target.closest('a')) rememberCard()
   if (e.target instanceof Element && e.target.closest('a, button, [data-no-tap]')) return
   const w = ribbon.value?.clientWidth || window.innerWidth
   if (e.clientX > (w * 2) / 3) go(active.value + 1)
   else if (e.clientX < w / 3) go(active.value - 1)
+}
+/*
+ * Х-10 (`/ux` Блока 2, RZ-13): ушли из отчёта по ссылке («Открыть», строка «Куда ушло») — номер карточки остаётся в
+ * записи истории отчёта; «Назад» возвращает на ту же карточку, а не на первую. Только своя запись веб-истории роутера
+ * (`history.state.current` — этот адрес); прочитали — стёрли: следующее открытие той же записи — как обычно.
+ */
+const CARD_KEY = 'reportCard'
+const ownEntry = () => typeof history !== 'undefined' && history.state?.current === route.fullPath
+function rememberCard() {
+  if (ownEntry()) history.replaceState({ ...history.state, [CARD_KEY]: active.value }, '')
+}
+function takeRemembered(): number | null {
+  if (!ownEntry()) return null
+  const { [CARD_KEY]: i, ...rest } = history.state as Record<string, unknown>
+  if (typeof i !== 'number') return null
+  history.replaceState(rest, '')
+  return Math.max(0, Math.min(cards.value.length - 1, i))
 }
 /** Старт: с карточки совета `card`, иначе с первой. */
 const startIndex = () => {
@@ -322,7 +343,7 @@ function show() {
   releaseTips = holdTips()
   back = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
-  active.value = startIndex()
+  active.value = takeRemembered() ?? startIndex()
   void nextTick(() => {
     go(active.value, false)
     root.value?.focus()
@@ -429,7 +450,7 @@ onUnmounted(() => {
             <template v-else-if="c.kind === 'where'">
               <h2 class="type-h2-lg text-ink">Куда ушло</h2>
               <p class="mt-1 text-[15px] text-ink-2" data-review-where-month>{{ whereMonth }}</p>
-              <WhereBars v-if="rows.length" class="mt-5" :rows="rows" :play="whereSeen" />
+              <WhereBars v-if="rows.length" class="mt-5" :rows="rows" :play="whereSeen" :month="pictureMonth" />
               <p v-else class="mt-6 text-[15px] text-ink-2" data-review-where-empty>Выписок за месяц ещё нет</p>
               <p v-if="review?.where" class="mt-6 text-[17px] leading-snug text-ink num" data-review-where>{{ keep(review.where) }}</p>
             </template>

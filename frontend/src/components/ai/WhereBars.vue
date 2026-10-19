@@ -14,7 +14,8 @@ import { useGrow } from '@/lib/motion'
  * (`/month?cat=<id>`, Р-18) у любой роли: это чтение. Геометрию считает `whereRows` (`finance.ts`), здесь — показ.
  */
 /** `play` — расти сейчас: отчёт монтирует все карточки сразу и включает рост, когда «Куда ушло» впервые видно (`/ux`). */
-const props = withDefaults(defineProps<{ rows: WhereRow[]; play?: boolean }>(), { play: true })
+/** `month` — месяц картинки (месяц находок): строка открывает лист раздела того же месяца (Х-9, RZ-13). */
+const props = withDefaults(defineProps<{ rows: WhereRow[]; play?: boolean; month?: string }>(), { play: true, month: undefined })
 
 const grown = useGrow()
 const pct = (share: number) => `${Math.max(0, Math.min(1, share)) * 100}%`
@@ -26,7 +27,7 @@ const legend = computed(() => ({ usual: props.rows.some((r) => r.usualShare !== 
     <RouterLink
       v-for="r in rows"
       :key="r.categoryId"
-      :to="openPath({ kind: 'cat', id: r.categoryId, name: r.name })"
+      :to="openPath({ kind: 'cat', id: r.categoryId, name: r.name }, month)"
       class="press flex flex-col gap-1.5 py-2.5"
       :data-where-row="r.categoryId"
       :data-over="r.over || undefined"

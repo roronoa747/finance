@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildReviewFacts, factsLines, openPath, REVIEW_ACTIONS_MAX, REVIEW_FACTS_MAX, REVIEW_TEXT_MAX } from './aiFacts'
 import {
   cushionCover,
@@ -461,6 +461,17 @@ describe('openPath — адреса «Открыть» (Р-18)', () => {
     expect(openPath({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })).toBe('/money?obligation=kino')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA', categoryId: 'sc_health' })).toBe('/money/history?cat=sc_health')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA' })).toBe('/money/history')
+  })
+
+  it('RZ-13 (Х-9): раздел — лист месяца картинки: прошлый — `?month=&cat=`, текущий и без месяца — как было; прочим месяц не нужен', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
+    const cat = { kind: 'cat' as const, id: 'sc_cafe', name: 'Кафе' }
+    expect(openPath(cat, '2026-09')).toBe('/month?month=2026-09&cat=sc_cafe')
+    expect(openPath(cat, '2026-10')).toBe('/month?cat=sc_cafe')
+    expect(openPath(cat)).toBe('/month?cat=sc_cafe')
+    expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' }, '2026-09')).toBe('/goals/trip')
+    vi.useRealTimers()
   })
 })
 

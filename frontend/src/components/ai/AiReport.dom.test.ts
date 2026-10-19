@@ -552,7 +552,7 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect([...cards[0].querySelectorAll('button, a')].map(txt)).toEqual(['Сделать'])
     expect([...cards[1].querySelectorAll('button, a')].map(txt)).toEqual(['Открыть'])
     expect(cards[0].querySelector('[data-review-do]')!.className).toContain('bg-brand')
-    expect(q('[data-review-link]')!.getAttribute('href')).toBe('/month?cat=sc_cafe')
+    expect(q('[data-review-link]')!.getAttribute('href')).toBe('/month?month=2026-08&cat=sc_cafe') // месяц картинки — август (выписок нет), RZ-13
     expect(q('[data-review-good]')).toBeNull()
     // Открыли — разбор увиден, параметр на адресе.
     expect(useAiStore().seenReview).toBe('r1')
@@ -579,7 +579,7 @@ describe('RZ-07: отчёт разбора v3', () => {
   it('«Открыть» ведёт на экран предмета, отчёт закрыт, параметр снят', async () => {
     await openV3()
     await press(q('[data-review-link]'))
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?cat=sc_cafe'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?month=2026-08&cat=sc_cafe'), { timeout: 5000 })
     await flush()
     expect(dialog()).toBeNull()
     expect(document.documentElement.hasAttribute('data-sheet-open')).toBe(false)
