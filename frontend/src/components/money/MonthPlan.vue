@@ -340,7 +340,8 @@ const dueLines = computed<DueLine[]>(() => {
 const subsOpen = ref(false)
 /*
  * ✦ совета ИИ (RZ-10): кнопка — у самого предмета; свёрнутые раздел и «Подписки · N» с таким предметом внутри зовут
- * издалека тем же ✦ без кнопки (правило 12: зов — значком у заголовка, не блоком).
+ * издалека тем же ✦ без кнопки (правило 12: зов — значком у заголовка, не блоком). У заголовка раздела — одна метка:
+ * точка «есть что сделать», если она есть, ✦ — только без точки (владелец 2026-10-19, Х-12 — А, RZ-16).
  */
 const marked = (d: PlanDue) => ai.markFor(d.kind, d.targetId) !== null
 const subsMarked = computed(() => grouped.value.byWho.some((w) => w.group.parts.some((g) => g.rows.some(marked))))
@@ -620,7 +621,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               <span class="text-[16.5px] font-bold text-ink">
                 {{ s.name
                 }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template
-                ><template v-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
+                ><template v-else-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
               </span>
               <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
             </span>

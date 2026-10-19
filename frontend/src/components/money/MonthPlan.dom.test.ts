@@ -15,7 +15,7 @@ import { plural } from '@/lib/utils'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
-import type { Obligation, Payment, SyncDoc } from '@/types/finance'
+import type { AiAdvice, AiReview, Obligation, Payment, SyncDoc } from '@/types/finance'
 import Month from '@/views/Month.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
@@ -1063,5 +1063,43 @@ describe('RZ-07: отчёт разбора по адресу', () => {
     await openAt('/month?review=1', 'viewer', familyDoc())
     expect(q('[data-review-open]')).toBeNull()
     expect(q('[data-report]')).toBeNull()
+  })
+})
+
+/**
+ * RZ-16 (владелец 2026-10-19, Х-12 — «А»): у заголовка раздела одна метка — точка «есть что сделать», если она есть;
+ * ✦ совета ИИ — только когда точки нет. В раскрытом разделе ✦ остаётся у строки.
+ */
+describe('RZ-16: одна метка у заголовка раздела', () => {
+  const open1 = (target: { kind: 'goal' | 'cat'; id: string; name: string }): AiAdvice => ({
+    title: `Совет ${target.name}`, text: 'Текст.', figure: null, action: { kind: 'open', target },
+  })
+  /** Разбор v3 сентября: 1 — мечта «Отпуск» (в «Цели и фонды»), 2 — раздел «Продукты» (в «Тратах»). */
+  const review: AiReview = {
+    id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b', good: '', risk: '', steps: [], sent: null, updatedAt: T0,
+    v: 3, reason: 'month', where: '', work: { ops: 10, found: 2, yearly: 0 },
+    advices: [open1({ kind: 'goal', id: 'trip', name: 'Отпуск' }), open1({ kind: 'cat', id: 'sc_food', name: 'Продукты' })],
+  }
+
+  it('точка и совет — у заголовка только точка, ✦ у строки; точки нет — ✦ у заголовка', async () => {
+    await open('member', familyDoc({ aiReviews: [review] }))
+    useAuthStore().ai = true // ✦ — только с ИИ семьи
+    await flush()
+    // «Цели и фонды»: зарплата Ильяса пришла, взносы не отложены — точка; совет про «Отпуск» — ✦ у заголовка нет.
+    expect(q('[data-section="queue"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="queue"] [data-section-mark]')).toBeNull()
+    expect(txt(section('queue'))).toContain('есть что сделать')
+    expect(txt(section('queue'))).not.toContain('есть совет ИИ')
+    // «Траты»: выше обычного нет — точки нет, совет про «Продукты» — ✦ у заголовка.
+    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-mark]')).not.toBeNull()
+    expect(txt(section('spend'))).toContain('есть совет ИИ')
+    // Раскрыл — ✦ у строки «Отпуск», как раньше.
+    await press(section('queue'))
+    expect(q('[data-queue="trip"] [data-advice-mark]')).not.toBeNull()
+    // «Отложил всё» — точка ушла, у заголовка — ✦.
+    await press(q('[data-put-all]'))
+    expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-mark]')).not.toBeNull()
   })
 })
