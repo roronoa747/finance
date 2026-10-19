@@ -100,7 +100,7 @@ const subsByWho = computed(() => (subs.value ? subscriptionsByWho(subItems.value
 const subsOpen = ref(false)
 /** Совет ИИ про подписку группы (RZ-10) — ✦ у свёрнутой «Подписки · N». */
 const subsMarked = computed(() => subItems.value.some((x) => ai.markFor('obligation', x.obligation.id) !== null))
-const inSubs =(o: Obligation) => !!subs.value && isSubscription(o)
+const inSubs = (o: Obligation) => !!subs.value && isSubscription(o)
 
 type Line = { id: string; day: number; item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation } }
 // Один список по дню: открытые кредиты и обязательства (годовое — тоже: «раз в год · в <месяце>»); подписки —

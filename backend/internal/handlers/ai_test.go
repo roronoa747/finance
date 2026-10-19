@@ -187,7 +187,6 @@ func decodeReview(t *testing.T, rec *httptest.ResponseRecorder) ReviewAnswer {
 func TestReviewSystemV3(t *testing.T) {
 	for _, want := range []string{"наняли", "от одного до трёх советов", "Не пиши ни одной цифры", "{f3}", "«мы»", "Два совета не могут вести на одно действие",
 		"Число из figure приложение покажет крупно над текстом — в text его не повторяй.", // RZ-15
-
 		"Не сравнивай участников", "без причины и без действия — не совет", "чего не видно на экранах"} {
 		if !strings.Contains(reviewSystem, want) {
 			t.Errorf("reviewSystem has no %q", want)
