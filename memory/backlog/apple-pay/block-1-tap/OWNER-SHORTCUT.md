@@ -94,7 +94,7 @@
 B=http://localhost:8141/api
 # TOKEN — JWT member-а стенда (POST $B/auth/register или /auth/login).
 KEY=$(curl -s -X POST $B/wallet/connect -H "Authorization: Bearer $TOKEN" | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
-curl -s $B/wallet -H "Authorization: Bearer $TOKEN"                        # connected: true, phones: 1
+curl -s $B/wallet -H "Authorization: Bearer $TOKEN"                        # waiting: true (connected — с первой оплаты, 2026-10-19)
 tap() { printf '%s' "$1" > tap.json; curl -s -w ' %{http_code}\n' -X POST $B/wallet/tap \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' --data-binary @tap.json; }
 tap '{"merchant":"Magnum","amount":"1 234,50 ₸","card":"Kaspi Gold"}'    # saved 200
