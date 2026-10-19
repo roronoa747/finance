@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
@@ -33,6 +33,7 @@ import {
   rkShare,
   spendCompare,
   spendFact,
+  spendPlansBy,
   untilPayday,
   type ImageAction,
   type PlanDue,
@@ -62,6 +63,7 @@ import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
 import AffordSheet from '@/components/money/AffordSheet.vue'
 import AiReport from '@/components/ai/AiReport.vue'
+import AdviceMark from '@/components/ai/AdviceMark.vue'
 import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
@@ -336,6 +338,21 @@ const dueLines = computed<DueLine[]>(() => {
   return lines.sort((a, b) => a.day - b.day || (a.due?.name ?? '').localeCompare(b.due?.name ?? ''))
 })
 const subsOpen = ref(false)
+/*
+ * ✦ совета ИИ (RZ-10): кнопка — у самого предмета; свёрнутые раздел и «Подписки · N» с таким предметом внутри зовут
+ * издалека тем же ✦ без кнопки (правило 12: зов — значком у заголовка, не блоком).
+ */
+const marked = (d: PlanDue) => ai.markFor(d.kind, d.targetId) !== null
+const subsMarked = computed(() => grouped.value.byWho.some((w) => w.group.parts.some((g) => g.rows.some(marked))))
+/** ✦ у цели и фонда очереди — совет про мечту / подушку; у карточки долга — про её кредит (досрочка, «Открыть» долга). */
+const queueMark = (q: PlanQueueItem) => (q.kind === 'debt' ? ai.markFor('credit', q.creditId) : ai.markFor('goal', q.goalId))
+const sectionMarked = computed(() => ({
+  dues: plan.value.dues.some(marked),
+  spend: compare.value.rows.some((r) => ai.markFor('cat', r.categoryId) !== null),
+  queue: plan.value.queue.some((q) => queueMark(q) !== null),
+}))
+/** Кнопка строки раздела и очереди — только название; сумму и подпись читалка слышит описанием (`/ux` «Разбор» 3). */
+const uid = useId()
 // «Освободится» — подсказкой у своего платежа: в общем списке или у группы подписок, где он лежит.
 const freedAt = computed(() => {
   const id = extras.value.freed?.obligationId
@@ -381,13 +398,7 @@ const { value: catFor, close: closeCat } = useQueryValue('cat')
 const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
 /** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
-const catPlans = computed(() =>
-  people.value.map((p) => ({
-    by: p.id,
-    name: p.name,
-    amount: plan.value.spend.find((s) => s.by === p.id)?.rows.find((r) => r.categoryId === catFor.value)?.plan ?? 0,
-  })),
-)
+const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value, catFor.value) : []))
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
 const images = computed(() => habitImages(state.value, props.monthKey))
 const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)
@@ -608,7 +619,8 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
               <span class="text-[16.5px] font-bold text-ink">
                 {{ s.name
-                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template>
+                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template
+                ><template v-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
               </span>
               <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
             </span>
@@ -628,6 +640,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                 :payer-name="personName(l.due.payer)"
                 :note="dueNote(l.due)"
                 :can-edit="canEdit"
+                :mark="ai.markFor(l.due.kind, l.due.targetId)"
                 @open="payFor = l.key"
                 @payer="askPayer(l.due)"
               />
@@ -639,7 +652,11 @@ function addFund(kind: 'reserve' | 'cushion') {
                     <span class="grid size-[30px] place-items-center rounded-[9px] bg-surface-2 text-[15px] text-ink-2" aria-hidden="true">↻</span>
                   </span>
                   <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span class="truncate text-[15.5px] font-semibold text-ink">Подписки · {{ grouped.subs.count }}</span>
+                    <!-- Совет ИИ про подписку внутри — ✦ у свёрнутой группы зовёт издалека (правило 12), кнопка — у самой подписки. -->
+                    <span class="flex min-w-0 items-center gap-1.5 text-[15.5px] font-semibold text-ink">
+                      <span class="truncate">Подписки · {{ grouped.subs.count }}</span>
+                      <template v-if="subsMarked"><PhSparkle :size="12" weight="fill" class="shrink-0 text-brand" aria-hidden="true" data-subs-mark /><span class="sr-only">, есть совет ИИ</span></template>
+                    </span>
                     <span class="text-[12.5px] text-ink-2 num" data-subs-status>
                       {{ grouped.subs.allPaid ? 'все списались' : `${grouped.subs.paid} из ${grouped.subs.count} списались` }}
                     </span>
@@ -664,6 +681,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                         :payer-name="personName(d.payer)"
                         :note="dueNote(d)"
                         :can-edit="canEdit"
+                        :mark="ai.markFor(d.kind, d.targetId)"
                         @open="payFor = dueKey(d)"
                         @payer="askPayer(d)"
                       />
@@ -685,21 +703,24 @@ function addFund(kind: 'reserve' | 'cushion') {
             трат больше обычного; нажатие — лист раздела (обычно, план каждого, справка). Участников не сравниваем.
           -->
           <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
-            <button
+            <!-- Кнопка строки — название, растянутое на строку (`row-open`); ✦ совета ИИ — рядом своей кнопкой (RZ-10). -->
+            <div
               v-for="r in compare.rows"
               :key="r.categoryId"
-              type="button"
-              class="press flex w-full cursor-pointer flex-col gap-1 border-t border-line py-2.5 text-left first:border-t-0"
+              class="press relative flex w-full cursor-pointer flex-col gap-1 border-t border-line py-2.5 text-left first:border-t-0"
               :data-spend-row="r.categoryId"
               :data-over="r.over || undefined"
               @click="catFor = r.categoryId"
             >
               <span class="flex w-full items-center justify-between gap-2 text-[15px]">
-                <span class="min-w-0 truncate text-ink">
-                  {{ r.name
-                  }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-spend-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
+                <span class="flex min-w-0 items-center">
+                  <button type="button" class="row-open min-w-0 truncate text-left text-ink" data-row-open :aria-describedby="`${uid}-s-${r.categoryId}`">
+                    {{ r.name
+                    }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-spend-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
+                  </button>
+                  <AdviceMark :n="ai.markFor('cat', r.categoryId)" />
                 </span>
-                <span class="whitespace-nowrap num" data-spend-amount>
+                <span :id="`${uid}-s-${r.categoryId}`" class="whitespace-nowrap num" data-spend-amount>
                   <b v-if="r.amount !== null" class="font-semibold text-ink">{{ plain(r.amount) }}</b>
                   <span v-else class="text-ink-2">план {{ plain(r.plan ?? 0) }}</span>
                 </span>
@@ -707,7 +728,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               <span v-if="r.plan" class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
                 <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.amount, r.plan)}%` }" />
               </span>
-            </button>
+            </div>
             <!-- «Не разобрано» (Х-1): тихо, без листа и точки — чтобы строки сходились с «потрачено» заголовка -->
             <div
               v-if="compare.unknown > 0"
@@ -751,12 +772,24 @@ function addFund(kind: 'reserve' | 'cushion') {
                     :data-queue="id"
                     @click="openItem(queueById.get(id)!)"
                   >
-                    <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
-                      <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
-                      <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
+                    <!-- Кнопка строки — название (растянута `row-open`); ✦ совета ИИ про цель или долг — рядом (RZ-11). -->
+                    <span class="flex min-w-0 flex-1 flex-col gap-px">
+                      <span class="flex min-w-0 items-center">
+                        <button
+                          type="button"
+                          class="row-open min-w-0 truncate text-left text-[15.5px] font-semibold"
+                          :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'"
+                          data-row-open
+                          :aria-describedby="statusOf(queueById.get(id)!) ? `${uid}-q-${id} ${uid}-g-${id}` : `${uid}-g-${id}`"
+                        >
+                          {{ queueById.get(id)!.name }}
+                        </button>
+                        <AdviceMark :n="queueMark(queueById.get(id)!)" />
+                      </span>
+                      <span v-if="statusOf(queueById.get(id)!)" :id="`${uid}-q-${id}`" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
                         {{ statusOf(queueById.get(id)!)!.text }}
                       </span>
-                    </button>
+                    </span>
                     <button
                       v-if="canEdit && queueById.get(id)!.payer"
                       type="button"
@@ -776,6 +809,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                     </button>
                     <Avatar v-else-if="queueById.get(id)!.payer" :id="queueById.get(id)!.payer!" :name="personName(queueById.get(id)!.payer)" :size="24" />
                     <span
+                      :id="`${uid}-g-${id}`"
                       class="font-num text-[15px] num whitespace-nowrap"
                       :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
                       data-given
@@ -887,7 +921,18 @@ function addFund(kind: 'reserve' | 'cushion') {
     </Sheet>
 
     <!-- Раздел трат: факт, обычно, план, «до плана», справка РК; план каждого — «Изменить» (member) -->
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="canEdit" :image="catImage" @close="closeCat" @edit="editCatPlan" @image="imageAct" />
+    <!-- Прошлый месяц (план до отложенной зарплаты) — без «Изменить»: план раздела общий на будущее (Х-9, RZ-13). -->
+    <SpendCategorySheet
+      :row="catRow"
+      :rk="catRk"
+      :plans="catPlans"
+      :can-edit="canEdit && monthKey >= monthNow()"
+      :image="catImage"
+      :month="monthKey"
+      @close="closeCat"
+      @edit="editCatPlan"
+      @image="imageAct"
+    />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildReviewFacts, factsLines, openPath, REVIEW_ACTIONS_MAX, REVIEW_FACTS_MAX, REVIEW_TEXT_MAX } from './aiFacts'
 import {
   cushionCover,
@@ -376,6 +376,32 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
     }
   })
 
+  it('RZ-15: короткие подписи крупной цифры — у фактов находок и сценария, без «ёлочек»; у фактов v2 нет; в тело ручки не идут', () => {
+    const { payload, labels } = build(withFinds(), 'month')
+    const label = (about: string | RegExp) => labels.get(find(payload.facts, about)!.id)
+    expect(label('частые траты у «APTEKA PLUS» — в месяц')).toBe('в месяц · APTEKA PLUS')
+    expect(label('частые траты у «APTEKA PLUS» — раз в месяц')).toBe('в месяц · APTEKA PLUS')
+    expect(label('частые траты у «APTEKA PLUS» — за год')).toBe('за год · APTEKA PLUS')
+    expect(label(/^частые траты у «APTEKA PLUS» за год — доля мечты «.+»$/)).toMatch(/^мечты «.+» за год · APTEKA PLUS$/)
+    expect(label('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe('за год · FITNESS LAB 24')
+    expect(label('подписка «Кинопоиск» стала дороже: было')).toBe('было · Кинопоиск')
+    expect(label('подписка «Кинопоиск» стала дороже: стало')).toBe('стало · Кинопоиск')
+    expect(label('списание «SPORT CLUB» прошло дважды одной суммой')).toBe('дважды · SPORT CLUB')
+    expect(label(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toMatch(/^«.+» раньше · без FITNESS LAB 24$/)
+    expect(label('доход месяца')).toBeUndefined()
+    for (const f of payload.facts) expect(Object.keys(f).sort()).toEqual(['about', 'id', 'raw', 'value'])
+  })
+
+  it('RZ-15: подпись «раздуло» — «сверх обычного · <раздел>», покупка — «<продавец> · <раздел>»', () => {
+    const doc = withFinds({
+      spendTotals: [...family().spendTotals!.filter((t) => !(t.period === KEY && t.categoryId === 'sc_cafe')), { id: `a:month:${KEY}:sc_cafe`, by: 'a', kind: 'month', period: KEY, categoryId: 'sc_cafe', amount: 150_000, ops: 9, updatedAt: T0 }],
+      reviewFinds: [...FINDS, rf('a', KEY, 'top', 'sc_cafe', { name: '', categoryId: 'sc_cafe', count: 9, amount: 150_000, top: [{ name: 'Restoran 7', amount: 40_000 }] })],
+    })
+    const { payload, labels } = build(doc)
+    expect(labels.get(find(payload.facts, 'траты на «Кафе и рестораны» выше обычного на')!.id)).toBe('сверх обычного · Кафе и рестораны')
+    expect(labels.get(find(payload.facts, 'что раздуло «Кафе и рестораны»: «Restoran 7»')!.id)).toBe('Restoran 7 · Кафе и рестораны')
+  })
+
   it('byFact: факт находки → её находка, факты сценария → находка сценария, у фактов v2 — нет (ревью frontend Н-2)', () => {
     const { payload, findings, byFact } = build(withFinds(), 'month')
     const owner = (about: string | RegExp) => byFact.get(find(payload.facts, about)!.id)
@@ -461,6 +487,17 @@ describe('openPath — адреса «Открыть» (Р-18)', () => {
     expect(openPath({ kind: 'obligation', id: 'kino', name: 'Кинопоиск' })).toBe('/money?obligation=kino')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA', categoryId: 'sc_health' })).toBe('/money/history?cat=sc_health')
     expect(openPath({ kind: 'seller', id: 'apteka plus', name: 'APTEKA' })).toBe('/money/history')
+  })
+
+  it('RZ-13 (Х-9): раздел — лист месяца картинки: прошлый — `?month=&cat=`, текущий и без месяца — как было; прочим месяц не нужен', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T07:00:00Z'))
+    const cat = { kind: 'cat' as const, id: 'sc_cafe', name: 'Кафе' }
+    expect(openPath(cat, '2026-09')).toBe('/month?month=2026-09&cat=sc_cafe')
+    expect(openPath(cat, '2026-10')).toBe('/month?cat=sc_cafe')
+    expect(openPath(cat)).toBe('/month?cat=sc_cafe')
+    expect(openPath({ kind: 'goal', id: 'trip', name: 'Отпуск' }, '2026-09')).toBe('/goals/trip')
+    vi.useRealTimers()
   })
 })
 

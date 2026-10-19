@@ -186,6 +186,7 @@ func decodeReview(t *testing.T, rec *httptest.ResponseRecorder) ReviewAnswer {
 // The instruction v3 (Р-1, Р-24): the work for the family, one to three advices on actions, no number of its own.
 func TestReviewSystemV3(t *testing.T) {
 	for _, want := range []string{"наняли", "от одного до трёх советов", "Не пиши ни одной цифры", "{f3}", "«мы»", "Два совета не могут вести на одно действие",
+		"Число из figure приложение покажет крупно над текстом — в text его не повторяй.", // RZ-15
 		"Не сравнивай участников", "без причины и без действия — не совет", "чего не видно на экранах"} {
 		if !strings.Contains(reviewSystem, want) {
 			t.Errorf("reviewSystem has no %q", want)
@@ -613,6 +614,12 @@ func TestLiveReviewV3(t *testing.T) {
 	for _, a := range req.Actions {
 		kinds[a.ID] = a.Kind + " " + a.About
 	}
+	// RZ-15: the number of the figure is shown big above the text — a text that repeats it is noise.
+	values := map[string]string{}
+	for _, f := range req.Facts {
+		values[f.ID] = f.Value
+	}
+	repeats, figures := 0, 0
 	runs, _ := strconv.Atoi(os.Getenv("AI_LIVE_N"))
 	runs = max(runs, 1)
 	f := newReviewFixture(t, &fakeClaudeQueue{}, false)
@@ -640,12 +647,17 @@ func TestLiveReviewV3(t *testing.T) {
 			fig := "—"
 			if a.Figure != nil {
 				fig = *a.Figure
+				figures++
+				if v := values[fig]; v != "" && strings.Contains(a.Text, v) {
+					repeats++
+					fig += " ПОВТОР"
+				}
 			}
 			t.Logf("  · %s — %s [figure %s · %s: %s]", a.Title, a.Text, fig, a.Action, kinds[a.Action])
 		}
 	}
 	u := f.usage()
-	t.Logf("total: %d/%d ok, %d requests, %d in, %d out, %d µ$", ok, runs, u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
+	t.Logf("total: %d/%d ok, %d requests, %d in, %d out, %d µ$; figure repeated in text: %d of %d", ok, runs, u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros, repeats, figures)
 }
 
 // sellersCategories are the starting sections (DEFAULT_SPEND_CATEGORIES, dictionary.ts) as the phone sends them.

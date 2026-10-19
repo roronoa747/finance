@@ -175,7 +175,8 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(html).toContain('Машина')
     expect(html).not.toContain(`июль${NBSP}2030`)
     const goal = await screen(A.pinia, GoalDetail, '/goals/car')
-    expect(goal).toMatch(/<h2 class="type-h2 text-ink">[^<]*июл[^<]*2030<\/h2>/)
+    // У срока — `data-goal-term` (якорь ✦ совета ИИ, RZ-11).
+    expect(goal).toMatch(/<h2 class="type-h2 text-ink"[^>]*>[^<]*июл[^<]*2030<\/h2>/)
     expect(goal).toContain(`${money(60_000)} в месяц`)
     expect(goal).toMatch(/data-goal-left>Осталось 47 взносов</)
 

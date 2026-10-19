@@ -50,7 +50,7 @@ export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' 
   const planShifts = (doc.planShifts ?? []).filter((s) => s.period !== key)
   const before = { ...doc, planShifts }
   const state = { ...input.state, planShifts }
-  const { payload, doById, openById, findings, byFact, byAction } = buildReviewFacts(before, { state, ctx: input.ctx }, 'month')
+  const { payload, doById, openById, findings, byFact, byAction, labels } = buildReviewFacts(before, { state, ctx: input.ctx }, 'month')
   const advices: AiAdvice[] = []
   const used: ReviewFinding[] = []
   for (const a of DEMO_REVIEW.advices) {
@@ -59,10 +59,11 @@ export function demoReview(doc: SyncDoc, input: PlanInput): Omit<AiReview, 'id' 
     const target = act && openById.get(act.id)
     if (!act || (!candidate && !target)) continue
     const fact = a.figure ? payload.facts.find((f) => f.about === a.figure) : undefined
+    const label = fact ? labels.get(fact.id) : undefined
     advices.push({
       title: a.title,
       text: a.text,
-      figure: fact ? { about: fact.about, value: fact.value } : null,
+      figure: fact ? { about: fact.about, value: fact.value, ...(label ? { label } : {}) } : null,
       action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
     })
     const finding = (fact ? byFact.get(fact.id) : undefined) ?? byAction.get(act.id)

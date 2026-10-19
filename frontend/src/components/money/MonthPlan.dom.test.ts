@@ -553,6 +553,28 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-month-past]')).not.toBeNull()
   })
 
+  it('RZ-13: прошлый месяц планом — лист раздела по `?month=&cat=` с названием месяца, без «Изменить»; текущий — с ним (критик Блока 3)', async () => {
+    const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
+    const doc = familyDoc()
+    await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08&cat=sc_food')
+    await flush()
+    expect(q('[data-month-past]')).toBeNull()
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(txt(q('[role="dialog"] [data-cat-month]'))).toBe('август')
+    expect(q('[role="dialog"] [data-cat-person="b"]')).not.toBeNull()
+    // План раздела общий на будущее — из прошлого месяца не правится.
+    expect(q('[role="dialog"] [data-cat-edit]')).toBeNull()
+
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('member', doc, '/month?cat=sc_food')
+    await flush()
+    // Текущий месяц не называется — он и так на экране (`/ux` Блока 3).
+    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
+    expect(q('[role="dialog"] [data-cat-month]')).toBeNull()
+    expect(q('[role="dialog"] [data-cat-edit]')).not.toBeNull()
+  })
+
   it('прошлый месяц планом: цель по одной не отмечается (запись закрыла бы месяц сводкой) — только «Отложил всё» (критик)', async () => {
     const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
     const doc = familyDoc()

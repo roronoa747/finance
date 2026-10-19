@@ -39,7 +39,7 @@ import {
 } from '@/lib/finance'
 import { maskNames } from '@/lib/aiSummary'
 import { shortMerchant } from '@/lib/statements/model'
-import { addMonths, monthBy } from '@/lib/dates'
+import { addMonths, monthBy, monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
 
@@ -93,6 +93,8 @@ export type ReviewFactsV3 = {
   findings: ReviewFinding[]
   byFact: Map<string, ReviewFinding>
   byAction: Map<string, ReviewFinding | null>
+  /** Короткая подпись крупной цифры по id факта (находки и сценарий; RZ-15) — совет хранит её рядом с фактом. */
+  labels: Map<string, string>
 }
 
 const pctText = (n: number) => `${String(n).replace('.', ',')} %`
@@ -105,36 +107,46 @@ function imageRaw(image: HabitImage | InterestImage): number[] {
   return [image.months!]
 }
 
-type Draft = Omit<ReviewFact, 'id'>
+/**
+ * Черновик факта; `label` — короткая подпись крупной цифры совета для экрана («за год · Магазин у дома»; владелец
+ * 2026-10-19, RZ-15): `about` — строка для модели, на экране шумна. В тело ручки подпись не уходит.
+ */
+type Draft = Omit<ReviewFact, 'id'> & { label?: string }
+/** Название в подписи — без «ёлочек», коротко. */
+const bare = (s: string) => clip(s.replace(/[«»]/g, '').trim(), NAME_MAX)
 
 /** Факты одной находки (Р-5): слова — черновик, финал — `/ux` Блока 2. */
 function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
   const out: Draft[] = []
-  const put = (about: string, value: string, raw: ReviewFact['raw']) => out.push({ about, value, raw })
+  const put = (about: string, value: string, raw: ReviewFact['raw'], label: string) => out.push({ about, value, raw, label })
   if (f.kind === 'leak') {
+    const s = bare(seller(f))
     const who = `частые траты у ${nm(seller(f))}`
-    put(`${who} — в месяц`, money(f.monthly), f.monthly)
-    put(`${who} — раз в месяц`, times(f.count), f.count)
-    put(`${who} — за год`, money(f.yearly), f.yearly)
-    if (f.image?.kind === 'dream') put(`${who} за год — доля мечты ${nm(f.image.name)}`, pctText(f.image.share), f.image.share)
-    else if (f.image) put(`${who} за год — это`, f.image.name, f.image.price)
+    put(`${who} — в месяц`, money(f.monthly), f.monthly, `в месяц · ${s}`)
+    put(`${who} — раз в месяц`, times(f.count), f.count, `в месяц · ${s}`)
+    put(`${who} — за год`, money(f.yearly), f.yearly, `за год · ${s}`)
+    if (f.image?.kind === 'dream') put(`${who} за год — доля мечты ${nm(f.image.name)}`, pctText(f.image.share), f.image.share, `мечты «${bare(f.image.name)}» за год · ${s}`)
+    else if (f.image) put(`${who} за год — это`, f.image.name, f.image.price, `за год · ${s}`)
   } else if (f.kind === 'grew') {
     const cat = nm(f.name)
-    put(`траты на ${cat} выше обычного на`, money(f.growth), f.growth)
-    if (f.why.kind === 'purchases') for (const i of f.why.items) put(`что раздуло ${cat}: ${nm(shortMerchant(i.name))}`, money(i.amount), i.amount)
+    const c = bare(f.name)
+    put(`траты на ${cat} выше обычного на`, money(f.growth), f.growth, `сверх обычного · ${c}`)
+    if (f.why.kind === 'purchases')
+      for (const i of f.why.items) put(`что раздуло ${cat}: ${nm(shortMerchant(i.name))}`, money(i.amount), i.amount, `${bare(shortMerchant(i.name))} · ${c}`)
     else {
-      put(`покупок в ${cat} ${thisMonth ? 'в этом' : 'в прошлом'} месяце`, times(f.why.count), f.why.count)
-      put(`обычно покупок в ${cat} в месяц`, times(f.why.usualCount), f.why.usualCount)
+      put(`покупок в ${cat} ${thisMonth ? 'в этом' : 'в прошлом'} месяце`, times(f.why.count), f.why.count, `покупок за месяц · ${c}`)
+      put(`обычно покупок в ${cat} в месяц`, times(f.why.usualCount), f.why.usualCount, `обычно за месяц · ${c}`)
     }
   } else if (f.kind === 'recurring') {
+    const s = bare(seller(f))
     const who = `новое регулярное списание ${nm(seller(f))}, которого нет в плане`
-    put(`${who} — в месяц`, money(f.amount), f.amount)
-    put(`${who} — за год`, money(f.yearly), f.yearly)
+    put(`${who} — в месяц`, money(f.amount), f.amount, `в месяц · ${s}`)
+    put(`${who} — за год`, money(f.yearly), f.yearly, `за год · ${s}`)
   } else if (f.kind === 'pricier') {
-    put(`подписка ${nm(f.name)} стала дороже: было`, money(f.was), f.was)
-    put(`подписка ${nm(f.name)} стала дороже: стало`, money(f.amount), f.amount)
+    put(`подписка ${nm(f.name)} стала дороже: было`, money(f.was), f.was, `было · ${bare(f.name)}`)
+    put(`подписка ${nm(f.name)} стала дороже: стало`, money(f.amount), f.amount, `стало · ${bare(f.name)}`)
   } else {
-    put(`списание ${nm(seller(f))} прошло дважды одной суммой`, money(f.amount), f.amount)
+    put(`списание ${nm(seller(f))} прошло дважды одной суммой`, money(f.amount), f.amount, `дважды · ${bare(seller(f))}`)
   }
   return out
 }
@@ -142,10 +154,12 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
 /** Факты сценария «если убрать — мечта раньше» (Р-5 (4)). */
 function scenarioFacts(s: ReviewScenario): Draft[] {
   const who = `если убрать ${nm(seller(s.finding))}`
-  if ('days' in s) return [{ about: `${who} — мечта ${nm(s.goalName)} раньше на`, value: shiftSpan(s.days), raw: s.days }]
+  const without = `без ${bare(seller(s.finding))}`
+  if ('days' in s) return [{ about: `${who} — мечта ${nm(s.goalName)} раньше на`, value: shiftSpan(s.days), raw: s.days, label: `«${bare(s.goalName)}» раньше · ${without}` }]
   const out: Draft[] = []
-  if (s.saved > 0) out.push({ about: `${who} — процентов банку меньше на`, value: money(s.saved), raw: s.saved })
-  if (s.months > 0) out.push({ about: `${who} — долг ${nm(s.creditName)} закроется раньше на`, value: monthsLabel(s.months), raw: s.months })
+  if (s.saved > 0) out.push({ about: `${who} — процентов банку меньше на`, value: money(s.saved), raw: s.saved, label: `меньше процентов · ${without}` })
+  if (s.months > 0)
+    out.push({ about: `${who} — долг ${nm(s.creditName)} закроется раньше на`, value: monthsLabel(s.months), raw: s.months, label: `«${bare(s.creditName)}» раньше · ${without}` })
   return out
 }
 
@@ -288,6 +302,8 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
     raw: d.raw,
   }))
   const byFact = new Map(owners.map((f, i) => [`f${i + 1}`, f]))
+  // Подписи крупной цифры — у фактов находок и сценария (RZ-15); в тело ручки не идут.
+  const labels = new Map(found.flatMap((d, i) => (d.label && i < REVIEW_FACTS_MAX ? [[`f${i + 1}`, clip(mask(d.label), REVIEW_TEXT_MAX)] as const] : [])))
 
   // Действия: «Сделать» — кандидаты кода (те же слова, что у v2); «Открыть» — предметы находок и сценария.
   const categories = liveSpendCategories(doc.spendCategories)
@@ -331,18 +347,19 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
     byAction.set(id, o.finding)
   }
 
-  return { payload: { v: 3, facts, actions }, doById, openById, findings, byFact, byAction }
+  return { payload: { v: 3, facts, actions }, doById, openById, findings, byFact, byAction, labels }
 }
 
 /**
  * Адрес «Открыть» (Р-18): раздел — лист раздела «Месяца», мечта — экран цели, долг и платёж — листы «Денег» по адресу,
  * продавец — история с чипом его раздела (экрана продавца нет). Лист долга по `?credit=` открывает «Капитал»
  * (`CapitalLists`), не квадрат «Долги»: Р-18 писал `/money/debts?credit=`, там адрес ничего не открывал (стенд RZ-08) —
- * `/money?credit=`, как «Изменить платёж» долга на «Месяце».
+ * `/money?credit=`, как «Изменить платёж» долга на «Месяце». Раздел — лист **того месяца, что на картинке** (`month` —
+ * месяц находок; Х-9, владелец 2026-10-19, RZ-13): не текущий — `/month?month=<месяц>&cat=<id>`, иначе `/month?cat=<id>`.
  */
-export function openPath(target: OpenTarget): string {
+export function openPath(target: OpenTarget, month?: string): string {
   const q = encodeURIComponent
-  if (target.kind === 'cat') return `/month?cat=${q(target.id)}`
+  if (target.kind === 'cat') return month && month !== monthKey() ? `/month?month=${q(month)}&cat=${q(target.id)}` : `/month?cat=${q(target.id)}`
   if (target.kind === 'goal') return `/goals/${q(target.id)}`
   if (target.kind === 'credit') return `/money?credit=${q(target.id)}`
   if (target.kind === 'obligation') return `/money?obligation=${q(target.id)}`

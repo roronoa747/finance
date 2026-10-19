@@ -166,7 +166,8 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     const html = await screen(phone.pinia, Month, '/month?review=1')
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice'])
     const shown = visible(html)
-    expect(shown).toMatch(/нашёл \d+ · ≈ [\d ]+ ₸ в год/)
+    // RZ-14: крупно «≈ X ₸», «в год уходит на найденное», строка «K находок из N операций».
+    expect(shown).toMatch(/≈ [\d ]+ ₸ в год уходит на найденное \d+ наход\S* из [\d ]+ операц/)
     expect(shown).toContain('Кафе выросло из-за одного вечера.')
     // Имя продавца — как сохранила старая сборка (до следующего разбора), кнопка — туда же, что и раньше.
     expect(shown).toContain('APTEKA PLUS ALMATY KZ')
