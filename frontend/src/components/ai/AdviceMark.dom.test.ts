@@ -97,6 +97,14 @@ const flush = async () => {
     await nextTick()
   }
 }
+/** Нажатие, которое ведёт по адресу: ждём сам переход (ленивый экран маршрута под нагрузкой грузится дольше ожидания). */
+const go = async (el: HTMLElement | null | undefined) => {
+  const spy = vi.spyOn(router, 'push')
+  await press(el)
+  await spy.mock.results.at(-1)?.value
+  spy.mockRestore()
+  await flush()
+}
 const press = async (el: HTMLElement | null | undefined) => {
   expect(el, 'элемент для нажатия').toBeTruthy()
   vi.setSystemTime(new Date(Date.now() + 1000))
@@ -139,8 +147,8 @@ describe('RZ-10: ✦ у предметов на «Месяце» и «Деньг
   it('нажатие ✦ — отчёт на карточке совета, лист строки не открыт; нажатие строки — прежний лист', async () => {
     await mount()
     await press(q('[data-section="spend"]'))
-    await press(mark('[data-spend-row="sc_cafe"]'))
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?review=1&card=1'))
+    await go(mark('[data-spend-row="sc_cafe"]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?review=1&card=1'), { timeout: 5000 })
     await flush()
     expect(q('[data-report]')).not.toBeNull()
     expect(activeTitle()).toBe('Совет Кафе')
@@ -178,9 +186,9 @@ describe('RZ-10: ✦ у предметов на «Месяце» и «Деньг
     const icloud = all('[data-subs] [data-payment]').find((el) => txt(el).includes('iCloud'))!
     expect(icloud.querySelector<HTMLElement>('[data-advice-mark]')!.dataset.adviceCard).toBe('3')
 
-    await press(icloud.querySelector<HTMLElement>('[data-advice-mark]'))
-    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?review=1&card=3'))
-    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull())
+    await go(icloud.querySelector<HTMLElement>('[data-advice-mark]'))
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?review=1&card=3'), { timeout: 5000 })
+    await vi.waitFor(() => expect(q('[data-report]')).not.toBeNull(), { timeout: 5000 })
     await flush()
     expect(activeTitle()).toBe('Совет iCloud')
   })

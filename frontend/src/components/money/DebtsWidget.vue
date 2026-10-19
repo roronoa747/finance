@@ -5,12 +5,14 @@ import { PhCalculator, PhCaretRight, PhCheck, PhPlus, PhUsers } from '@phosphor-
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
+import { useAiStore } from '@/stores/ai'
 import { money, plain } from '@/lib/money'
 import { monthBy, monthKey } from '@/lib/dates'
 import { debtsOverview, firstDebt, interestImage, isPeoplePayment, lastAccountFor, liveObligations, monthlyAmount, paidFor, peopleGroup, type DebtRow } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
 import Button from '@/components/ui/Button.vue'
+import AdviceMark from '@/components/ai/AdviceMark.vue'
 import CreditSheet from '@/components/capital/CreditSheet.vue'
 import PayoffSheet from '@/components/capital/PayoffSheet.vue'
 import NewDebtSheet from '@/components/capital/NewDebtSheet.vue'
@@ -36,6 +38,8 @@ import { useQuerySheet } from '@/components/useQuerySheet'
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const fx = useFxStore()
+/** ✦ совета ИИ у кредита (бэклог «Разбор», RZ-11): «Открыть» долга и досрочка карточки долга. */
+const ai = useAiStore()
 const me = computed<PersonId>(() => authStore.slot ?? 'a')
 
 const key = computed(() => monthKey())
@@ -99,14 +103,13 @@ const { open: tryOpen, close: closeTry } = useQuerySheet('try')
 
   <Card v-if="overview.rows.length" flush data-debt-rows>
     <div v-for="r in overview.rows" :key="r.creditId" class="relative border-b border-line last:border-b-0">
-      <button
-        type="button"
-        class="press flex w-full cursor-pointer flex-col gap-1 px-4 py-3 text-left hover:bg-surface-2"
-        :data-debt="r.creditId"
-        @click="creditId = r.creditId"
-      >
+      <!-- Кнопка строки — название, растянутое на строку (`row-open`); ✦ совета ИИ — рядом своей кнопкой (RZ-11). -->
+      <div class="press flex w-full cursor-pointer flex-col gap-1 px-4 py-3 text-left hover:bg-surface-2" :data-debt="r.creditId" @click="creditId = r.creditId">
         <span class="flex w-full items-baseline justify-between gap-3">
-          <span class="min-w-0 truncate text-[15px] font-semibold text-ink">{{ r.name }}</span>
+          <span class="flex min-w-0 items-center">
+            <button type="button" class="row-open min-w-0 truncate text-left text-[15px] font-semibold text-ink" data-row-open>{{ r.name }}</button>
+            <AdviceMark :n="ai.markFor('credit', r.creditId)" />
+          </span>
           <span class="flex shrink-0 items-center gap-1.5">
             <PhCheck v-if="r.person && given(r)" :size="15" weight="bold" class="text-ok" aria-label="отдал в этом месяце" data-debt-given />
             <span class="text-[15px] font-semibold num text-ink">{{ money(r.left) }}</span>
@@ -117,7 +120,7 @@ const { open: tryOpen, close: closeTry } = useQuerySheet('try')
         <span v-if="r.paidShare !== null || r.person" class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-track" data-debt-bar>
           <span class="block h-full rounded-full bg-ok" :style="{ width: `${Math.round((r.paidShare ?? 0) * 100)}%` }" />
         </span>
-      </button>
+      </div>
       <!-- «Отдал» — у своего предмета, в строке (правило 12); отдано — ✓ у суммы, кнопки нет. -->
       <Button
         v-if="r.person && !authStore.isViewer && !given(r)"

@@ -119,9 +119,10 @@ describe('stores/ai — adviceMarks (RZ-10)', () => {
     // Разбор в документе демо не пишется — меток по документу нет, только заготовка.
     expect(finance.aiReviewOf(KEY)).toBeNull()
     const demo = demoReview(finance.householdDoc, finance.planInput(KEY))
-    expect(demo.advices.length).toBeGreaterThan(1)
+    const advices = demo.advices ?? []
+    expect(advices.length).toBeGreaterThan(1)
     const ai = useAiStore()
-    demo.advices.forEach((a, i) => {
+    advices.forEach((a, i) => {
       if (a.action.kind === 'open') {
         const t = a.action.target
         expect(ai.markFor(t.kind, t.id), t.name).toBe(i + 1)

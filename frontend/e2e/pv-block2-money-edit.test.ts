@@ -147,9 +147,10 @@ describe('e2e / Блок 2 паритета — правка денег на д�
     setActivePinia(B.pinia)
     await B.store.pullHousehold(B.client)
     // Коммуналка — с оценкой: в справочнике «≈ оценка», в «Месяце» — «примерно» (её «Оплатил» откроет лист с суммой).
+    // Строка справочника — до шеврона (`</svg>`): кнопка строки — только название, ✦ совета ИИ рядом (RZ-10).
     const whole = await screen(B.pinia, Money, '/money')
     const until = whole.slice(whole.indexOf('Коммуналка'))
-    expect(until.slice(0, until.indexOf('</button>'))).toContain('≈ оценка')
+    expect(until.slice(0, until.indexOf('</svg>'))).toContain('≈ оценка')
     const month = await screen(B.pinia, Month, '/month?month=2026-10', undefined, [screenMixin({ opened: 'dues' })])
     const due = month.slice(month.indexOf('Коммуналка'))
     expect(due.slice(0, due.indexOf('data-due', 1))).toContain('примерно')
@@ -422,11 +423,11 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(nextObligationDue(rentB(), B.store.payments)).toMatchObject({ period: '2026-09', day: 3 })
       // «Платежи» второго (B2C-42): аренда 3-го, а не 5-го.
       const list = await page(B.pinia, Money, '/money')
-      const rentRow = between(list, 'Аренда', '</button>')
+      const rentRow = between(list, 'Аренда', '</svg>')
       expect(rentRow).toContain('3-го')
       expect(rentRow).not.toContain('5-го')
       // Капитал второго: у аренды хозяйка в подписи; в окне «Чья» нажата Аруна.
-      expect(between(await page(B.pinia, Money, '/money'), 'Аренда', '</button>')).toContain('Аруна')
+      expect(between(await page(B.pinia, Money, '/money'), 'Аренда', '</svg>')).toContain('Аруна')
       expect(await page(B.pinia, Money, '/money?obligation=rent')).toMatch(pressed('Аруна'))
 
       // «Общая» на втором — хозяина нет (null, а не строка 'all').
@@ -434,7 +435,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       await page(B.pinia, Money, '/money?obligation=rent', { act: (s) => press(s, 'setObligationWho', 'all') })
       expect(rentB().who).toBeNull()
       const moneyB = await page(B.pinia, Money, '/money')
-      const shared = between(moneyB, 'Аренда', '</button>')
+      const shared = between(moneyB, 'Аренда', '</svg>')
       expect(shared).toContain(money(220_000))
       expect(shared).not.toContain('Аруна')
 
@@ -690,7 +691,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(modalB).not.toContain('июн 2028')
       // Платёж ноября второго — от остатка 835 411: в долг 35 026, банку 22 974 — строка графика `nov` выше
       // (Блок 15: «Оплатил» с долями ушёл из листа кредита — отметка в «Месяце», доли — в графике).
-      expect(between(await page(B.pinia, Money, '/money'), 'Кредит', '</button>')).not.toContain('в долг')
+      expect(between(await page(B.pinia, Money, '/money'), 'Кредит', '</svg>')).not.toContain('в долг')
       // Проценты месяца второго — 22 974; «Оплатил» октября по записи 34 089 / 23 911 — строка графика `oct` выше.
       expect(await interest(B.pinia)).toContain(`${money(22_974)} в месяц`)
     })

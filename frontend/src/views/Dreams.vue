@@ -5,6 +5,7 @@ import { PhCamera, PhCaretRight, PhCheck, PhPlus } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
+import { useAiStore } from '@/stores/ai'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthShort } from '@/lib/dates'
 import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftLabel, wishQueue } from '@/lib/finance'
@@ -38,6 +39,8 @@ const router = useRouter()
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
 const ops = useOperationsStore()
+/** ✦ совета ИИ у мечты (бэклог «Разбор», RZ-11): герой и строки целей; у желаний — нет. */
+const ai = useAiStore()
 
 const NBSP = ' '
 const key = computed(() => monthKey())
@@ -150,6 +153,7 @@ onMounted(refresh)
         :author="main.photoCredit?.author"
         :note="heroShift?.text"
         :note-tone="heroShift?.tone"
+        :mark="ai.markFor('goal', main.id)"
         @open="router.push(`/goals/${main.id}`)"
       >
         <template v-if="canEdit && !main.photoId" #actions>
@@ -191,6 +195,7 @@ onMounted(refresh)
               :index="index + 1"
               :divided="false"
               :class="othersById.get(id)!.pausedAt && 'opacity-60'"
+              :mark="ai.markFor('goal', id)"
               clickable
               @click="router.push(`/goals/${id}`)"
             >

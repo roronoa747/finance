@@ -343,10 +343,12 @@ const subsOpen = ref(false)
  */
 const marked = (d: PlanDue) => ai.markFor(d.kind, d.targetId) !== null
 const subsMarked = computed(() => grouped.value.byWho.some((w) => w.group.parts.some((g) => g.rows.some(marked))))
+/** ✦ у цели и фонда очереди — совет про мечту / подушку; у карточки долга — про её кредит (досрочка, «Открыть» долга). */
+const queueMark = (q: PlanQueueItem) => (q.kind === 'debt' ? ai.markFor('credit', q.creditId) : ai.markFor('goal', q.goalId))
 const sectionMarked = computed(() => ({
   dues: plan.value.dues.some(marked),
   spend: compare.value.rows.some((r) => ai.markFor('cat', r.categoryId) !== null),
-  queue: false,
+  queue: plan.value.queue.some((q) => queueMark(q) !== null),
 }))
 // «Освободится» — подсказкой у своего платежа: в общем списке или у группы подписок, где он лежит.
 const freedAt = computed(() => {
@@ -773,12 +775,18 @@ function addFund(kind: 'reserve' | 'cushion') {
                     :data-queue="id"
                     @click="openItem(queueById.get(id)!)"
                   >
-                    <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
-                      <span class="truncate text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'">{{ queueById.get(id)!.name }}</span>
+                    <!-- Кнопка строки — название (растянута `row-open`); ✦ совета ИИ про цель или долг — рядом (RZ-11). -->
+                    <span class="flex min-w-0 flex-1 flex-col gap-px">
+                      <span class="flex min-w-0 items-center">
+                        <button type="button" class="row-open min-w-0 truncate text-left text-[15.5px] font-semibold" :class="queueById.get(id)!.paused ? 'text-ink-2' : 'text-ink'" data-row-open>
+                          {{ queueById.get(id)!.name }}
+                        </button>
+                        <AdviceMark :n="queueMark(queueById.get(id)!)" />
+                      </span>
                       <span v-if="statusOf(queueById.get(id)!)" class="text-[12px] num" :class="statusOf(queueById.get(id)!)!.warn ? 'text-warn' : 'text-ink-2'" data-status>
                         {{ statusOf(queueById.get(id)!)!.text }}
                       </span>
-                    </button>
+                    </span>
                     <button
                       v-if="canEdit && queueById.get(id)!.payer"
                       type="button"
