@@ -110,12 +110,14 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(sheet.dataset.path).toBe('ios27')
     expect(txt(q('[data-step-text]'))).toBe('Скопируйте ключ этого iPhone')
     expect(txt(document.body)).toContain('1 из 5')
-    expect(connect).toHaveBeenCalledOnce()
+    // Ключ создаёт только нажатие «Скопировать ключ» (владелец 2026-10-19), не открытие листа.
+    expect(connect).not.toHaveBeenCalled()
     // Ключа на экране нет даже маской (ux: «ffk_…» — механика); целиком — только когда буфер недоступен.
     expect(txt(document.body)).not.toContain('ffk')
 
     q('[data-main]')!.click()
     await flush()
+    expect(connect).toHaveBeenCalledOnce()
     expect(writeText).toHaveBeenCalledWith(KEY)
     expect(txt(q('[data-step-text]'))).toBe('Откройте команду «Траты сами»')
     expect(q<HTMLAnchorElement>('a[data-main]')?.getAttribute('href')).toBe(STATUS.shortcut_url)
@@ -123,6 +125,82 @@ describe('настройки — карточка «Apple Pay»', () => {
     expect(q('a[data-main]')!.className.split(' ').sort()).toEqual(cn(buttonVariants(), 'w-full').split(' ').sort())
     // Ключ — только в памяти листа: в хранилище его нет.
     for (let i = 0; i < localStorage.length; i++) expect(localStorage.getItem(localStorage.key(i)!)).not.toContain(KEY)
+  })
+
+  it('Safari: ключ создаётся в жесте нажатия и пишется в буфер обещанием ClipboardItem (iOS); открыли и закрыли — ключа нет', async () => {
+    const items: Array<Record<string, Promise<Blob>>> = []
+    class FakeClipboardItem {
+      data: Record<string, Promise<Blob>>
+      constructor(data: Record<string, Promise<Blob>>) {
+        this.data = data
+        items.push(data)
+      }
+    }
+    const write = vi.fn(async (list: FakeClipboardItem[]) => {
+      await Promise.all(list.flatMap((i) => Object.values(i.data)))
+    })
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { write, writeText }, userAgent: IPHONE_27 })
+    const { connect, router } = await open(Settings, '/settings?applepay=1')
+    expect(connect).not.toHaveBeenCalled()
+    await router.push('/settings')
+    await flush()
+    expect(q('[data-applepay-sheet]')).toBeNull()
+    await router.push('/settings?applepay=1')
+    await flush()
+    expect(connect).not.toHaveBeenCalled()
+
+    q('[data-main]')!.click()
+    // Запрос ключа и запись в буфер — синхронно в обработчике нажатия (жест iOS), до ответа сервера.
+    expect(connect).toHaveBeenCalledOnce()
+    expect(write).toHaveBeenCalledOnce()
+    await flush()
+    expect(writeText).not.toHaveBeenCalled()
+    expect(await (await items[0]['text/plain']).text()).toBe(KEY)
+    expect(txt(q('[data-step-text]'))).toBe('Откройте команду «Траты сами»')
+  })
+
+  it('буфер отказал — ключ целиком на экране; сервер отказал — «Ещё раз» создаёт ключ заново', async () => {
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) }, userAgent: IPHONE_27 })
+    await open(Settings, '/settings?applepay=1')
+    q('[data-main]')!.click()
+    await flush()
+    expect(q<HTMLInputElement>('[data-key-manual]')?.value).toBe(KEY)
+    expect(txt(q('[data-main]'))).toBe('Скопировать ещё раз')
+    app?.unmount()
+
+    const writeText = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText }, userAgent: IPHONE_27 })
+    const second = await open(Settings, '/settings?applepay=1')
+    second.connect.mockClear()
+    second.connect.mockRejectedValueOnce(new Error('offline'))
+    q('[data-main]')!.click()
+    await flush()
+    expect(txt(q('[role="alert"]'))).toBe('Не получилось. Проверьте сеть.')
+    expect(txt(q('[data-main]'))).toBe('Ещё раз')
+    expect(writeText).not.toHaveBeenCalled()
+    q('[data-main]')!.click()
+    await flush()
+    expect(second.connect).toHaveBeenCalledTimes(2)
+    expect(writeText).toHaveBeenCalledWith(KEY)
+  })
+
+  it('ключ скопирован, оплаты не было — «Ждём первую оплату» и та же «Подключить»; строка «Недели» остаётся', async () => {
+    await open(Settings, '/settings', { status: { ...STATUS, waiting: true } })
+    expect(txt(q('[data-applepay-line]'))).toBe('Ждём первую оплату')
+    expect(q('[data-connect]')).not.toBeNull()
+    expect(q('[data-disconnect]')).toBeNull()
+    expect(q('[data-applepay-card]')!.dataset.connected).toBe('false')
+    app?.unmount()
+
+    await open(Week, '/week', { status: { ...STATUS, waiting: true } })
+    expect(txt(q('[data-applepay-week]'))).toBe('Траты сами с Apple Pay')
+    app?.unmount()
+
+    // Оплатили — «Подключено» и число телефонов, которыми платили.
+    await open(Settings, '/settings', { status: { ...STATUS, connected: true, phones: 2, last_used_at: '2026-10-16T05:00:00Z' } })
+    expect(txt(q('[data-applepay-line]'))).toBe('Подключено · 2 iPhone · последняя трата 16 октября')
   })
 
   it('подключено — «Отключить» → подтверждение → отключено, снова «Подключить»', async () => {

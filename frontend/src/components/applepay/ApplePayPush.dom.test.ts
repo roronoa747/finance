@@ -150,6 +150,11 @@ describe('лист подключения — вторая команда «Пу
     expect(q('[data-applepay-sheet]')!.dataset.flow).toBe('push')
     expect(txt(document.body)).toContain('1 из 6')
     expect(title()).toBe('Пуши банков')
+    // Ключ — только по «Скопировать ключ» (владелец 2026-10-19), не открытием листа.
+    expect(connect).not.toHaveBeenCalled()
+    q('[data-main]')!.click()
+    await flush()
     expect(connect).toHaveBeenCalledOnce()
+    expect(txt(q('[data-step-text]'))).toBe('Откройте команду «Пуши банков»')
   })
 })

@@ -87,7 +87,7 @@ export const useApplePayStore = defineStore('applepay', () => {
     return run
   }
 
-  /** Новый ключ этого телефона — отдаётся вызывающему (лист) и больше нигде не хранится. */
+  /** Новый ключ этого телефона — по «Скопировать ключ»; отдаётся листу и больше нигде не хранится. */
   async function connect(client: ApiClient = apiClient): Promise<string> {
     const { key } = await client.walletConnect()
     void load(client, true)
@@ -97,7 +97,7 @@ export const useApplePayStore = defineStore('applepay', () => {
   /** «Отключить» — все телефоны человека (Р-13). */
   async function disconnect(client: ApiClient = apiClient) {
     await client.walletDisconnect()
-    if (status.value) status.value = { ...status.value, connected: false, phones: 0, last_used_at: undefined }
+    if (status.value) status.value = { ...status.value, connected: false, phones: 0, waiting: false, last_used_at: undefined }
   }
 
   function chooseLegacy(on = true) {

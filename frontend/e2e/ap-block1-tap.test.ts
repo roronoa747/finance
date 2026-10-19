@@ -34,11 +34,12 @@ function walletFake(status: WalletStatus) {
   return {
     walletStatus: vi.fn(async () => ({ ...state })),
     walletConnect: vi.fn(async () => {
-      Object.assign(state, { connected: true, phones: state.phones + 1 })
+      // Ключ скопирован — «ждём первую оплату»: подключён телефон станет только с оплатой (владелец 2026-10-19).
+      Object.assign(state, { waiting: !state.connected })
       return { key: ['ffk', 'C'.repeat(43)].join('_') }
     }),
     walletDisconnect: vi.fn(async () => {
-      Object.assign(state, { connected: false, phones: 0 })
+      Object.assign(state, { connected: false, phones: 0, waiting: false })
     }),
     // Курса ещё нет — ответа нет (как без сети): книга спросит снова на следующем pull.
     fxRates: vi.fn(async (code: string) => {

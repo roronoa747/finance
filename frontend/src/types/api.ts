@@ -161,10 +161,15 @@ export interface AdminFamilies {
 export type AiCheck =
   | { ok: true; model: string; ms: number }
   | { ok: false; reason: 'no_key' | 'failed' | 'rate_limited' | 'refused' }
-/** `GET /api/wallet` (Apple Pay, AP-02): свои подключённые телефоны и ссылки на команду; ссылки нет — пусто. */
+/**
+ * `GET /api/wallet` (Apple Pay, AP-02): свои подключённые телефоны и ссылки на команду; ссылки нет — пусто. `connected` и
+ * `phones` — только телефоны, которыми оплатили (владелец 2026-10-19).
+ */
 export interface WalletStatus {
   connected: boolean
   phones: number
+  /** Ключ скопирован, оплаты с ним ещё не было — «Ждём первую оплату». Старый сервер поля не отдаёт. */
+  waiting?: boolean
   last_used_at?: string
   shortcut_url: string
   shortcut_url_legacy: string

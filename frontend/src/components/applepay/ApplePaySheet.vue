@@ -9,9 +9,10 @@ import { cn } from '@/lib/utils'
 import ApplePayStepArt, { type StepArt } from './ApplePayStepArt.vue'
 
 /**
- * Лист подключения Apple Pay (AP-06, Р-3, Р-18): шаги по одному на экран — схема и одна строка. Первый шаг создаёт
- * ключ этого iPhone (`connect`) и копирует его: ключ живёт только здесь, пока лист открыт (Р-5); команда спросит его
- * «вопросом при импорте». iOS 27 — пять шагов (триггер внутри команды), iOS 17–26 — ещё автоматизация руками.
+ * Лист подключения Apple Pay (AP-06, Р-3, Р-18): шаги по одному на экран — схема и одна строка. Ключ этого iPhone
+ * создаётся только нажатием «Скопировать ключ» (`connect`, владелец 2026-10-19: открыли лист и закрыли — ключа нет) и
+ * сразу копируется; живёт только здесь, пока лист открыт (Р-5); команда спросит его «вопросом при импорте». iOS 27 —
+ * пять шагов (триггер внутри команды), iOS 17–26 — ещё автоматизация руками.
  * Названия пунктов iOS — из инструкции владельцу `OWNER-SHORTCUT.md` (одно место правды).
  */
 const props = defineProps<{
@@ -77,25 +78,11 @@ const manual = ref(false)
 /** Версия iOS не распознана — тихий выбор пути на первом шаге. */
 const legacyChoice = computed(() => !ap.pathKnown && !!ap.status?.shortcut_url && !!ap.status?.shortcut_url_legacy)
 
-async function makeKey() {
-  if (key.value || busy.value) return
-  busy.value = true
-  failed.value = false
-  try {
-    key.value = await ap.connect()
-  } catch {
-    failed.value = true
-  } finally {
-    busy.value = false
-  }
-}
-
 watch(
   () => props.open,
   (open) => {
     if (open) {
       flow.value = props.mode ?? 'tap'
-      void makeKey()
     } else {
       key.value = null
       index.value = 0
@@ -115,13 +102,46 @@ function toPush() {
   manual.value = false
 }
 
+/**
+ * «Скопировать ключ». Ключ уже в памяти листа (вторая команда, «Скопировать ещё раз») — копируется он. Нет — создаётся
+ * этим нажатием: буфер iOS пишет только в жесте, а ключ приходит с сервера позже — поэтому `ClipboardItem` с обещанием
+ * (запись начинается синхронно в обработчике нажатия). Без `ClipboardItem` — `writeText` после ответа. Ключ не создан
+ * — «Ещё раз»; создан, а буфер отказал — ключ целиком на экране.
+ */
 async function copy() {
-  if (!key.value) return makeKey()
+  if (key.value) {
+    try {
+      await navigator.clipboard.writeText(key.value)
+      next()
+    } catch {
+      manual.value = true
+    }
+    return
+  }
+  if (busy.value) return
+  busy.value = true
+  failed.value = false
+  // Лист закрыли, пока ключ в пути, — в памяти листа он не остаётся.
+  const made = ap.connect().then((k) => {
+    if (props.open) key.value = k
+    return k
+  })
   try {
-    await navigator.clipboard.writeText(key.value)
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': made.then((k) => new Blob([k], { type: 'text/plain' })) })])
+    } else {
+      await navigator.clipboard.writeText(await made)
+    }
     next()
   } catch {
-    manual.value = true
+    try {
+      await made
+      manual.value = true
+    } catch {
+      failed.value = true
+    }
+  } finally {
+    busy.value = false
   }
 }
 </script>
@@ -146,7 +166,7 @@ async function copy() {
           data-key-manual
           @focus="($event.target as HTMLInputElement).select()"
         />
-        <Button class="w-full" :disabled="busy" data-main @click="failed ? makeKey() : copy()">
+        <Button class="w-full" :disabled="busy" data-main @click="copy">
           {{ busy ? 'Минуту…' : failed ? 'Ещё раз' : manual ? 'Скопировать ещё раз' : 'Скопировать ключ' }}
         </Button>
       </template>
