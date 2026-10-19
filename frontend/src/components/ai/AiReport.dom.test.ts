@@ -747,17 +747,25 @@ describe('RZ-07: отчёт разбора v3', () => {
     await vi.waitFor(() => expect(fill()).not.toBe('0%'))
   })
 
-  it('RZ-15: подпись крупной цифры — короткая подпись кода (`label`); разбор без неё — `about`', async () => {
+  it('RZ-15: подпись крупной цифры — короткая подпись кода (`label`); имя из заголовка второй раз не пишется (`/ux` Блока 3); разбор без неё — `about`', async () => {
     const c = await openV3()
     app!.unmount()
     document.body.innerHTML = ''
     const [first, second] = advices(c)!
-    const labelled = { ...second, figure: { ...second.figure!, label: 'сверх обычного · Кафе' } }
+    const labelled = { ...second, title: 'Раздуло одной покупкой', figure: { ...second.figure!, label: 'сверх обычного · Кафе' } }
     await open({ doc: withFund({ aiReviews: [savedV3(c, { advices: [first, labelled] })] }) })
     await router.push('/month?review=1&card=2')
     await vi.waitFor(() => expect(dialog()).not.toBeNull(), { timeout: 5000 })
     await flush()
     expect(txt(q('[data-report-card][data-active] [data-review-figure-about]'))).toBe('сверх обычного · Кафе')
+    app!.unmount()
+    document.body.innerHTML = ''
+    // Заголовок «Кафе у дома» уже называет раздел — подпись «сверх обычного» без « · Кафе».
+    await open({ doc: withFund({ aiReviews: [savedV3(c, { advices: [first, { ...labelled, title: 'Кафе у дома' }] })] }) })
+    await router.push('/month?review=1&card=2')
+    await vi.waitFor(() => expect(dialog()).not.toBeNull(), { timeout: 5000 })
+    await flush()
+    expect(txt(q('[data-report-card][data-active] [data-review-figure-about]'))).toBe('сверх обычного')
   })
 
   it('без находок в советах — счётчик без «≈»: крупно операции, «нашёл K» (RZ-14 — как было)', async () => {

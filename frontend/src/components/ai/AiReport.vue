@@ -109,6 +109,17 @@ const advices = computed<AdviceRow[]>(() =>
     return { i, a, made: isMade, fresh, path: stale }
   }),
 )
+/**
+ * Подпись крупной цифры (RZ-15: «за год · Магазин у дома»); имя после « · », которое уже есть в заголовке совета, второй
+ * раз не пишем — «Магазин у дома» над «за год» (`/ux` Блока 3: шумная подпись). Разбор до RZ-15 — `about`.
+ */
+function figureLabel(a: AiAdvice): string {
+  const label = a.figure?.label
+  if (!label) return a.figure?.about ?? ''
+  const cut = label.lastIndexOf(' · ')
+  const name = cut > 0 ? label.slice(cut + 3).toLowerCase() : ''
+  return name && a.title.toLowerCase().includes(name) ? label.slice(0, cut) : label
+}
 
 /**
  * «Работа ИИ» (Р-8; вид — владелец 2026-10-19, RZ-14): числа кода на момент разбора. Есть деньги находок советов (X > 0) —
@@ -483,7 +494,7 @@ onUnmounted(() => {
                 <template v-if="c.row.a.figure">
                   <p class="mt-6 type-big num text-ink" data-review-figure>{{ c.row.a.figure.value }}</p>
                   <!-- Короткая подпись кода (RZ-15: «за год · Магазин у дома»); разбор до неё — `about`, переносом, не обрезкой (`/ux`). -->
-                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ c.row.a.figure.label ?? c.row.a.figure.about }}</p>
+                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ figureLabel(c.row.a) }}</p>
                 </template>
                 <p class="mt-5 text-[17px] leading-snug text-ink num" data-review-advice-text>{{ keep(c.row.a.text) }}</p>
                 <div class="mt-6">
