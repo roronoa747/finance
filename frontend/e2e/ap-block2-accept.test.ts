@@ -10,6 +10,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { Payment } from '../src/types/finance'
 import type { WalletStatus } from '../src/types/api'
 import Month from '../src/views/Month.vue'
+import Week from '../src/views/Week.vue'
 import { at, backend, fakeServer, fakeStatements, screen, serverPush, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -177,6 +178,48 @@ describe('e2e / приёмка Apple Pay Блок 2 — «Пришла» по п
     expect(await screen(A.pinia, Month, '/month')).not.toContain('data-arrival-dot')
     on(A)
     expect(useOperationsStore().pendingMatches.some((c) => c.opId === SALARY_PUSH.id)).toBe(false)
+  })
+
+  it('«Да, зарплата» на «Неделе» по пушу, а прошлой зарплаты нет — лист отметки с суммой прихода, счёт спрашивается один раз; дальше «Да» — на тот же счёт (владелец 2026-10-19)', async () => {
+    server = fakeServer(planFamilyDoc())
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', SALARY_PUSH)
+    await pull(A)
+    on(A)
+    const question = useOperationsStore().pendingMatches.find((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')!
+    expect(question).toBeTruthy()
+    /** «Да» вопроса «Недели» (`Week.acceptMatch` — его зовёт `onPrimary` карточки вопроса). */
+    const yes = () => screenMixin({}, (s) => (s.acceptMatch as (c: unknown) => void)(question))
+
+    const sheet = await screen(A.pinia, Week, '/week', undefined, [yes()])
+    expect(sheet).toContain('Отметить зарплату')
+    expect(sheet.replace(/&nbsp;|\s/g, ' ')).toContain('Пришло в Freedom · 14 октября')
+    expect(sheet).toContain('Спрашиваем один раз')
+    // До выбора счёта ничего не отмечено — «не зачислять» молча больше не ставится.
+    expect(salaryOct(A)).toEqual([])
+
+    const before = card(A)
+    const seen: { amount?: unknown } = {}
+    await screen(A.pinia, Week, '/week', undefined, [yes(), confirmMark(seen)])
+    expect(String(seen.amount).replace(/\D/g, '')).toBe('690000')
+    expect(salaryOct(A).map((p) => [p.amount, p.accountId])).toEqual([[690_000, 'card']])
+    expect(card(A) - before).toBe(690_000)
+    on(A)
+    expect(useOperationsStore().pendingMatches.some((c) => c.opId === SALARY_PUSH.id)).toBe(false)
+  })
+
+  it('«Да, зарплата» на «Неделе» по пушу при прошлой зарплате — сразу на её счёт, без листа', async () => {
+    server = fakeServer(planFamilyDoc({ payments: [SEPT_SALARY] }))
+    const A = await phone(server, st, 'a')
+    serverPush(st, 'u-a', SALARY_PUSH)
+    await pull(A)
+    on(A)
+    const question = useOperationsStore().pendingMatches.find((c) => c.opId === SALARY_PUSH.id && c.kind === 'salary')!
+    vi.spyOn(apiClient, 'upsertOperations').mockImplementation(A.client.upsertOperations)
+    const html = await screen(A.pinia, Week, '/week', undefined, [screenMixin({}, (s) => (s.acceptMatch as (c: unknown) => void)(question))])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(html).not.toContain('Отметить зарплату')
+    expect(salaryOct(A).map((p) => [p.amount, p.accountId, p.opId])).toEqual([[690_000, 'card', SALARY_PUSH.id]])
   })
 
   it('viewer и демо: ни точки, ни запросов статуса Apple Pay (viewer — и без «Пришла») — даже когда у Ильяса есть приход из пуша', async () => {
