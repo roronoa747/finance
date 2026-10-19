@@ -751,7 +751,7 @@ describe('RZ-07: отчёт разбора v3', () => {
     const c = await openV3()
     app!.unmount()
     document.body.innerHTML = ''
-    const [first, second] = advices(c)
+    const [first, second] = advices(c)!
     const labelled = { ...second, figure: { ...second.figure!, label: 'сверх обычного · Кафе' } }
     await open({ doc: withFund({ aiReviews: [savedV3(c, { advices: [first, labelled] })] }) })
     await router.push('/month?review=1&card=2')

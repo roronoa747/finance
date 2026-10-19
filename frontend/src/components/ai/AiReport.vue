@@ -203,7 +203,6 @@ function onScroll() {
 }
 /** Нажатие по правой трети — следующая, по левой — предыдущая; по кнопкам и ссылкам — их действие. */
 function onTap(e: MouseEvent) {
-  if (e.target instanceof Element && e.target.closest('a')) rememberCard()
   if (e.target instanceof Element && e.target.closest('a, button, [data-no-tap]')) return
   const w = ribbon.value?.clientWidth || window.innerWidth
   if (e.clientX > (w * 2) / 3) go(active.value + 1)
@@ -219,6 +218,17 @@ const ownEntry = () => typeof history !== 'undefined' && history.state?.current 
 function rememberCard() {
   if (ownEntry()) history.replaceState({ ...history.state, [CARD_KEY]: active.value }, '')
 }
+/**
+ * Нажатие ссылки — в перехвате, до `RouterLink`: настоящее касание выполняет микрозадачи между обработчиками, и переход
+ * успевал записать новую запись истории раньше всплытия (стенд). Нативный слушатель, не `@click.capture` (как у `Tip`).
+ */
+function onLinkCapture(e: MouseEvent) {
+  if (e.target instanceof Element && e.target.closest('a')) rememberCard()
+}
+watch(ribbon, (el, old) => {
+  old?.removeEventListener('click', onLinkCapture, true)
+  el?.addEventListener('click', onLinkCapture, true)
+})
 function takeRemembered(): number | null {
   if (!ownEntry()) return null
   const { [CARD_KEY]: i, ...rest } = history.state as Record<string, unknown>

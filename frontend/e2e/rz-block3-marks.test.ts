@@ -63,7 +63,8 @@ function markIn(html: string, anchor: string, next: RegExp): string | null {
   return marks(end < 0 ? rest : rest.slice(0, end))[0] ?? null
 }
 
-describe('e2e / Разбор Блок 3 — ✦ у предметов', () => {
+// Каждый телефон рисует 7 экранов SSR (первый — с холодной загрузкой модулей): под полной нагрузкой — дольше 30 с.
+describe('e2e / Разбор Блок 3 — ✦ у предметов', { timeout: 120_000 }, () => {
   const storage = new Map<string, string>()
   let server: FakeServer
   let st: FakeStatements
