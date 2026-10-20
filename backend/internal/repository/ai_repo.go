@@ -54,8 +54,12 @@ func (r *sqlAIRepository) Families(ctx context.Context, month string) ([]AIFamil
 			COALESCE((SELECT array_agg(u.email ORDER BY m.slot) FROM app.household_members m
 				JOIN app.users u ON u.id = m.user_id WHERE m.household_id = h.id), '{}'),
 			COALESCE(a.requests, 0), COALESCE(a.cost_micros, 0),
-			(SELECT max(e.at) FROM app.events e JOIN app.household_members m ON m.user_id = e.user_id
-				WHERE m.household_id = h.id AND e.kind = 'app_open') AS last_active
+			-- app_open is one row per user and Almaty day (the partial unique index): the newest
+			-- day's row is the latest, read off that index without walking the user's history.
+			(SELECT max(l.at) FROM app.household_members m CROSS JOIN LATERAL (
+				SELECT e.at FROM app.events e WHERE e.user_id = m.user_id AND e.kind = 'app_open'
+				ORDER BY e.day DESC LIMIT 1) l
+				WHERE m.household_id = h.id) AS last_active
 		FROM app.households h
 		LEFT JOIN app.ai_usage a ON a.household_id = h.id AND a.month = $1
 		ORDER BY h.ai_enabled DESC, last_active DESC NULLS LAST, h.created_at DESC;`, month)

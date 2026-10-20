@@ -173,8 +173,9 @@ func TestPostgresAIFamilies(t *testing.T) {
 		ago        time.Duration
 	}{
 		{a1, "app_open", 5 * 24 * time.Hour},
-		{a2, "app_open", 26 * time.Hour}, // the partner is fresher
-		{a2, "week_done", time.Hour},     // not an app_open
+		{a2, "app_open", 26 * time.Hour},      // the partner is fresher
+		{a2, "app_open", 10 * 24 * time.Hour}, // an older day of the partner does not win
+		{a2, "week_done", time.Hour},          // not an app_open
 		{b1, "app_open", 3 * 24 * time.Hour},
 	} {
 		if err := events.Record(ctx, e.user, "", e.kind, now.Add(-e.ago)); err != nil {
