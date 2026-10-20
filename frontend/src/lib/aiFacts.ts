@@ -133,10 +133,12 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
     const who = `новое регулярное списание ${nm(seller(f))}, которого нет в плане`
     put(`${who} — в месяц`, money(f.monthly), f.monthly, `в месяц · ${s}`)
   } else if (f.kind === 'pricier') {
+    // Годовая подписка — разница как есть, «раз в год» (Р-19); её `monthly` — двенадцатая часть, для сортировки и счётчика.
     const every = f.every === 'year' ? 'раз в год' : 'в месяц'
+    const diff = f.amount - f.was
     put(`подписка ${nm(f.name)} стала дороже: было`, money(f.was), f.was, `было · ${bare(f.name)}`)
     put(`подписка ${nm(f.name)} стала дороже: стало`, money(f.amount), f.amount, `стало · ${bare(f.name)}`)
-    put(`подписка ${nm(f.name)} стала дороже на — ${every}`, money(f.monthly), f.monthly, `дороже ${every} · ${bare(f.name)}`)
+    put(`подписка ${nm(f.name)} стала дороже на — ${every}`, money(diff), diff, `дороже ${every} · ${bare(f.name)}`)
   } else {
     const s = bare(seller(f))
     put(`списание ${nm(seller(f))} прошло дважды одной суммой — лишнее в месяц`, money(f.monthly), f.monthly, `лишнее в месяц · ${s}`)

@@ -292,6 +292,10 @@
   (`figure` из факта, `used` → `reviewWork`), Go `backend/internal/handlers/ai.go:142-150` `reviewSystem`, тесты
   `ai_test.go` (`reviewBody` :78, `TestReviewDefectsRetry` :286), демо `lib/demo.ts:24 DEMO_REVIEW`; решение Р-19 «Разбор»
   — `memory/decisions/rz-grew-yearly.md` (отменяется Р-8/Р-19 здесь).
+  **После 4а (FB-13):** `ReviewFinding.monthly` у всех видов (годовая подписка — `every: 'year'`, факт — разница раз в год,
+  `monthly` — её `yearShare`), `yearly` у находок нет; факты — «— в месяц», образ утечки — доля взноса (`goalPace`) или
+  мерка; `reviewWork` → `{ops, found, monthly}`, старый `work.yearly` читает только `reviewWorkMonthly`; отчёт — «в месяц
+  уходит на найденное»; Go `reviewSystem` — «по деньгам в месяц».
 
 **Команды и среда.**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт `src/**` и `e2e/**`; на `main` 2026-10-20 — 267

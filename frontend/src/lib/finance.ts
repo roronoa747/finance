@@ -5906,7 +5906,8 @@ export type FindImage = { kind: 'dream'; goalId: string; name: string; share: nu
 /**
  * Находка семьи (Р-5): всё в целых тенге; `monthly` — цена в месяц (бэклог «Фидбек», Р-8, Р-19,
  * `memory/decisions/fb-review-monthly.md`): утечка — среднее за месяц, «раздуло» — прирост месяца, новое списание —
- * сумма, подорожание — разница (у годовой подписки — разница раз в год, `every: 'year'`), двойное — лишние списания.
+ * сумма, подорожание — разница (у годовой подписки — `every: 'year'`, разница раз в год — `amount − was`, а `monthly` —
+ * её двенадцатая часть), двойное — лишние списания.
  */
 export type ReviewFinding =
   | { kind: 'leak'; key: string; name: string; categoryId: string | null; monthly: number; count: number; months: number; image: FindImage | null }
@@ -6038,7 +6039,11 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
     const o = obligations.find((x) => x.id === f.targetId)
     // Оценка («сумма плавает») — не цена: и запись телефона, который ещё не знает, что платёж стал оценкой.
     if (!o || o.estimate || f.was === undefined || f.amount <= f.was) continue
-    dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, monthly: f.amount - f.was, ...(o.every === 'year' ? { every: 'year' as const } : {}) })
+    // Годовая подписка: разница — раз в год (факт и подпись), в месяц — её двенадцатая часть (`yearShare`, как у
+    // `plannedChange`): иначе сортировка и счётчик «в месяц» брали бы годовую разницу за месячную (критик FB-13).
+    const diff = f.amount - f.was
+    const yearly = o.every === 'year'
+    dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, monthly: yearly ? yearShare(diff) : diff, ...(yearly ? { every: 'year' as const } : {}) })
   }
   for (const f of ofMonth('double')) {
     if (f.count < 2) continue

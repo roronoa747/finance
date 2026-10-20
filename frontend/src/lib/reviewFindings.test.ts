@@ -165,7 +165,7 @@ describe('reviewFindings — находки семьи', () => {
     const list = findingsOf(family())
     expect(of(list, 'recurring')).toEqual([{ kind: 'recurring', key: 'fitness lab', name: 'FITNESS LAB', categoryId: 'sc_fun', amount: 15_000, count: 2, monthly: 15_000 }])
     const pricier = of(list, 'pricier')
-    expect(pricier.find((p) => p.obligationId === 'ins')).toEqual({ kind: 'pricier', key: 'insur', name: 'Страховка', obligationId: 'ins', amount: 66_000, was: 60_000, monthly: 6_000, every: 'year' })
+    expect(pricier.find((p) => p.obligationId === 'ins')).toEqual({ kind: 'pricier', key: 'insur', name: 'Страховка', obligationId: 'ins', amount: 66_000, was: 60_000, monthly: 500, every: 'year' })
     expect(pricier.find((p) => p.obligationId === 'kino')).toEqual({ kind: 'pricier', key: 'kino', name: 'Кинопоиск', obligationId: 'kino', amount: 2_990, was: 2_490, monthly: 500 })
     // Платёж стал оценкой, а телефон записал подорожание раньше (несинхронный партнёр) — у семьи его нет.
     const estimated = family()
@@ -179,9 +179,9 @@ describe('reviewFindings — находки семьи', () => {
 
   it('порядок: «раздуло» по приросту, затем по цене в месяц; не больше 12; все числа целые', () => {
     const list = findingsOf(family())
-    // Утечка 15 750, новое 15 000, двойное 12 000, подорожание 6 000 и 500.
+    // Утечка 15 750, новое 15 000, двойное 12 000, подорожание 500 и 500 (годовая страховка +6 000 раз в год — 500 в месяц).
     expect(list.map((f) => f.kind)).toEqual(['grew', 'grew', 'leak', 'recurring', 'double', 'pricier', 'pricier'])
-    expect(list.slice(2).map((f) => f.monthly)).toEqual([15_750, 15_000, 12_000, 6_000, 500])
+    expect(list.slice(2).map((f) => f.monthly)).toEqual([15_750, 15_000, 12_000, 500, 500])
     expect(integers(list)).toEqual([])
     const many = Array.from({ length: 20 }, (_, i) => rf('a', KEY, 'double', `club ${'abcdefghijklmnopqrst'[i]}`, { count: 2, amount: 2_000 + i }))
     expect(findingsOf(family({ reviewFinds: [...FINDS, ...many] }))).toHaveLength(REVIEW_FINDINGS_MAX)
@@ -275,6 +275,9 @@ describe('reviewWork — счётчик', () => {
     // «Раздуло» «Продуктов» — прирост 70 000, утечка — 15 750 в месяц, каждая один раз.
     expect(list[0]).toMatchObject({ kind: 'grew', growth: 70_000 })
     expect(reviewWork(stateOf(doc), ctxOf(doc), list, used)).toEqual({ ops, found: list.length, monthly: 70_000 + 15_750 })
+    // Подорожание годовой страховки на 6 000 ₸ раз в год — в счётчик «в месяц» идёт 500, не 6 000 (критик FB-13).
+    const ins = of(list, 'pricier').find((p) => p.obligationId === 'ins')!
+    expect(reviewWork(stateOf(doc), ctxOf(doc), list, [ins]).monthly).toBe(500)
   })
 
   it('сохранённый разбор: новый — ₸ в месяц как есть; до «Фидбек» Р-19 — ₸ в год делится на 12 (не переписывается)', () => {

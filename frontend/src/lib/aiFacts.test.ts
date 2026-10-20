@@ -393,6 +393,19 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
     }
   })
 
+  it('годовая подписка подорожала: факт — разница как есть «раз в год», подпись «дороже раз в год»; в месяц — двенадцатая часть (критик FB-13)', () => {
+    const ins = { id: 'ins', name: 'Страховка', note: '', day: 5, category: 'd4' as const, every: 'year' as const, versions: [{ from: '2026-01', amount: 60_000 }], updatedAt: T0 }
+    const doc = withFinds({
+      obligations: [...family().obligations, kino, ins],
+      reviewFinds: [...FINDS, rf('a', KEY, 'pricier', 'insur', { name: 'INSUR', count: 1, amount: 66_000, was: 60_000, targetId: 'ins' })],
+    })
+    const { payload, labels, findings } = build(doc, 'month')
+    const fact = find(payload.facts, 'подписка «Страховка» стала дороже на — раз в год')!
+    expect(fact).toMatchObject({ raw: 6_000, value: money(6_000) })
+    expect(labels.get(fact.id)).toBe('дороже раз в год · Страховка')
+    expect(findings.find((f) => f.kind === 'pricier' && f.obligationId === 'ins')).toMatchObject({ monthly: 500, every: 'year' })
+  })
+
   it('RZ-15: короткие подписи крупной цифры — у фактов находок и сценария, без «ёлочек»; у фактов v2 нет; в тело ручки не идут', () => {
     const { payload, labels } = build(withFinds(), 'month')
     const label = (about: string | RegExp) => labels.get(find(payload.facts, about)!.id)
