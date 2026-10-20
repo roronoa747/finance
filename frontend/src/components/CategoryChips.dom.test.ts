@@ -86,3 +86,36 @@ describe('Н-5: CategoryChips — «Ещё N», «Кому → что», «Ме�
     expect(onChoose).toHaveBeenCalledWith({ internal: true })
   })
 })
+
+describe('FB-03: «+ Раздел» в чипах', () => {
+  const type = async (value: string) => {
+    const input = document.querySelector<HTMLInputElement>('[data-new-category-row] input')!
+    input.value = value
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await nextTick()
+  }
+
+  it('«+ Раздел» → поле → «Подарки» → «Готово» — раздел в общем документе и choose({ categoryId: <новый> }); второй раз — тот же id', async () => {
+    const onChoose = await mount()
+    expect(button('+ Раздел')).toBeTruthy()
+    button('+ Раздел')!.click()
+    await nextTick()
+    // Пустое имя — ничего.
+    button('Готово')!.click()
+    expect(onChoose).not.toHaveBeenCalled()
+    await type('  Подарки ')
+    button('Готово')!.click()
+    await nextTick()
+    const created = useFinanceStore().householdDoc.spendCategories!.find((c) => c.name === 'Подарки')!
+    expect(created.id).toMatch(/^sc_[0-9a-f]{8}$/)
+    expect(onChoose).toHaveBeenCalledWith({ categoryId: created.id })
+    expect(document.querySelector('[data-new-category-row]')).toBeNull()
+
+    button('+ Раздел')!.click()
+    await nextTick()
+    await type('подарки')
+    button('Готово')!.click()
+    expect(onChoose).toHaveBeenLastCalledWith({ categoryId: created.id })
+    expect(useFinanceStore().householdDoc.spendCategories!.filter((c) => c.name.toLowerCase() === 'подарки')).toHaveLength(1)
+  })
+})

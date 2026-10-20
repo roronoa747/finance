@@ -15,6 +15,7 @@ import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
+import NewCategoryChip from '@/components/NewCategoryChip.vue'
 
 /**
  * «Трата» руками (бэклог «Ручная трата», Р-1, Р-2): сумма и раздел — обязательны, заметка «что / где» и дата (сегодня)
@@ -99,6 +100,7 @@ function remove() {
         <div class="flex flex-wrap gap-2" data-hand-categories>
           <Chip v-for="c in shown" :key="c.id" :on="categoryId === c.id" :sw="spendColor(c)" :data-hand-category="c.id" @click="categoryId = c.id">{{ c.name }}</Chip>
           <Chip v-if="!more && categories.length > shown.length" quiet data-hand-more @click="more = true">Ещё {{ categories.length - shown.length }} ▾</Chip>
+          <NewCategoryChip @created="(id) => (categoryId = id)" />
         </div>
       </Field>
       <Field label="Что или где">

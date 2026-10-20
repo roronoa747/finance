@@ -234,3 +234,18 @@ describe('MAN-02: правка и удаление ручной траты', () 
     expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 4_000, ops: 1 })
   })
 })
+
+describe('FB-03: «+ Раздел» в форме «Трата»', () => {
+  it('«+ Раздел» → «Подарки» → «Готово» — выбран; «Сохранить» → строка «Подарки» на «Неделе»', async () => {
+    const { finance, store } = await openWeek('/week?spend=1')
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '15000')
+    await press(q('[data-new-category]'))
+    await type(q<HTMLInputElement>('[data-new-category-row] input'), 'Подарки')
+    await press(q('[data-new-category-done]'))
+    const id = finance.householdDoc.spendCategories!.find((c) => c.name === 'Подарки')!.id
+    expect(q(`[data-hand-category="${id}"]`)!.getAttribute('aria-pressed')).toBe('true')
+    await press(q('[data-hand-save]'))
+    expect(hands(store)).toMatchObject([{ amount: -15_000, categoryId: id }])
+    expect(txt(q(`[data-row="${id}"]`))).toContain('Подарки')
+  })
+})

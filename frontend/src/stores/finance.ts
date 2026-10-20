@@ -7,6 +7,7 @@ import { clearPhotoDisk } from '@/lib/photos/store'
 import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  liveSpendCategories,
   termSnapOf,
   type PlanShiftDraft,
   allocationFor,
@@ -100,7 +101,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
-import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
+import { DEFAULT_CATEGORY_NAMES, HUE_KEYS, type CategoryKey, type HueKey } from '@/lib/palette'
+import { seedSpendCategories } from '@/lib/statements/model'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -2053,6 +2055,8 @@ export const useFinanceStore = defineStore('finance', () => {
 
   /* ---------------- правки своих операций (FB-02, Р-11) — личный документ ---------------- */
   const OP_MEMO_MAX = 60
+  /** Имя нового раздела трат (FB-03, Р-13) — не длиннее. */
+  const SPEND_CATEGORY_NAME_MAX = 24
   /** Все записи `opEdits` (и «без правок»): слой поверх копии операций (`withEdits` в сторе операций). */
   const opEdits = computed(() => (privateDoc.value.opEdits as OpEdit[] | undefined) ?? [])
 
@@ -2185,6 +2189,30 @@ export const useFinanceStore = defineStore('finance', () => {
       const c = (doc.spendCategories ?? []).find((x) => x.id === id)
       if (c) Object.assign(c, patch, { updatedAt: t })
     })
+  }
+
+  /**
+   * Новый раздел трат (FB-03, Р-13) — из чипов «куда отнести?» и формы «Трата»: имя без пробелов по краям, до 24 знаков;
+   * пустое — ничего (`null`); живой раздел с тем же именем (без регистра) — его id. Новый — в общий документ (партнёр
+   * видит слиянием): id `sc_` + 8 hex, `order` — последний + 1, цвет — следующий по кругу палитры после последнего
+   * раздела, слот не выбран. Документ без разделов сначала засевается словарём. Возвращает id.
+   */
+  function addSpendCategory(raw: string): string | null {
+    const name = raw.trim().replace(/\s+/g, ' ').slice(0, SPEND_CATEGORY_NAME_MAX).trim()
+    if (!name) return null
+    const same = liveSpendCategories(householdDoc.value.spendCategories).find((c) => c.name.toLocaleLowerCase('ru') === name.toLocaleLowerCase('ru'))
+    if (same) return same.id
+    const id = `sc_${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}`
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      seedSpendCategories(doc, t)
+      const list = doc.spendCategories ?? []
+      const last = list.filter((c) => !c.deletedAt).sort((a, b) => a.order - b.order).at(-1)
+      const hue = HUE_KEYS[(HUE_KEYS.indexOf(last?.hue ?? HUE_KEYS[HUE_KEYS.length - 1]) + 1) % HUE_KEYS.length]
+      const order = list.reduce((m, c) => Math.max(m, c.order), 0) + 1
+      doc.spendCategories = [...list, { id, name, hue, order, slot: null, updatedAt: t }]
+    })
+    return id
   }
 
   /* ---------- план разбора (B2C-54) ---------- */
@@ -2494,6 +2522,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setArticle,
     setMoneySettings,
     updateSpendCategory,
+    addSpendCategory,
     addGift,
     updateGift,
     removeGift,
