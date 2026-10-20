@@ -20,7 +20,7 @@ import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import { arrivalNote } from '@/components/useSalaryTap'
-import { recentOperations, type MatchCandidate } from '@/lib/statements/matching'
+import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
@@ -219,8 +219,13 @@ const onHide = () => {
 // «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве (раскладку остатка семьи проверяет очередь).
 const answeredLocal = ref<string | null>(readMonthEnd())
 
-// Незнакомые продавцы — пачкой (Р-58) по своим операциям этого и прошлого месяца: раздел — задним числом.
-const unknownList = computed(() => unknownGroups(recentOperations(store.all)))
+/**
+ * Незнакомые продавцы — пачкой (Р-58), раздел задним числом — только по своим операциям выбранной недели (бэклог «Лента
+ * недели», Р-2): «Не разобрано · N вопросов», сумма пачки и «Разобрать» сходятся со строкой «Не разобрано» этой недели.
+ * Старые — в своих неделях (‹) и в «Месяце». Выписка, что ждёт тост, — в строке сразу, а вопросы о ней — после отправки
+ * (Р-97), поэтому `store.all`, а не `store.shown`.
+ */
+const unknownList = computed(() => unknownGroups(store.all.filter((o) => weekKey(o.date) === week.value)))
 
 /**
  * Очередь вопросов (`decisionQueue`): сопоставление → продавцы пачкой → подписка → «остались деньги?»; в листе —
