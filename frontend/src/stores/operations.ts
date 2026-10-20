@@ -12,6 +12,7 @@ import {
   applyRules,
   isHand,
   isPhoneStub,
+  liveOpEdits,
   refundCandidates,
   withEdits,
   withPhoneCounterparty,
@@ -977,6 +978,22 @@ export const useOperationsStore = defineStore('operations', () => {
   watch(
     () => (finance.payments ?? []).filter((p) => !p.deletedAt && p.kind !== 'prepay').map((p) => p.opId ?? `${p.kind}:${p.targetId}:${p.period}`).sort().join(' '),
     () => writeTotals(periodsOf(recentOperations(all.value))),
+  )
+
+  /*
+   * Правки операций (FB-02) пришли со второго своего телефона — «Мне вернули», «Разовая»: итоги их периодов переписываются
+   * из копии с правками (`editOp` пишет их на том телефоне, где правили; здесь копия могла посчитать итоги до прихода
+   * правки). Подпись — без заметки: заметка итоги не меняет.
+   */
+  watch(
+    () => liveOpEdits(finance.opEdits).map((e) => `${e.id}:${e.refund?.amount ?? ''}:${e.refund?.opId ?? ''}:${e.oneOff ? 1 : ''}`).sort().join(' '),
+    (now, before) => {
+      const a = new Set(now.split(' ').filter(Boolean))
+      const b = new Set((before ?? '').split(' ').filter(Boolean))
+      const ids = new Set([...a, ...b].filter((x) => !(a.has(x) && b.has(x))).map((x) => x.split(':')[0]))
+      const list = raw.value.filter((o) => ids.has(o.id))
+      if (list.length && !auth.isViewer) writeTotals(periodsOf(list))
+    },
   )
 
   /*

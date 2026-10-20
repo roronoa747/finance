@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { apiClient, type ApiClient } from '@/api/client'
 import { useAuthStore } from './auth'
@@ -104,6 +105,15 @@ describe('FB-02 — правки операции (editOp)', () => {
     store.editOp(SPEND.id, { refund: null })
     expect(total('month', '2026-10', 'sc_people')).toMatchObject({ amount: 700_000, ops: 1 })
     expect(store.pendingMatches.map((c) => c.opId)).toEqual([BACK.id])
+  })
+
+  it('правка пришла со второго своего телефона (личный документ синком) — итоги её периодов переписываются', async () => {
+    const { store } = await loaded()
+    expect(total('month', '2026-10', 'sc_people')).toMatchObject({ amount: 700_000 })
+    useFinanceStore().privateDoc = { ...useFinanceStore().privateDoc, opEdits: [{ id: SPEND.id, refund: { amount: 100_000 }, updatedAt: '2026-10-16T09:00:00Z' }] }
+    await nextTick()
+    expect(store.all.find((o) => o.id === SPEND.id)?.refund).toEqual({ amount: 100_000 })
+    expect(total('month', '2026-10', 'sc_people')).toMatchObject({ amount: 600_000 })
   })
 
   it('наличными, частично: сумма траты — минус возврат', async () => {
