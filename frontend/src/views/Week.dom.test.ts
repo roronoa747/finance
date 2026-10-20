@@ -496,6 +496,33 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(q('[role="dialog"]')).toBeNull()
     expect(q('[data-bang]')).toBeNull()
   })
+
+  it('FB-01: «Потом» у пачки помнится сутки на устройстве — экран закрыли и открыли, вопроса нет; через 25 часов — есть; новый продавец недели возвращает пачку', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+    const reopen = async (extra: Operation[] = []) => {
+      app?.unmount()
+      document.body.innerHTML = ''
+      const { store } = await openWeek()
+      for (const x of [{ ...op('2026-09-22', 7_500, null, 'ИП ЖАНСАЯ'), id: 'u1' }, ...extra]) store.ops[x.id] = x
+      await flush()
+    }
+    await reopen()
+    await press(q('[data-bang]'))
+    expect(txt(q('[role="dialog"]'))).toContain('Без раздела · 1')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('ff_decisions_deferred')!)).toHaveProperty(['unknownBatch:2026-W39'])
+
+    await reopen()
+    expect(q('[data-bang]')).toBeNull()
+    // Новый продавец той же недели — пачка снова с вопросом (отложено было то, что видели).
+    await reopen([{ ...op('2026-09-23', 2_000, null, 'ИП НОВЫЙ'), id: 'u2' }])
+    expect(txt(q('[data-bang]'))).toBe('Разобрать')
+
+    vi.setSystemTime(new Date(Date.now() + 25 * 3_600_000))
+    await reopen()
+    expect(txt(q('[data-bang]'))).toBe('Разобрать')
+  })
 })
 
 describe('WK-01: «Траты недели · N» — лента трат по дням (бэклог «Лента недели», Р-1)', () => {

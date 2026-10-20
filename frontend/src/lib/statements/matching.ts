@@ -169,7 +169,7 @@ export function markedOps(
 ): Set<string> {
   const linked = (state.payments ?? []).filter((p) => !p.deletedAt && p.opId)
   const out = new Set(linked.map((p) => p.opId!))
-  for (const c of matchCandidates(ops, { ...state, payments: linked }, rules, me)) if (!declined.includes(key(c))) out.add(c.opId)
+  for (const c of matchCandidates(ops, { ...state, payments: linked }, rules, me)) if (!isDeclined(c, declined)) out.add(c.opId)
   return out
 }
 
@@ -177,8 +177,23 @@ function key(c: { kind: string; targetId: string; period: string }) {
   return `${c.kind}:${c.targetId}:${c.period}`
 }
 
-/** Ключ решения «нет» на этот месяц — помнит устройство (стор). */
+/** Пара «цель · месяц» предложения. */
 export const matchKey = key
+
+/**
+ * Запись «Нет, это другое» — помнит устройство (стор, `ff_match_declined`): операция и пара, `<opId>|<kind>:<targetId>:<period>`
+ * (FB-01, Р-15 в). Пара одна помнила «нет» только пока операция занята ею: отметили пару руками — операция уходила к
+ * следующей цели с похожей суммой, и вопрос по той же строке вставал снова.
+ */
+export const declineKey = (c: { opId: string; kind: string; targetId: string; period: string }) => `${c.opId}|${key(c)}`
+
+/** Отклонено ли предложение: операция — любой цели (запись с `opId`); старая запись без `opId` — пара на этот месяц. */
+export function isDeclined(c: { opId: string; kind: string; targetId: string; period: string }, declined: readonly string[]): boolean {
+  return declined.some((d) => {
+    const bar = d.indexOf('|')
+    return bar < 0 ? d === key(c) : d.slice(0, bar) === c.opId
+  })
+}
 
 /**
  * Обмен валютной зарплаты (B2C-80, Р-74), которым была операция тенговой выписки: у валютного участника

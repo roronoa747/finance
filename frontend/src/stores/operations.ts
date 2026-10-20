@@ -12,6 +12,7 @@ import {
   applyRules,
   isHand,
   isPhoneStub,
+  withPhoneCounterparty,
   pairInternalTransfers,
   periodsOf,
   ruleFor,
@@ -19,9 +20,9 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, matchCandidates, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
-import { replacedByStatement } from '@/lib/statements/phone'
+import { replacementPairs } from '@/lib/statements/phone'
 import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
 import type { HabitTotal, MerchantRule, Operation, ParsedStatement, ReviewFind, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
@@ -93,7 +94,8 @@ export function toWire(op: Operation): OperationWire {
     amount: op.amount,
     kind: op.kind,
     merchant: op.merchant,
-    counterparty: op.counterparty ?? null,
+    // Получатель операции с телефона — вывод клиента из продавца (`withPhoneCounterparty`, FB-01): на сервер не уходит.
+    counterparty: op.source ? null : (op.counterparty ?? null),
     note: op.note ?? null,
     category_id: op.categoryId,
     internal: op.internal,
@@ -106,7 +108,7 @@ export function toWire(op: Operation): OperationWire {
 export const tombstoneWire = (op: Operation): OperationWire => ({ ...toWire(op), deleted: true })
 
 export function fromWire(w: OperationWire): Operation {
-  return {
+  return withPhoneCounterparty({
     id: w.id,
     bank: w.bank as Operation['bank'],
     date: w.date,
@@ -121,7 +123,7 @@ export function fromWire(w: OperationWire): Operation {
     ...(w.source === 'tap' || w.source === 'push' ? { source: w.source } : {}),
     ...(w.occurred_at ? { at: w.occurred_at } : {}),
     ...(w.fx_currency && w.fx_amount ? { fx: { currency: w.fx_currency, amount: w.fx_amount } } : {}),
-  }
+  })
 }
 
 const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false
@@ -137,7 +139,8 @@ export const useOperationsStore = defineStore('operations', () => {
   const saved = readStorage<{ owner: string | null; ops: Record<string, Operation> }>(KEY_OPS, { owner: null, ops: {} })
   const owner = ref<string | null>(ownerKey())
   const fresh = saved.owner !== null && saved.owner === owner.value
-  const ops = ref<Record<string, Operation>>(fresh ? saved.ops : {})
+  // Копия до FB-01 хранила пуш-переводы без выведенного получателя — выводится при чтении с диска.
+  const ops = ref<Record<string, Operation>>(fresh ? Object.fromEntries(Object.entries(saved.ops).map(([id, o]) => [id, withPhoneCounterparty(o)])) : {})
   const cursor = ref<string | null>(fresh ? readStorage<string | null>(KEY_CURSOR, null) : null)
   const pending = ref<PendingJob[]>(fresh ? readStorage<PendingJob[]>(KEY_PENDING, []) : [])
   const demoUploads = ref<StatementUploadResponse[]>(fresh ? readStorage<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
@@ -168,7 +171,7 @@ export const useOperationsStore = defineStore('operations', () => {
   const openMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
-      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter((c) => !declined.value.includes(matchKey(c))),
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter((c) => !isDeclined(c, declined.value)),
   )
   /** Предложения, что ждут ответа (вопросы «Недели»). */
   const pendingMatches = computed<MatchCandidate[]>(() => openMatches.value.filter((c) => c.confidence !== 'rule'))
@@ -239,9 +242,9 @@ export const useOperationsStore = defineStore('operations', () => {
     await saving
   }
 
-  /** «Нет, это другое»: помнится на этот месяц на устройстве, правилом не становится. */
+  /** «Нет, это другое»: операция больше не предлагается ни одной цели — на устройстве (FB-01), правилом не становится. */
   function declineMatch(c: MatchCandidate) {
-    const k = matchKey(c)
+    const k = declineKey(c)
     if (!declined.value.includes(k)) declined.value = [...declined.value, k]
     save()
     // Строка не платёж — в раздел платежей она теперь трата (`markedOps`, хвосты 952/967).
@@ -357,17 +360,18 @@ export const useOperationsStore = defineStore('operations', () => {
     cancelDraft()
   }
 
-  /** Траты с телефона, которые заменит выписка черновика (Р-16), — `send` уберёт их надгробиями. */
-  const draftReplaced = computed<Operation[]>(() => {
-    if (!draft.value) return []
+  /** Траты с телефона, которые заменит выписка черновика (Р-16), → строка выписки (фантом — null). */
+  const draftPairs = computed<Map<string, string | null>>(() => {
+    if (!draft.value) return new Map()
     const phone = all.value.filter((o) => o.source)
-    if (!phone.length) return []
+    if (!phone.length) return new Map()
     const spans = draft.value.files.map((f) => ({ bank: f.parsed.bank, from: f.parsed.from, to: f.parsed.to }))
     // Строки прошлой выписки (перекрытие периодов) свою пару уже взяли — второй раз не сопоставляются (критик Б1):
     // иначе та же строка уберёт ещё одно касание, которого в выписке нет. Фантомы — по периодам, как прежде.
-    const ids = replacedByStatement(draftOps.value.filter((o) => !(o.id in ops.value)), phone, spans)
-    return phone.filter((o) => ids.has(o.id))
+    return replacementPairs(draftOps.value.filter((o) => !(o.id in ops.value)), phone, spans)
   })
+  /** Траты с телефона, которые заменит выписка черновика (Р-16), — `send` уберёт их надгробиями. */
+  const draftReplaced = computed<Operation[]>(() => all.value.filter((o) => draftPairs.value.has(o.id)))
 
   /** Свои операции вместе с выпиской, которая ещё ждёт тост, — без трат с телефона, которые она заменит. */
   const shown = computed<Operation[]>(() => {
@@ -598,6 +602,15 @@ export const useOperationsStore = defineStore('operations', () => {
     const fresh = draftOps.value
     // Выписка — истина (Р-16): траты с телефона, которые она заменила, уходят из копии и итогов, на сервер — надгробием.
     const replaced = draftReplaced.value
+    // «Нет, это другое» по операции с телефона переходит к строке выписки, что её заменила (FB-01): иначе тот же
+    // перевод спросили бы ещё раз — уже строкой выписки.
+    const pairs = draftPairs.value
+    const carried = declined.value.flatMap((k) => {
+      const [opId, pair] = k.split('|')
+      const to = pair ? pairs.get(opId) : null
+      return to ? [`${to}|${pair}`] : []
+    })
+    if (carried.length) declined.value = [...new Set([...declined.value, ...carried])]
     for (const o of replaced) delete ops.value[o.id]
     const ids = new Set(fresh.map((o) => o.id))
     // Пара с операцией прошлой выписки другого банка делает внутренней и её — она тоже уходит.

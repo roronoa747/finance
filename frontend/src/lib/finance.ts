@@ -5528,6 +5528,8 @@ export function decisionQueue(
     unknown?: UnknownGroup[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
+    /** Неделя пачки «Без раздела» (FB-01, Р-15 а): ключ `unknownBatch:<неделя>` — «Потом» новой недели не прячет. */
+    week?: string
   },
 ): Decision[] {
   if (ctx.canEdit === false) return []
@@ -5546,12 +5548,13 @@ export function decisionQueue(
     })
   }
 
-  // Все незнакомые — одно решение-пачка (Р-58): ключ постоянный — «Потом» откладывает всю пачку, «N из M» считает её одной.
+  // Все незнакомые — одно решение-пачка (Р-58): ключ — с неделей (FB-01): «Потом» откладывает пачку этой недели, «N из M»
+  // считает её одной.
   const unknown = [...(ctx.unknown ?? [])].sort((a, b) => b.amount - a.amount)
   if (unknown.length) {
     out.push({
       kind: 'unknownBatch',
-      key: 'unknownBatch',
+      key: ctx.week ? `unknownBatch:${ctx.week}` : 'unknownBatch',
       question: `Без раздела · ${unknown.length}`,
       meta: money(amountTotal(unknown)),
       actions: { ghost: 'Потом' },

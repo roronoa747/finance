@@ -2688,6 +2688,8 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(decisionQueue({ ...base, allocations: [rest] }, { now: end })).toEqual([])
       // Продавец: ответ становится правилом — группы больше нет, экран её не передаёт.
       expect(kinds(decisionQueue(base, { now, unknown: [group('Kiosk', 1_200)] }))).toEqual(['unknownBatch'])
+      // Ключ пачки — с неделей (FB-01): «Потом» одной недели другую не прячет.
+      expect(decisionQueue(base, { now, unknown: [group('Kiosk', 1_200)], week: '2026-W38' })[0].key).toBe('unknownBatch:2026-W38')
       expect(decisionQueue(base, { now, unknown: [] })).toEqual([])
     })
 

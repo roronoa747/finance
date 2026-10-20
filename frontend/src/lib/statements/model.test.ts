@@ -11,6 +11,8 @@ import {
   habitHints,
   isPhoneStub,
   matchPerson,
+  ruleMatchOf,
+  withPhoneCounterparty,
   normalizeMerchant,
   pairInternalTransfers,
   periodsOf,
@@ -251,6 +253,29 @@ describe('categorize', () => {
   it('словарь — данные: у каждой записи раздел из набора по умолчанию', () => {
     const ids = new Set(DEFAULT_SPEND_CATEGORIES.map((c) => c.id))
     for (const d of DICTIONARY) expect(ids.has(d.categoryId)).toBe(true)
+  })
+})
+
+describe('withPhoneCounterparty (FB-01, Р-15 б)', () => {
+  const kaspiRow = op({ kind: 'transfer-out', merchant: 'Айгерим С.', counterparty: 'Айгерим С.', note: 'Перевод' })
+
+  it('пуш «Перевод Айгерим С.» → получатель «Айгерим С.», «Переводы людям», ключ правила — как у строки Kaspi', () => {
+    const pushOp = withPhoneCounterparty(op({ kind: 'transfer-out', merchant: 'Перевод Айгерим С.', source: 'push' }))
+    expect(pushOp.counterparty).toBe('Айгерим С.')
+    expect(categorize(pushOp, []).categoryId).toBe('sc_people')
+    expect(ruleMatchOf(pushOp)).toEqual(ruleMatchOf(kaspiRow))
+    expect(unknownGroups([pushOp, kaspiRow])).toHaveLength(1)
+    expect(withPhoneCounterparty(op({ kind: 'transfer-in', merchant: 'Перевод Нур Али Т.', source: 'push', amount: 5000 })).counterparty).toBe('Нур Али Т.')
+  })
+
+  it('«Перевод» без имени — заглушка без получателя; «Перевод на карту другого банка», покупка, строка выписки — без', () => {
+    const stub = withPhoneCounterparty(op({ kind: 'transfer-out', merchant: 'Перевод', source: 'push' }))
+    expect(stub.counterparty).toBeUndefined()
+    expect(isPhoneStub(stub)).toBe(true)
+    expect(withPhoneCounterparty(op({ kind: 'transfer-out', merchant: 'Перевод на карту другого банка', source: 'push' })).counterparty).toBeUndefined()
+    expect(withPhoneCounterparty(op({ kind: 'purchase', merchant: 'Перевод Айгерим С.', source: 'tap' })).counterparty).toBeUndefined()
+    const row = op({ kind: 'transfer-out', merchant: 'Перевод Айгерим С.' })
+    expect(withPhoneCounterparty(row)).toBe(row)
   })
 })
 

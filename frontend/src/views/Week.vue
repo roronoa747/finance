@@ -51,7 +51,7 @@ import {
   type Decision,
   type MyWeekRow,
 } from '@/lib/finance'
-import { readMonthEnd, writeMonthEnd, writePlanView } from '@/lib/storage'
+import { readDeferred, readMonthEnd, writeDeferred, writeMonthEnd, writePlanView } from '@/lib/storage'
 
 /**
  * «План · Неделя» (Блок 15, Р-95…Р-102; макет week-month.html «Неделя — мои траты»): только свои цифры. Верх —
@@ -251,20 +251,25 @@ const unknownList = computed(() => unknownGroups(store.all.filter((o) => weekKey
 
 /**
  * Очередь вопросов (`decisionQueue`): сопоставление → продавцы пачкой → подписка → «остались деньги?»; в листе —
- * первое неотложенное. «Потом» / «Позже» / «Подумать» — до следующего открытия экрана.
+ * первое неотложенное. «Потом» / «Позже» / «Подумать» — сутки на этом устройстве (FB-01, Р-15 а: раньше — до следующего
+ * открытия экрана, и тот же вопрос вставал при каждом заходе). Пачка недели отложена вместе со своими продавцами: новый
+ * продавец в ней возвращает пачку раньше суток.
  */
-const deferred = ref<string[]>([])
+const deferred = ref<Record<string, string>>(readDeferred())
+const groupKey = (g: { match: MerchantRule['match'] }) => `unknownGroup:${week.value}:${JSON.stringify(g.match)}`
+const isDeferred = (d: Decision) => d.key in deferred.value && (d.kind !== 'unknownBatch' || (d.groups ?? []).every((g) => groupKey(g) in deferred.value))
 const queue = computed(() =>
   decisionQueue(finance.planInput(month).state, {
     canEdit: canUpload.value,
     matches: store.pendingMatches,
     unknown: unknownList.value,
     answeredMonthEnd: answeredLocal.value,
-  }).filter((d) => !deferred.value.includes(d.key)),
+    week: week.value,
+  }).filter((d) => !isDeferred(d)),
 )
 const decision = computed(() => queue.value[0] ?? null)
 const defer = (d: Decision) => {
-  deferred.value = [...deferred.value, d.key]
+  deferred.value = writeDeferred([d.key, ...(d.groups ?? []).map(groupKey)])
   cancelling.value = false
 }
 /** Вопросы кончились — лист закрывается сам. */

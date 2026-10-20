@@ -391,10 +391,11 @@ describe('stores/operations — сопоставление с отметками
     expect(finance.householdDoc.spendTotals!.find((t) => t.id === 'a:month:2026-09:sc_credit')?.amount).toBe(58_000)
     expect(store.pendingMatches.map((c) => c.kind)).toEqual(['obligation', 'salary'])
 
-    // «Нет» — на этот месяц, на устройстве; правила нет.
-    store.declineMatch(store.pendingMatches[0])
+    // «Нет» — операция и пара, на устройстве (FB-01); правила нет.
+    const rent = store.pendingMatches[0]
+    store.declineMatch(rent)
     expect(store.pendingMatches.map((c) => c.kind)).toEqual(['salary'])
-    expect(JSON.parse(storage.get('ff_match_declined')!)).toEqual(['obligation:rent:2026-09'])
+    expect(JSON.parse(storage.get('ff_match_declined')!)).toEqual([`${rent.opId}|obligation:rent:2026-09`])
     expect(finance.merchantRules).toHaveLength(1)
 
     // «Да, зарплата» — запись зачисления от участника, правило по получателю.

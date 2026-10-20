@@ -34,7 +34,15 @@ const sameBank = (st: Operation, ph: Operation) => ph.bank === st.bank || ph.ban
  * паре, ближайшая по дате побеждает. Отдаёт id операций с телефона.
  */
 export function replacedByStatement(statementOps: Operation[], phoneOps: Operation[], files: StatementSpan[]): Set<string> {
-  const out = new Set<string>()
+  return new Set(replacementPairs(statementOps, phoneOps, files).keys())
+}
+
+/**
+ * То же, что `replacedByStatement`, но с парой: id операции с телефона → id строки выписки, что её заменила (фантом
+ * п. 3 — `null`). Ответ «Нет, это другое» по операции с телефона переходит к её строке (FB-01).
+ */
+export function replacementPairs(statementOps: Operation[], phoneOps: Operation[], files: StatementSpan[]): Map<string, string | null> {
+  const out = new Map<string, string | null>()
   const lines = statementOps.filter((o) => !o.source && !o.internal && o.amount !== 0).sort((a, b) => a.date.localeCompare(b.date))
   const phone = phoneOps.filter((o) => o.source)
   const left: Operation[] = []
@@ -47,7 +55,7 @@ export function replacedByStatement(statementOps: Operation[], phoneOps: Operati
       if (out.has(ph.id) || !sameBank(st, ph) || !sameMoney(st, ph) || gap(st, ph) > 1 || normalizeMerchant(ph.merchant) !== merchant) continue
       if (!best || gap(st, ph) < gap(st, best)) best = ph
     }
-    if (best) out.add(best.id)
+    if (best) out.set(best.id, st.id)
     else left.push(st)
   }
 
@@ -65,10 +73,10 @@ export function replacedByStatement(statementOps: Operation[], phoneOps: Operati
         : real.length === 1 && candidates.every((ph) => ph === real[0] || gap(st, ph) > gap(st, real[0]))
           ? real[0]
           : undefined
-    if (pick) out.add(pick.id)
+    if (pick) out.set(pick.id, st.id)
   }
 
   // (3) фантомы внутри периода выписки своего банка, кроме последнего дня.
-  for (const ph of phone) if (phantom(ph)) out.add(ph.id)
+  for (const ph of phone) if (phantom(ph) && !out.has(ph.id)) out.set(ph.id, null)
   return out
 }

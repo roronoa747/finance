@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { replacedByStatement } from './phone'
+import { replacedByStatement, replacementPairs } from './phone'
 import type { Operation } from './types'
 
 // Выписка заменяет траты с телефона (Р-16): пары, единственный кандидат, фантомы.
@@ -91,5 +91,16 @@ describe('replacedByStatement', () => {
 
   it('без операций с телефона — пусто', () => {
     expect(replacedByStatement([st('s1', '2026-10-14', -5000, 'Magnum')], [], [{ bank: 'kaspi', from: '2026-10-01', to: '2026-10-31' }]).size).toBe(0)
+  })
+})
+
+describe('replacementPairs (FB-01)', () => {
+  it('операция с телефона → строка выписки, что её заменила; фантом — null', () => {
+    const pairs = replacementPairs(
+      [st('s1', '2026-10-14', -5000, 'MAGNUM'), st('s2', '2026-10-14', -1200, 'IP AHMETOV')],
+      [ph('p1', '2026-10-14', -5000, 'Magnum'), ph('p2', '2026-10-14', -1200, 'Coffee'), ph('p3', '2026-10-10', -700, 'Lost')],
+      [{ bank: 'kaspi', from: '2026-10-01', to: '2026-10-15' }],
+    )
+    expect([...pairs].sort()).toEqual([['p1', 's1'], ['p2', 's2'], ['p3', null]])
   })
 })

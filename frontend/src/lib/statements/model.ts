@@ -200,6 +200,21 @@ export function isPhoneStub(op: Pick<Operation, 'source' | 'merchant' | 'counter
   return op.source === 'push' && !op.counterparty && phoneStubs.has(normalizeMerchant(op.merchant))
 }
 
+/** «Перевод Айгерим С.» — продавец пуша о переводе человеку (`applepay` сервера): имя и инициал, как у выписки Kaspi. */
+const PHONE_PERSON = /^Перевод (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)? \p{Lu}\.)$/u
+
+/**
+ * Получатель перевода с телефона (FB-01, Р-15 б): пуш приходит продавцом «Перевод Имя Ф.» без `counterparty` (Р-23
+ * Apple Pay), строка выписки о том же переводе — с `counterparty` «Имя Ф.». Выведенный получатель даёт им один ключ
+ * правила (`ruleMatchOf`), раздел «Переводы людям» и «Кому → что», как у выписки. Вывод клиента — на сервер не уходит
+ * (`toWire`). «Перевод» без имени — заглушка (`isPhoneStub`), получателя нет. Ничего не выводится — та же операция.
+ */
+export function withPhoneCounterparty<T extends Pick<Operation, 'source' | 'kind' | 'merchant' | 'counterparty'>>(op: T): T {
+  if (!op.source || op.counterparty || (op.kind !== 'transfer-out' && op.kind !== 'transfer-in')) return op
+  const who = PHONE_PERSON.exec(op.merchant.trim())?.[1]
+  return who ? { ...op, counterparty: who } : op
+}
+
 /**
  * Трата, вписанная руками (бэклог «Ручная трата», Р-1, Р-2): обычная личная операция, банк `hand`. Раздел выбрал
  * человек — правила семьи и словарь его не меняют (`categorize`), вопросом «это платёж по …?» она не становится
