@@ -42,6 +42,8 @@ type Repos struct {
 	Events     repository.EventRepository
 	Metrics    repository.MetricsRepository
 	AI         repository.AIRepository
+	// Apple Pay phone keys (бэклог «Apple Pay»).
+	PhoneKeys repository.PhoneKeyRepository
 }
 
 // NewHandler builds the API over database. A nil database means in-memory
@@ -60,6 +62,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 			Events:     repository.NewSQLEventRepository(database),
 			Metrics:    repository.NewSQLMetricsRepository(database),
 			AI:         repository.NewSQLAIRepository(database),
+			PhoneKeys:  repository.NewSQLPhoneKeyRepository(database),
 		}
 	} else {
 		if cfg.IsProduction() {
@@ -69,6 +72,7 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
 		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: repository.NewMockAIRepo(mocks.Households, mocks.Users)}
+		repos.PhoneKeys = repository.NewMockPhoneKeyRepo()
 	}
 
 	tokens := auth.NewTokenService(cfg.JWTSecret, tokenTTL)
@@ -176,6 +180,8 @@ func NewRouter(
 			log.Printf("ai: no price for model %q — billing it as the priciest", m)
 		}
 	}
+	walletHandler := handlers.NewWalletHandler(repos.PhoneKeys, repos.Households, repos.Statements, repos.Users, cfg.AdminEmails,
+		cfg.ApplePayShortcutURL, cfg.ApplePayShortcutURLLegacy, cfg.ApplePayPushShortcutURL)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Get("/health", handlers.HealthHandler(database))
@@ -195,6 +201,11 @@ func NewRouter(
 		api.Post("/auth/login", authHandler.Login)
 		api.Post("/auth/google", authHandler.GoogleLogin)
 
+		// Касание Apple Pay (бэклог «Apple Pay», Р-13): вне JWT — личный ключ телефона, роль и семья из базы.
+		api.With(walletHandler.KeyAuth).Post("/wallet/tap", walletHandler.Tap)
+		// Пуши банков (Блок 2, Р-10): тот же ключ телефона.
+		api.With(walletHandler.KeyAuth).Post("/wallet/push", walletHandler.Push)
+
 		// Protected endpoints: the household, role and slot come from the database (B2C-22).
 		api.Group(func(protected chi.Router) {
 			protected.Use(auth.Middleware(tokenService, membershipResolver(repos)))
@@ -212,6 +223,8 @@ func NewRouter(
 			protected.Get("/admin/families", adminAIHandler.Families)
 			protected.Put("/admin/families/{id}/ai", adminAIHandler.SetAI)
 			protected.Post("/admin/ai-check", adminAIHandler.AICheck)
+			// Тело последнего касания админа (бэклог «Apple Pay», Р-13а).
+			protected.Get("/admin/wallet-debug", walletHandler.AdminDebug)
 
 			// Household routes: 409 "no household" until "с кем" is done.
 			protected.Group(func(family chi.Router) {
@@ -241,6 +254,10 @@ func NewRouter(
 				// История курсов Нацбанка (B2C-76, Р-71): member и viewer.
 				family.Get("/fx-rates", handlers.FxRatesHandler(fxClient, repos.Fx))
 
+				// Apple Pay (бэклог «Apple Pay», Р-5, Р-13): свой iPhone подключает и отключает member.
+				family.Get("/wallet", walletHandler.Status)
+				family.Post("/wallet/connect", walletHandler.Connect)
+				family.Delete("/wallet", walletHandler.Disconnect)
 				// ИИ (бэклог «ИИ», AI-08): разбор месяца — только member семьи с ИИ, в пределах лимита.
 				family.Post("/ai/review", aiReviewHandler.Review)
 				// AI-11: разделы незнакомым продавцам — уходят только названия продавцов и разделов.

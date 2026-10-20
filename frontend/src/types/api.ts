@@ -120,6 +120,14 @@ export interface OperationWire {
   internal: boolean
   upload_id?: string | null
   updated_at?: string
+  /** Apple Pay (Р-14): пишет только сервер — батч их не меняет. Нет или `statement` — строка выписки. */
+  source?: 'statement' | 'tap' | 'push'
+  occurred_at?: string
+  fx_currency?: 'USD' | 'EUR' | 'RUB' | 'CNY'
+  /** Минорные единицы `fx_currency`. */
+  fx_amount?: number
+  /** Надгробие: выписка заменила операцию с телефона (Р-16) — необратимо. */
+  deleted?: boolean
 }
 
 export interface OperationsPage {
@@ -153,3 +161,24 @@ export interface AdminFamilies {
 export type AiCheck =
   | { ok: true; model: string; ms: number }
   | { ok: false; reason: 'no_key' | 'failed' | 'rate_limited' | 'refused' }
+/**
+ * `GET /api/wallet` (Apple Pay, AP-02): свои подключённые телефоны и ссылки на команду; ссылки нет — пусто. `connected` и
+ * `phones` — только телефоны, которыми оплатили (владелец 2026-10-19).
+ */
+export interface WalletStatus {
+  connected: boolean
+  phones: number
+  /** Ключ скопирован, оплаты с ним ещё не было — «Ждём первую оплату». Старый сервер поля не отдаёт. */
+  waiting?: boolean
+  /**
+   * Какими командами оплатили: касанием (`tap`), пушем банка (`push`). Карточка называет команды, а не телефоны
+   * (владелец 2026-10-19: один iPhone с двумя командами держит два ключа). Старый сервер полей не отдаёт.
+   */
+  tap?: boolean
+  push?: boolean
+  last_used_at?: string
+  shortcut_url: string
+  shortcut_url_legacy: string
+  /** Вторая команда «Пуши банков» (Блок 2, iOS 27); пусто — шага в листе нет. Старый сервер поля не отдаёт. */
+  push_shortcut_url?: string
+}

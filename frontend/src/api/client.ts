@@ -13,6 +13,7 @@ import type {
   AdminFamilies,
   AdminFamily,
   AiCheck,
+  WalletStatus,
   AiReviewAnswer,
   AiSellersAnswer,
 } from '@/types/api'
@@ -300,6 +301,24 @@ export class ApiClient {
     return this.request<OperationsPage>(`/operations?${q}`, { method: 'GET' })
   }
 
+  // Apple Pay (бэклог «Apple Pay», AP-02): свой iPhone — подключить (ключ один раз), статус, отключить все.
+  async walletStatus(): Promise<WalletStatus> {
+    return this.request<WalletStatus>('/wallet', { method: 'GET' })
+  }
+
+  async walletConnect(): Promise<{ key: string }> {
+    return this.request<{ key: string }>('/wallet/connect', { method: 'POST' })
+  }
+
+  async walletDisconnect(): Promise<void> {
+    await this.request<unknown>('/wallet', { method: 'DELETE' })
+  }
+
+  /** Последнее касание, которое сервер разбирал из текста (Р-13а), — только админу; `{}` — нет. */
+  async adminWalletDebug(): Promise<{ body?: string; at?: string }> {
+    return this.request<{ body?: string; at?: string }>('/admin/wallet-debug', { method: 'GET' })
+  }
+
   // Фото целей и желаний (B2C-16/17): байты — телом запроса, тип — заголовком.
   async uploadPhoto(blob: Blob, hidden = false): Promise<{ id: string }> {
     return this.request<{ id: string }>(`/photos${hidden ? '?hidden=1' : ''}`, {
@@ -357,7 +376,13 @@ export type AdminMetrics = {
   active_28d: number
   funnel_28d: { created: number; uploaded: number; goal: number; done: number }
   weeks: { week: string; new_households: number; uploads: number; week_done: number }[]
+  /** Пуши банков (бэклог «Apple Pay», Блок 2): по банку за 7 и 30 дней Алматы. */
+  push_stats?: PushStats[]
 }
+
+/** Пуши одного банка: разобраны в операцию, разобраны как «не операция» (код, отказ, реклама), не разобраны. */
+export type PushCounts = { parsed: number; ignored: number; unknown: number }
+export type PushStats = { bank: string; d7: PushCounts; d30: PushCounts }
 
 export type FxRatesResponse = { code: string; rates: Record<string, number>; partial: boolean; source?: string }
 

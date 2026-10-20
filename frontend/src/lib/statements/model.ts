@@ -185,6 +185,21 @@ export function ruleFor(op: Pick<Operation, 'merchant' | 'counterparty'>, rules:
   return latest(live.filter((r) => r.match.merchant === merchant))
 }
 
+/** Заглушки разбора пуша вместо продавца (сервер, `applepay.Placeholder`): пуш не назвал ни продавца, ни получателя. */
+const PHONE_STUBS = ['Покупка', 'Перевод', 'Пополнение', 'Зарплата']
+let phoneStubs: Set<string> | null = null
+
+/**
+ * Операция пуша с заглушкой вместо продавца («Перевод» без получателя, «Покупка»). Правило семьи по такому «продавцу»
+ * било бы по всем таким операциям (ответ «Разное» снимал бы `internal` у будущих пар «перевод себе», «Между своими» —
+ * делал своими переводы на чужие карты), поэтому ответ на вопрос «Без раздела» ставится только этой строке
+ * (`/ux` Б2, вопрос 5, владелец 2026-10-19): правила семьи — кроме правила платежа — её не трогают.
+ */
+export function isPhoneStub(op: Pick<Operation, 'source' | 'merchant' | 'counterparty'>): boolean {
+  phoneStubs ??= new Set(PHONE_STUBS.map(normalizeMerchant))
+  return op.source === 'push' && !op.counterparty && phoneStubs.has(normalizeMerchant(op.merchant))
+}
+
 /** Совпадение для правила по операции: получатель, если он есть, иначе продавец. */
 export function ruleMatchOf(op: Pick<Operation, 'merchant' | 'counterparty'>): MerchantRule['match'] {
   return op.counterparty ? { counterparty: normalizeCounterparty(op.counterparty) } : { merchant: normalizeMerchant(op.merchant) }
@@ -202,7 +217,10 @@ export function categorize(
   dictionary = DICTIONARY,
   fits?: PaymentFits,
 ): Categorized {
-  const rule = ruleFor(op, rules)
+  const stub = isPhoneStub(op)
+  // Заглушка пуша: свой ответ этой строки (`isPhoneStub`) сильнее разбора; правила семьи — только правило платежа.
+  if (stub && op.categoryId && op.amount < 0 && !op.internal) return { categoryId: op.categoryId, internal: false }
+  const rule = ruleFor(op, stub ? rules.filter((r) => 'payment' in r.to) : rules)
   const byRule = rule ? fromRule(rule, op, fits) : null
   if (byRule) return byRule
   const payment = rule && 'payment' in rule.to ? { payment: rule.to.payment } : {}
@@ -248,10 +266,13 @@ export const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY
  * отправителя в другом — равная сумма, даты ±1 день → обе операции внутренние. Каждая
  * операция — не больше чем в одной паре; ближайшая по дате пара побеждает. Переводы людям
  * (есть `counterparty`) и пары внутри одного банка сюда не попадают: «пополнил Kaspi со
- * своей карты и тут же перевёл другу» — это трата, а не внутренний перевод.
+ * своей карты и тут же перевёл другу» — это трата, а не внутренний перевод. Операции с телефона
+ * (Apple Pay Блок 2) — тоже нет: получатель пуша живёт в продавце («Перевод Айгерим С.»,
+ * `counterparty` пуст, Р-23), их пары ставит сервер (10 минут, без получателя с обеих сторон);
+ * выписка своего банка заменит такую операцию строкой, и пара сложится из строк выписок.
  */
 export function pairInternalTransfers(ops: Operation[]): Operation[] {
-  const candidate = (o: Operation, kind: Operation['kind']) => o.kind === kind && !o.internal && !o.counterparty
+  const candidate = (o: Operation, kind: Operation['kind']) => o.kind === kind && !o.internal && !o.counterparty && !o.source
   const outs = ops.filter((o) => candidate(o, 'transfer-out')).sort((a, b) => a.date.localeCompare(b.date))
   const ins = ops.filter((o) => candidate(o, 'transfer-in'))
   const paired = new Set<string>()

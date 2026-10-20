@@ -6,10 +6,11 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount, openGoals, tripOps, tripStatus, tripTotal } from '@/lib/finance'
-import { todayIso } from '@/lib/dates'
+import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
+  isPhoneStub,
   pairInternalTransfers,
   periodsOf,
   ruleFor,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/statements/model'
 import { markedOps, matchCandidates, matchKey, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
+import { replacedByStatement } from '@/lib/statements/phone'
 import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
 import type { HabitTotal, MerchantRule, Operation, ParsedStatement, ReviewFind, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
@@ -53,6 +55,8 @@ export const PULL_LIMIT = 2000
  * строк безвреден — копия пишется по id.
  */
 export const CURSOR_OVERLAP_MS = 60_000
+/** Возврат в приложение подтягивает траты с телефона не чаще раза в столько (Р-19). */
+export const PHONE_PULL_MS = 30_000
 
 export type UploadInput = { bank: string; period_from: string; period_to: string; ops_count: number }
 
@@ -62,6 +66,8 @@ export interface PendingJob {
   upload?: UploadInput
   uploadId?: string
   ops: Operation[]
+  /** Надгробия: траты с телефона, которые заменила выписка (Р-16). */
+  deleted?: true
 }
 
 export interface DraftFile {
@@ -91,8 +97,12 @@ export function toWire(op: Operation): OperationWire {
     category_id: op.categoryId,
     internal: op.internal,
     upload_id: op.uploadId ?? null,
+    // source, at и fx пишет только сервер (Р-14): батч их не шлёт.
   }
 }
+
+/** Надгробие операции с телефона (Р-16): выписка её заменила — уходит тем же батчем, сервер не воскрешает. */
+export const tombstoneWire = (op: Operation): OperationWire => ({ ...toWire(op), deleted: true })
 
 export function fromWire(w: OperationWire): Operation {
   return {
@@ -107,6 +117,9 @@ export function fromWire(w: OperationWire): Operation {
     categoryId: w.category_id ?? null,
     internal: w.internal,
     ...(w.upload_id ? { uploadId: w.upload_id } : {}),
+    ...(w.source === 'tap' || w.source === 'push' ? { source: w.source } : {}),
+    ...(w.occurred_at ? { at: w.occurred_at } : {}),
+    ...(w.fx_currency && w.fx_amount ? { fx: { currency: w.fx_currency, amount: w.fx_amount } } : {}),
   }
 }
 
@@ -138,6 +151,8 @@ export const useOperationsStore = defineStore('operations', () => {
   /** Сколько строк последней отправки отметилось по правилам («Отмечено по выписке: N»). */
   const lastAutoMarked = ref(0)
   let flushing: Promise<void> | null = null
+  let pulling: Promise<unknown> = Promise.resolve()
+  let lastPullAt = 0
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -148,14 +163,29 @@ export const useOperationsStore = defineStore('operations', () => {
   /* ---------- сопоставление с отметками (B2C-15) ---------- */
   // Обмены и книга — тенге валютной зарплаты (B2C-80, `salaryTenge`) и зачисления обменов.
   const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments, fxExchanges: finance.fxExchanges, book: useFxStore().book })
-  /** Предложения по своим операциям этого и прошлого месяца — только те, что ждут ответа. */
-  const pendingMatches = computed<MatchCandidate[]>(() =>
+  /** Все предложения по своим операциям этого и прошлого месяца, кроме отклонённых «нет» на этом устройстве. */
+  const openMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
-      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter(
-          (c) => c.confidence !== 'rule' && !declined.value.includes(matchKey(c)),
-        ),
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter((c) => !declined.value.includes(matchKey(c))),
   )
+  /** Предложения, что ждут ответа (вопросы «Недели»). */
+  const pendingMatches = computed<MatchCandidate[]>(() => openMatches.value.filter((c) => c.confidence !== 'rule'))
+  /**
+   * «Пришла?» у зарплаты (бэклог «Apple Pay», Блок 2, Р-22): приход из пуша, который `matchCandidates` считает зарплатой
+   * своей неотмеченной строки — те же допуски и окна, что у выписки, новых порогов нет; по правилу семьи тоже (отметки
+   * с телефона сами не ставятся — их ставит человек). Точка у «Пришла» этой зарплаты; «Пришла» отмечает приход так же,
+   * как «Да» в вопросе «Недели» (`acceptMatch`). «Нет» в вопросе снимает и точку. Viewer — пусто.
+   */
+  const salaryArrivals = computed(() =>
+    openMatches.value.flatMap((c) => {
+      const op = ops.value[c.opId]
+      return c.kind === 'salary' && op?.source === 'push' ? [{ candidate: c, op }] : []
+    }),
+  )
+  /** Приход из пуша для зарплаты `person` за `period` (месяц или ключ аванса/недели) — или null. */
+  const salaryArrival = (person: PersonId, period: string) =>
+    salaryArrivals.value.find((a) => a.candidate.targetId === person && a.candidate.period === period) ?? null
   /** Операции со снятой отметкой из выписки (у себя или у партнёра): правило платежа им раздел не ставит. */
   const released = computed(() => releasedOps(finance.payments))
   /**
@@ -169,9 +199,10 @@ export const useOperationsStore = defineStore('operations', () => {
   /**
    * Запись отметки по строке выписки: сумма операции, «не списывать» — выписка уже факт (Р-6);
    * момент — день операции (`operationAt`): платёж до сверки остатка его второй раз не уменьшает.
+   * `accountId` — «Пришла» по пушу банка (Apple Pay Б2): зарплата зачисляется, как обычной «Пришла».
    */
-  function markByOperation(c: MatchCandidate, op: Operation) {
-    const opts = { period: c.period, amount: Math.abs(op.amount), accountId: null, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
+  function markByOperation(c: MatchCandidate, op: Operation, accountId: string | null = null) {
+    const opts = { period: c.period, amount: Math.abs(op.amount), accountId, source: 'statement' as const, opId: op.id, at: operationAt(op.date) }
     return c.kind === 'salary' ? finance.markSalary(c.targetId as PersonId, opts) : finance.markPaid(c.kind, c.targetId, me(), opts)
   }
 
@@ -180,12 +211,20 @@ export const useOperationsStore = defineStore('operations', () => {
    * Остальные строки того же продавца этого и прошлого месяца по новому правилу стали «rule» — из
    * вопросов они ушли, поэтому отмечаются сразу (те, что прошли проверку суммы правила); сколько —
    * прибавляется к «Отмечено по выписке». Правило пишется до первого ожидания в `recategorize`, так
-   * что отметка не ждёт сети.
+   * что отметка не ждёт сети. `accountId` — счёт зачисления («Пришла» по пушу, `useSalaryTap`); не задан —
+   * зарплата из пуша (вопрос «Недели» «Да, зарплата») зачисляется на счёт прошлой зарплаты, как «Пришла»
+   * (`/ux` Б2, вопрос 3, владелец 2026-10-19: одна отметка — один результат); строка выписки — «не зачислять».
    */
-  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient) {
+  async function acceptMatch(c: MatchCandidate, client: ApiClient = apiClient, accountId?: string | null) {
     const op = ops.value[c.opId]
     if (!op) return
-    markByOperation(c, op)
+    const account =
+      accountId !== undefined
+        ? accountId
+        : c.kind === 'salary' && op.source === 'push'
+          ? (lastAccountFor(finance.payments, c.targetId, finance.accounts) ?? null)
+          : null
+    markByOperation(c, op, account)
     const match = ruleMatchOf(op)
     const saving = recategorize(match, { payment: { kind: c.kind, targetId: c.targetId, categoryId: c.categoryId } }, client)
     const same = recentOperations(all.value).filter((o) => {
@@ -209,10 +248,13 @@ export const useOperationsStore = defineStore('operations', () => {
     if (op) writeTotals(periodsOf([op]))
   }
 
-  /** Автоотметка по правилам среди только что отправленных строк; сколько отметилось. */
+  /**
+   * Автоотметка по правилам среди только что отправленных строк; сколько отметилось. Операции с телефона — нет: отметки
+   * сами ставит выписка (Р-2 «выписка — истина»), вопрос «это платёж?» по ним задаётся как по любым.
+   */
   function autoMark(list: Operation[]): number {
     let n = 0
-    for (const c of matchCandidates(list, matchState(), finance.merchantRules, me())) {
+    for (const c of matchCandidates(list.filter((o) => !o.source), matchState(), finance.merchantRules, me())) {
       if (c.confidence !== 'rule') continue
       const op = list.find((o) => o.id === c.opId)
       if (op && markByOperation(c, op)) n += 1
@@ -314,10 +356,22 @@ export const useOperationsStore = defineStore('operations', () => {
     cancelDraft()
   }
 
-  /** Свои операции вместе с выпиской, которая ещё ждёт тост. */
+  /** Траты с телефона, которые заменит выписка черновика (Р-16), — `send` уберёт их надгробиями. */
+  const draftReplaced = computed<Operation[]>(() => {
+    if (!draft.value) return []
+    const phone = all.value.filter((o) => o.source)
+    if (!phone.length) return []
+    const spans = draft.value.files.map((f) => ({ bank: f.parsed.bank, from: f.parsed.from, to: f.parsed.to }))
+    // Строки прошлой выписки (перекрытие периодов) свою пару уже взяли — второй раз не сопоставляются (критик Б1):
+    // иначе та же строка уберёт ещё одно касание, которого в выписке нет. Фантомы — по периодам, как прежде.
+    const ids = replacedByStatement(draftOps.value.filter((o) => !(o.id in ops.value)), phone, spans)
+    return phone.filter((o) => ids.has(o.id))
+  })
+
+  /** Свои операции вместе с выпиской, которая ещё ждёт тост, — без трат с телефона, которые она заменит. */
   const shown = computed<Operation[]>(() => {
     if (!held.value) return all.value
-    const ids = new Set(draftOps.value.map((o) => o.id))
+    const ids = new Set([...draftOps.value, ...draftReplaced.value].map((o) => o.id))
     return [...all.value.filter((o) => !ids.has(o.id)), ...draftOps.value]
   })
   /** Итоги семьи, где свои периоды ждущей выписки пересчитаны с ней — тем же `spendTotals`, что запишет `send`. */
@@ -325,7 +379,7 @@ export const useOperationsStore = defineStore('operations', () => {
     const base = finance.householdDoc.spendTotals ?? []
     if (!held.value) return base
     const by = me()
-    const periods = periodsOf(draftOps.value)
+    const periods = periodsOf([...draftOps.value, ...draftReplaced.value])
     const marks = totalMarks(shown.value)
     const touched = (t: { by: PersonId; kind: string; period: string }) => t.by === by && periods.some((p) => p.kind === t.kind && p.period === t.period)
     return [...base.filter((t) => !touched(t)), ...periods.flatMap(({ kind, period }) => spendTotals(shown.value, by, kind, period, undefined, marks))]
@@ -541,12 +595,15 @@ export const useOperationsStore = defineStore('operations', () => {
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
 
     const fresh = draftOps.value
+    // Выписка — истина (Р-16): траты с телефона, которые она заменила, уходят из копии и итогов, на сервер — надгробием.
+    const replaced = draftReplaced.value
+    for (const o of replaced) delete ops.value[o.id]
     const ids = new Set(fresh.map((o) => o.id))
     // Пара с операцией прошлой выписки другого банка делает внутренней и её — она тоже уходит.
     const paired = pairInternalTransfers([...fresh, ...all.value.filter((o) => !ids.has(o.id))])
     const changed = paired.slice(fresh.length).filter((o) => o.internal !== ops.value[o.id]?.internal)
     remember([...fresh, ...changed])
-    const periods = periodsOf([...fresh, ...changed])
+    const periods = periodsOf([...fresh, ...changed, ...replaced])
     // Правила «это платёж по …» отмечают платежи сами (Р-6); отмеченный месяц второй записи не получает.
     // Отметки — раньше итогов: отмеченные строки разделов платежей не траты (`unmarked`, хвосты 952/967).
     lastAutoMarked.value = autoMark(fresh)
@@ -572,6 +629,7 @@ export const useOperationsStore = defineStore('operations', () => {
         for (const id of own) queued.add(id)
       }
       if (changed.length) pending.value.push({ key: newKey(), ops: changed })
+      if (replaced.length) pending.value.push({ key: newKey(), ops: replaced, deleted: true })
     }
     draft.value = null
     save()
@@ -579,7 +637,7 @@ export const useOperationsStore = defineStore('operations', () => {
     // дописывает их ещё раз, иначе устаревшая копия оставила бы неполные итоги (LWW по id).
     // Неделя разобрана — выписка отправлена (B2C-28: «финиша недели» после решений больше нет, Блок 15).
     if (!demo.value) useEventsStore().track('week_done')
-    const sent = new Set([...fresh, ...changed].map((o) => o.id))
+    const sent = new Set([...fresh, ...changed, ...replaced].map((o) => o.id))
     const got = await pull(client)
     if (got.some((id) => !sent.has(id))) writeTotals(periods)
   }
@@ -588,10 +646,29 @@ export const useOperationsStore = defineStore('operations', () => {
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     return recategorizeAll([match], to, client)
   }
-  /** Пачкой (Р-58): все правила, один пересчёт, одни итоги и одна отправка. */
+  /**
+   * Пачкой (Р-58): все правила, один пересчёт, одни итоги и одна отправка. Заглушка пуша («Перевод» без получателя,
+   * `isPhoneStub`) — ответ только её строкам, без правила семьи (`/ux` Б2, вопрос 5, владелец 2026-10-19); правило
+   * пишется, если тем же «продавцом» назван кто-то ещё (строка выписки), — заглушку оно всё равно не тронет.
+   */
   async function recategorizeAll(matches: MerchantRule['match'][], to: MerchantRule['to'], client: ApiClient = apiClient) {
-    answerAll(matches, to)
-    const next = reapply(all.value)
+    const same = (o: Operation, m: MerchantRule['match']) => {
+      const r = ruleMatchOf(o)
+      return r.merchant === m.merchant && r.counterparty === m.counterparty
+    }
+    const direct = !('payment' in to)
+    const onlyStubs = (m: MerchantRule['match']) => {
+      const hit = all.value.filter((o) => same(o, m))
+      return direct && hit.length > 0 && hit.every(isPhoneStub)
+    }
+    const ruled = matches.filter((m) => !onlyStubs(m))
+    if (ruled.length) answerAll(ruled, to)
+    const answer = (o: Operation): Operation => {
+      if (!direct || !isPhoneStub(o) || o.amount >= 0 || o.internal || o.categoryId !== null || !matches.some((m) => same(o, m))) return o
+      if ('internal' in to) return { ...o, internal: true, categoryId: null }
+      return { ...o, categoryId: 'categoryId' in to ? to.categoryId : 'sc_people' }
+    }
+    const next = reapply(all.value.map(answer))
     const changed = next.filter((o, i) => o !== all.value[i])
     if (!changed.length) return
     remember(changed)
@@ -666,7 +743,7 @@ export const useOperationsStore = defineStore('operations', () => {
           }
           while (job.ops.length) {
             const chunk = job.ops.slice(0, BATCH_SIZE)
-            await client.upsertOperations(chunk.map((o) => toWire({ ...o, uploadId: job.uploadId ?? o.uploadId })))
+            await client.upsertOperations(chunk.map((o) => (job.deleted ? tombstoneWire(o) : toWire({ ...o, uploadId: job.uploadId ?? o.uploadId }))))
             job.ops = job.ops.slice(chunk.length)
             save()
           }
@@ -686,8 +763,20 @@ export const useOperationsStore = defineStore('operations', () => {
     return flushing
   }
 
-  /** Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных. */
-  async function pull(client: ApiClient = apiClient): Promise<string[]> {
+  /**
+   * Свои операции с сервера по курсору (правки со второго устройства); сначала — очередь. Отдаёт id полученных.
+   * Подтягивания идут по очереди (старт и «Неделя» зовут разом): медленное старое не вернёт в копию трату с телефона,
+   * которую выписка уже убрала надгробием (критик Б1).
+   */
+  function pull(client: ApiClient = apiClient): Promise<string[]> {
+    if (demo.value || !auth.isMember) return Promise.resolve([])
+    lastPullAt = Date.now()
+    const run = pulling.then(() => pullOnce(client))
+    pulling = run.catch(() => [])
+    return run
+  }
+
+  async function pullOnce(client: ApiClient): Promise<string[]> {
     const got: string[] = []
     if (demo.value || !auth.isMember) return got
     await flush(client)
@@ -697,11 +786,24 @@ export const useOperationsStore = defineStore('operations', () => {
       // курсора; пустая страница курсор не двигает (назад он не уезжает).
       let since = cursor.value
       let from = since && new Date(Date.parse(since) - CURSOR_OVERLAP_MS).toISOString()
+      // Apple Pay (Р-14, Р-16): операции с телефона — на раскладку; надгробия — прочь из копии, их периоды — в итоги.
+      const phone = new Set<string>()
+      const gone: Operation[] = []
       for (;;) {
         const page = await client.listOperations(from, PULL_LIMIT)
+        // Выписка убрала трату, пока страница шла (надгробие ещё в очереди), — живая копия с сервера её не вернёт.
+        const buried = new Set(pending.value.filter((j) => j.deleted).flatMap((j) => j.ops.map((o) => o.id)))
         for (const w of page.operations) {
-          ops.value[w.id] = fromWire(w)
           got.push(w.id)
+          if (buried.has(w.id) && !w.deleted) continue
+          if (w.deleted) {
+            const prev = ops.value[w.id]
+            if (prev) gone.push(prev)
+            delete ops.value[w.id]
+            continue
+          }
+          ops.value[w.id] = fromWire(w)
+          if (w.source === 'tap' || w.source === 'push') phone.add(w.id)
         }
         if (page.next) since = from = page.next
         if (page.operations.length < PULL_LIMIT) break
@@ -712,10 +814,57 @@ export const useOperationsStore = defineStore('operations', () => {
       // наблюдатель `released` уже отработал на пустом списке: такие операции снова трата (критик возврата).
       const stale = new Set(got.filter((id) => released.value.has(id)))
       if (stale.size) await settleReleased(stale, client)
+      await settlePhone(phone, gone, client)
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
     return got
+  }
+
+  /**
+   * Раскладка операций с телефона (Р-2, Р-15): пришедшие без раздела и все свои в валюте без тенге (курса не было) —
+   * курс дня (`phoneOpTenge`), раздел и «между своими» по правилам; изменённые — на сервер; итоги периодов всех
+   * пришедших и надгробий `gone` — в общий документ. Пришедшая с разделом уже разложена другим устройством (правила
+   * этого могут отставать — раздел откатился бы); строки выписок `pull` не трогает.
+   */
+  async function settlePhone(arrived: Set<string>, gone: Operation[], client: ApiClient) {
+    let list = all.value.filter((o) => (arrived.has(o.id) && o.categoryId === null) || (o.fx && o.amount === 0))
+    let settled = all.value.filter((o) => arrived.has(o.id) && !list.includes(o))
+    if (!list.length && !settled.length && !gone.length) return
+    const waiting = list.filter((o) => o.fx && o.amount === 0)
+    if (waiting.length) {
+      const days = waiting.map((o) => o.date).sort()
+      // Неделя запаса: в выходные курс — пятничный (`rateOn`).
+      await useFxStore().ensureRates([...new Set(waiting.map((o) => o.fx!.currency))], addDaysIso(days[0], -7), days[days.length - 1], client)
+      // Пока ждали курс, выписка могла убрать трату надгробием (`send`) — список из текущей копии: убранная не
+      // воскреснет (`remember`), остальные разложатся (ревью frontend Н-3).
+      const ids = new Set(list.map((o) => o.id))
+      const kept = new Set(settled.map((o) => o.id))
+      list = all.value.filter((o) => ids.has(o.id))
+      settled = all.value.filter((o) => kept.has(o.id))
+    }
+    const book = useFxStore().book
+    const priced = list.map((o) => {
+      if (!o.fx || o.amount !== 0) return o
+      const tenge = phoneOpTenge(o, book)
+      return tenge === null ? o : { ...o, amount: tenge }
+    })
+    const next = reapply(priced)
+    const changed = next.filter((o) => {
+      const prev = ops.value[o.id]
+      return o.amount !== prev.amount || o.categoryId !== prev.categoryId || o.internal !== prev.internal
+    })
+    remember(changed)
+    writeTotals(periodsOf([...next, ...settled, ...gone]))
+    if (changed.length) pending.value.push({ key: newKey(), ops: changed })
+    save()
+    if (changed.length) await flush(client)
+  }
+
+  /** Возврат в приложение (Р-19): подтянуть траты с телефона, не чаще раза в `PHONE_PULL_MS`. */
+  function pullOnReturn(client: ApiClient = apiClient) {
+    if (demo.value || !auth.isMember || Date.now() - lastPullAt < PHONE_PULL_MS) return
+    void pull(client)
   }
 
   /** Демо-пример (B2C-19 п. 4): записи загрузок обоих, чтобы главный показывал картину недели. */
@@ -817,6 +966,8 @@ export const useOperationsStore = defineStore('operations', () => {
     undoUpload,
     draftOps,
     pendingMatches,
+    salaryArrivals,
+    salaryArrival,
     draftAutoMatches,
     lastAutoMarked,
     acceptMatch,
@@ -832,6 +983,7 @@ export const useOperationsStore = defineStore('operations', () => {
     settleReleased,
     flush,
     pull,
+    pullOnReturn,
     loadUploads,
     seedDemoUploads,
     seedDemoOperations,

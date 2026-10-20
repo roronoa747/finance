@@ -53,8 +53,10 @@ const props = withDefaults(
     account?: string | null
     /** Счёт спрашивается впервые — подсказка «спрашиваем один раз». */
     firstTime?: boolean
+    /** Подпись суммы зарплаты вместо оклада — откуда сумма («Пришло в Kaspi · 16 октября», приход из пуша). */
+    amountNote?: string
   }>(),
-  { amount: 0, account: undefined, firstTime: false },
+  { amount: 0, account: undefined, firstTime: false, amountNote: '' },
 )
 
 const emit = defineEmits<{
@@ -264,7 +266,8 @@ const unmarkNote = computed(() => {
     <template v-else-if="mode === 'mark'">
       <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
         <NumField v-model="amountText" :currency="own?.currency ?? null" />
-        <span v-if="salary && !floating" class="text-[12px] leading-relaxed text-ink-2">
+        <span v-if="salary && amountNote" class="text-[12px] leading-relaxed text-ink-2" data-amount-note>{{ amountNote }}</span>
+        <span v-else-if="salary && !floating" class="text-[12px] leading-relaxed text-ink-2">
           {{ dueLabel }} — {{ fxSalary ? moneyIn(due, own!.currency) : money(due) }}. С премией впишите всю сумму: премия целиком ляжет в остаток.
         </span>
       </Field>

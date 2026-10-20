@@ -1,7 +1,8 @@
 import type { HueKey } from '@/lib/palette'
-import type { PersonId, Tracked } from '@/types/finance'
+import type { Currency, PersonId, Tracked } from '@/types/finance'
 
-export type BankId = 'kaspi' | 'freedom'
+/** Банк операции: выписки — Kaspi и Freedom; касание Apple Pay — ещё Halyk и «карта» (банк не узнан, Р-14). */
+export type BankId = 'kaspi' | 'freedom' | 'halyk' | 'card'
 
 /**
  * Вид операции. `income` — доход (зарплата — когда банк её напечатает, CORPUS.md);
@@ -30,6 +31,12 @@ export interface Operation {
   /** Перевод между своими счетами и банками или партнёру — в траты не входит. */
   internal: boolean
   uploadId?: string
+  /** Откуда операция с телефона (Apple Pay, Р-14): касание или пуш банка; нет — выписка. */
+  source?: 'tap' | 'push'
+  /** Момент приёма сервером (ISO) — у операций с телефона. */
+  at?: string
+  /** Покупка в валюте (Р-15): сумма в минорных единицах; `amount` 0, пока телефон не пересчитал по курсу. */
+  fx?: { currency: Currency; amount: number }
 }
 
 /** Раздел трат — отдельно от разделов бюджета d1…d5 (Р-22). */

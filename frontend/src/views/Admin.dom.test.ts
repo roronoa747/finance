@@ -220,3 +220,38 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(el.querySelector('[role="alert"]')).toBeNull()
   })
 })
+
+describe('AP-11: «Цифры» — пуши банков', () => {
+  const counts = (parsed: number, ignored: number, unknown: number) => ({ parsed, ignored, unknown })
+
+  it('одна строка за 7 дней — сумма по банкам; банки и 30 дней — под «Подробнее»', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list())
+    vi.spyOn(apiClient, 'adminMetrics').mockResolvedValue({
+      ...metrics,
+      push_stats: [
+        { bank: 'freedom', d7: counts(2, 1, 0), d30: counts(5, 1, 0) },
+        { bank: 'kaspi', d7: counts(4, 0, 1), d30: counts(9, 2, 3) },
+      ],
+    })
+    const el = await mount()
+    const card = el.querySelector<HTMLElement>('[data-push-stats]')!
+    expect(card).not.toBeNull()
+    expect(card.querySelector('[data-push-week]')!.textContent!.replace(/\s+/g, ' ').trim()).toBe('разобрано 6 · не разобрано 1')
+    // Банки — в свёрнутом «Подробнее», не на экране сразу (правило 12: сложное скрыто).
+    expect(card.querySelector('details')!.open).toBe(false)
+    const kaspi = card.querySelector<HTMLElement>('[data-push-bank="kaspi"]')!
+    expect([...kaspi.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['Kaspi', '4', '0', '1'])
+  })
+
+  it('пушей за 30 дней не было или старый сервер — карточки нет', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list())
+    vi.spyOn(apiClient, 'adminMetrics').mockResolvedValue({ ...metrics, push_stats: [] })
+    const el = await mount()
+    expect(el.querySelector('[data-push-stats]')).toBeNull()
+    app?.unmount()
+    app = null
+    vi.spyOn(apiClient, 'adminMetrics').mockResolvedValue(metrics)
+    const old = await mount()
+    expect(old.querySelector('[data-push-stats]')).toBeNull()
+  })
+})

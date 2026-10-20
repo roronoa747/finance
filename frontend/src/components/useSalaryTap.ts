@@ -2,6 +2,7 @@ import { computed, ref, toValue, type MaybeRefOrGetter } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useOperationsStore } from '@/stores/operations'
 import {
   lastAccountFor,
   liveAccounts,
@@ -15,6 +16,8 @@ import {
   salaryOpen,
   salaryRecords,
 } from '@/lib/finance'
+import { dayLabel } from '@/lib/dates'
+import type { Operation } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 
 /**
@@ -30,6 +33,18 @@ import type { PersonId } from '@/types/finance'
  * приход (`target`, ISO-день), сумма — этого прихода. Плавающая сумма (Р-6) — всегда лист с пустой суммой: одной
  * отметки без суммы нет. В план месяца ведёт только последний приход месяца — после недели ещё нечего откладывать.
  */
+/** Банки пушей (Р-23) — названием; `card` (не узнан) — без имени. */
+export const BANK_NAMES: Record<string, string> = { kaspi: 'Kaspi', freedom: 'Freedom', halyk: 'Halyk' }
+
+/**
+ * Откуда сумма листа отметки, когда она пришла пушем (`/ux` Б2, вопрос 4, владелец 2026-10-19): «Пришло в Kaspi · 16
+ * октября» вместо «Оклад месяца — N. С премией…» — новичку видно, почему сумма не оклад.
+ */
+export function arrivalNote(op: Pick<Operation, 'bank' | 'date'>): string {
+  const bank = BANK_NAMES[op.bank]
+  return `Пришло${bank ? ` в ${bank}` : ''} · ${dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7))}`
+}
+
 export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: MaybeRefOrGetter<string>) {
   const router = useRouter()
   const finance = useFinanceStore()
@@ -50,6 +65,13 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
 
   const mine = computed(() => !auth.isViewer && auth.slot === toValue(personId))
   const canMark = computed(() => mine.value && !!person.value && salaryOpen(person.value, finance.payments, target.value))
+  /**
+   * Приход из пуша банка, похожий на эту зарплату (бэклог «Apple Pay», Блок 2, Р-22): точка у «Пришла»; нажатие
+   * отмечает его суммой и операцией на счёт прошлой зарплаты (`tap`). Тенговая только: валютная приходит на валютный
+   * счёт (Р-73).
+   */
+  const ops = useOperationsStore()
+  const arrival = computed(() => (canMark.value && !fxSalary.value ? ops.salaryArrival(toValue(personId), target.value) : null))
   const title = computed(() => `Зарплата · ${person.value?.name ?? ''}`)
 
   const sheet = ref<'mark' | 'paid' | null>(null)
@@ -57,10 +79,13 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
   // undefined — счёт ещё не выбран; null — «не зачислять».
   const markAccount = ref<string | null | undefined>(undefined)
   const firstTime = ref(false)
+  /** Подпись суммы листа вместо оклада — сумма пришла пушем (`arrivalNote`); пусто — оклад, как было. */
+  const markNote = ref('')
 
-  function openMark(amount: number, account: string | null | undefined) {
+  function openMark(amount: number, account: string | null | undefined, note = '') {
     markAmount.value = amount
     markAccount.value = account
+    markNote.value = note
     sheet.value = 'mark'
   }
 
@@ -104,6 +129,16 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
     }
     const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
     firstTime.value = last === undefined
+    // Пришло пушем банка — эта сумма и эта операция (отметка «Да» вопроса «Недели») на счёт прошлой зарплаты, как
+    // обычная «Пришла» (критик Б2: без счёта приход не попадал в остаток, и следующая «Пришла» тоже «не зачисляла»);
+    // счёта ещё не было — лист с суммой прихода: спросить счёт один раз.
+    const came = arrival.value
+    if (came && last !== undefined) {
+      void ops.acceptMatch(came.candidate, undefined, last)
+      if (monthCame()) toAllocation()
+      return
+    }
+    if (came) return openMark(came.op.amount, last, arrivalNote(came.op))
     if (floating.value) openMark(0, last)
     else if (last === undefined) openMark(due.value, last)
     else mark(due.value, last)
@@ -113,8 +148,10 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
     if (fxSalary.value) return openMark(floating.value ? 0 : due.value, undefined)
     const last = lastAccountFor(finance.payments, toValue(personId), finance.accounts)
     firstTime.value = last === undefined
-    openMark(floating.value ? 0 : due.value, last)
+    // Пришло пушем — сумма прихода вместо оклада («другая сумма» — правка от неё).
+    const came = arrival.value
+    openMark(came ? came.op.amount : floating.value ? 0 : due.value, last, came ? arrivalNote(came.op) : '')
   }
 
-  return { person, target, record, own, fxSalary, due, floating, mine, canMark, title, sheet, markAmount, markAccount, firstTime, tap, openMore, onMarked, toAllocation }
+  return { person, target, record, own, fxSalary, due, floating, mine, canMark, arrival, title, sheet, markAmount, markAccount, markNote, firstTime, tap, openMore, onMarked, toAllocation }
 }

@@ -142,10 +142,74 @@ export function statementsFor(st: FakeStatements, user: string, slot: 'a' | 'b')
     listStatementUploads: vi.fn(async () => ({ uploads: st.uploads.map(({ user: _user, ...u }) => u) })),
     upsertOperations: vi.fn(async (ops: OperationWire[]) => {
       const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
-      for (const o of ops) mine.set(o.id, JSON.parse(JSON.stringify(o)))
+      for (const o of ops) {
+        // Как Go (AP-01): source, момент и валюту пишет только сервер; надгробие необратимо.
+        const prev = mine.get(o.id)
+        const next: OperationWire = JSON.parse(JSON.stringify(o))
+        delete next.source
+        delete next.occurred_at
+        delete next.fx_currency
+        delete next.fx_amount
+        if (prev?.source) next.source = prev.source
+        if (prev?.occurred_at) next.occurred_at = prev.occurred_at
+        if (prev?.fx_currency) Object.assign(next, { fx_currency: prev.fx_currency, fx_amount: prev.fx_amount })
+        if (prev?.deleted || o.deleted) next.deleted = true
+        else delete next.deleted
+        mine.set(o.id, next)
+      }
       st.ops.set(user, mine)
       return { upserted: ops.length }
     }),
+    // Лента отдаёт и надгробия (AP-01).
     listOperations: vi.fn(async () => ({ operations: [...(st.ops.get(user)?.values() ?? [])], next: null })),
   }
+}
+
+/**
+ * Трата пришла с телефона (Apple Pay, AP-03): сервер пишет её сам — `source: 'tap'`, без раздела, момент приёма;
+ * валюта — `amount` 0 и `fx_*`.
+ */
+export function serverTap(st: FakeStatements, user: string, op: Pick<OperationWire, 'id' | 'date' | 'amount' | 'merchant'> & Partial<OperationWire>) {
+  const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
+  mine.set(op.id, { bank: 'kaspi', kind: 'purchase', category_id: null, internal: false, source: 'tap', occurred_at: new Date().toISOString(), ...op })
+  st.ops.set(user, mine)
+}
+
+/**
+ * Пуш банка пришёл на сервер (бэклог «Apple Pay», Блок 2, AP-10) — как `InsertPhoneOperation` Go: покупка и касание той
+ * же суммы ≤ 10 минут — одна операция (банк — пуша, продавец — касания; ответ `duplicate`); перевод из одного банка и
+ * пополнение той же суммы в другом ≤ 10 минут, обе без получателя (продавец — слово вида: «Перевод», «Пополнение») —
+ * обе `internal`; иначе новая операция `source: 'push'`. Момент — «сейчас».
+ */
+export function serverPush(
+  st: FakeStatements,
+  user: string,
+  op: Pick<OperationWire, 'id' | 'date' | 'amount' | 'merchant' | 'kind' | 'bank'>,
+): 'saved' | 'duplicate' {
+  const mine = st.ops.get(user) ?? new Map<string, OperationWire>()
+  st.ops.set(user, mine)
+  const now = Date.now()
+  const near = (o: OperationWire) => !!o.occurred_at && Math.abs(Date.parse(o.occurred_at) - now) <= 10 * 60_000 && !o.deleted
+  if (op.kind === 'purchase') {
+    const tap = [...mine.values()].find((o) => o.source === 'tap' && o.kind === 'purchase' && o.amount === op.amount && near(o))
+    if (tap) {
+      mine.set(tap.id, { ...tap, bank: op.bank })
+      return 'duplicate'
+    }
+  }
+  let internal = false
+  // Без получателя — слово вида продавцом (`applepay.Placeholder` Go): перевод человеку не пара (критик Б2).
+  const anonymous: Record<string, string> = { 'transfer-out': 'Перевод', 'transfer-in': 'Пополнение' }
+  const opposite = op.kind === 'transfer-out' ? 'transfer-in' : op.kind === 'transfer-in' ? 'transfer-out' : null
+  if (opposite && op.merchant === anonymous[op.kind]) {
+    const half = [...mine.values()].find(
+      (o) => o.source && o.kind === opposite && o.merchant === anonymous[opposite] && !o.internal && o.bank !== op.bank && o.amount === -op.amount && near(o),
+    )
+    if (half) {
+      mine.set(half.id, { ...half, internal: true, category_id: null })
+      internal = true
+    }
+  }
+  mine.set(op.id, { category_id: null, ...op, internal, source: 'push', occurred_at: new Date(now).toISOString() })
+  return 'saved'
 }

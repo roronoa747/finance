@@ -9,6 +9,7 @@ import {
   categorize,
   fingerprint,
   habitHints,
+  isPhoneStub,
   matchPerson,
   normalizeMerchant,
   pairInternalTransfers,
@@ -140,6 +141,26 @@ describe('fingerprint и assignIds', () => {
 })
 
 describe('categorize', () => {
+  it('заглушка пуша («Перевод» без получателя): правило семьи не трогает, свой ответ строки держится; правило платежа — да (`/ux` Б2, вопрос 5)', () => {
+    const stub = op({ kind: 'transfer-out', merchant: 'Перевод', source: 'push' })
+    expect(isPhoneStub(stub)).toBe(true)
+    expect(isPhoneStub(op({ kind: 'transfer-out', merchant: 'Перевод Айгерим С.', source: 'push' }))).toBe(false)
+    expect(isPhoneStub(op({ kind: 'transfer-out', merchant: 'Перевод' }))).toBe(false)
+    expect(isPhoneStub(op({ merchant: 'Покупка', source: 'push' }))).toBe(true)
+    const family = rule({ match: { merchant: normalizeMerchant('Перевод') }, to: { categoryId: 'sc_home' } })
+    const own = rule({ match: { merchant: normalizeMerchant('Перевод') }, to: { internal: true } })
+    expect(categorize(stub, [family])).toMatchObject({ categoryId: null, internal: false })
+    expect(categorize(stub, [own])).toMatchObject({ categoryId: null, internal: false })
+    // Пара «перевод себе» от сервера: правило «Разное» её не снимает.
+    expect(categorize({ ...stub, internal: true }, [family])).toMatchObject({ categoryId: null, internal: true })
+    // Ответ этой строке — её раздел, правило его не перебивает.
+    expect(categorize({ ...stub, categoryId: 'sc_fun' }, [family])).toMatchObject({ categoryId: 'sc_fun', internal: false })
+    // Строка выписки с тем же «продавцом» — по правилу, как было.
+    expect(categorize(op({ kind: 'transfer-out', merchant: 'Перевод' }), [family]).categoryId).toBe('sc_home')
+    const pay = rule({ match: { merchant: normalizeMerchant('Перевод') }, to: { payment: { kind: 'credit', targetId: 'c1', categoryId: 'sc_credit' } } })
+    expect(categorize(stub, [pay]).categoryId).toBe('sc_credit')
+  })
+
   it('правило по получателю сильнее правила по продавцу, то — сильнее словаря', () => {
     const o = op({ kind: 'transfer-out', merchant: 'Magnum', counterparty: 'Дана К.' })
     expect(categorize(o, []).categoryId).toBe('sc_people')
@@ -247,6 +268,13 @@ describe('pairInternalTransfers', () => {
     expect(pairInternalTransfers([out({ date: '2026-09-19' }), inc({ date: '2026-09-21' })]).some((o) => o.internal)).toBe(false)
     expect(pairInternalTransfers([out({}), inc({ bank: 'kaspi' })]).some((o) => o.internal)).toBe(false)
     expect(pairInternalTransfers([out({ counterparty: 'Дана К.' }), inc({})]).some((o) => o.internal)).toBe(false)
+  })
+
+  it('операция с телефона — не кандидат (критик Apple Pay Б2): перевод другу из пуша и пополнение выписки — трата', () => {
+    // Пуш пишет получателя в продавца, `counterparty` пуст (Р-23) — без этой проверки «Перевод Айгерим С.» стал бы своим.
+    const friend = out({ bank: 'kaspi', merchant: 'Перевод Айгерим С.', source: 'push', at: '2026-09-20T05:00:00Z' })
+    expect(pairInternalTransfers([friend, inc({})]).some((o) => o.internal)).toBe(false)
+    expect(pairInternalTransfers([out({}), inc({ merchant: 'Перевод Ерлан Б.', source: 'push' })]).some((o) => o.internal)).toBe(false)
   })
 
   it('одна операция — не в двух парах; ближайшая по дате побеждает', () => {

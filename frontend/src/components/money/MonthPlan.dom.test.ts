@@ -10,9 +10,9 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type MonthPlanCtx } from '@/lib/finance'
 import { plural } from '@/lib/utils'
-import type { SpendTotal } from '@/lib/statements/types'
+import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import type { AiAdvice, AiReview, Obligation, Payment, SyncDoc } from '@/types/finance'
@@ -773,6 +773,92 @@ describe('PN-02: «Пришла» у своей строки зарплаты в
     await press(q('[data-salary="a"] [data-row-open]'))
     expect(q('[role="dialog"] [data-salary-status]')).not.toBeNull()
     expect(dialogButton('Пришла зарплата')).toBeTruthy()
+  })
+})
+
+/**
+ * AP-11 (бэклог «Apple Pay», Р-22): приход из пуша банка, похожий на свою неотмеченную зарплату (`matchCandidates`,
+ * допуски выписки), — точка у «Пришла» строки; сумма, банк и день — в листе зарплаты; «Пришла» отмечает приход его
+ * суммой и операцией (как «Да» в вопросе «Недели»), точка уходит. 12 сентября: зарплата Ильяса (10-го, 700 000) открыта.
+ */
+describe('AP-11: точка «Пришла?» у зарплаты — приход из пуша', () => {
+  const augustSalary = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: 'card', at: '2026-08-10T05:00:00.000Z' })
+  const waiting = () => {
+    const doc = familyDoc()
+    return { ...doc, payments: [...(doc.payments ?? []).filter((p) => p.kind !== 'salary'), augustSalary] }
+  }
+  const income = (over: Partial<Operation> = {}): Operation => ({
+    id: 'aa00aa00aa00aa01', bank: 'freedom', date: '2026-09-11', amount: 690_000, kind: 'income', merchant: 'Зарплата',
+    categoryId: null, internal: false, source: 'push', at: '2026-09-11T04:00:00Z', ...over,
+  })
+  async function withIncome(op: Operation | null, role: 'member' | 'viewer' = 'member') {
+    const finance = await open(role, waiting())
+    if (op) useOperationsStore().ops[op.id] = op
+    await flush()
+    return finance
+  }
+  const salaries = (finance: ReturnType<typeof useFinanceStore>) => finance.payments.filter((p) => !p.deletedAt && p.kind === 'salary' && p.period === KEY)
+
+  it('точка у «Пришла» своей строки; в листе — «Пришло?» с суммой, банком и днём; «Пришла зарплата» — суммой прихода, точка уходит', async () => {
+    const finance = await withIncome(income())
+    expect(q('[data-salary="a"] [data-arrival-dot]')).not.toBeNull()
+    expect(q('[data-salary="b"] [data-arrival-dot]')).toBeNull()
+    // На строке — только точка: суммы прихода там нет (правило 12, шумные цифры).
+    expect(txt(q('[data-salary="a"]'))).not.toContain('690')
+
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(txt(q('[role="dialog"] [data-salary-arrival] span'))).toBe('Пришло?')
+    expect(txt(q('[role="dialog"] [data-salary-arrival] b'))).toBe(norm(`${money(690_000)} в Freedom · 11 сентября`))
+    await press(dialogButton('Пришла зарплата'))
+    expect(salaries(finance)).toHaveLength(1)
+    expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', amount: 690_000, opId: 'aa00aa00aa00aa01', source: 'statement', accountId: 'card' })
+    expect(q('[data-arrival-dot]')).toBeNull()
+  })
+
+  it('«Пришла» в строке — та же отметка приходом (не окладом) на счёт прошлой зарплаты, лист не открывается', async () => {
+    const finance = await withIncome(income())
+    // Остаток счёта в сторе — уже с отметками (`accountBalance`).
+    const before = finance.accounts[0].amount
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    // Критик Б2: приход зачислен, как обычной «Пришла», — остаток счёта вырос, следующая «Пришла» помнит счёт.
+    expect(salaries(finance)[0]).toMatchObject({ amount: 690_000, opId: 'aa00aa00aa00aa01', accountId: 'card' })
+    expect(finance.accounts[0].amount - before).toBe(690_000)
+    expect(lastAccountFor(finance.payments, 'a', finance.accounts)).toBe('card')
+  })
+
+  it('первая зарплата (счёта ещё не было) — лист отметки с суммой прихода, счёт спросить один раз', async () => {
+    const doc = waiting()
+    const finance = await open('member', { ...doc, payments: (doc.payments ?? []).filter((p) => p.kind !== 'salary') })
+    useOperationsStore().ops[income().id] = income()
+    await flush()
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+    expect(salaries(finance)).toHaveLength(0)
+    expect(document.body.innerHTML).toContain(plain(690_000))
+  })
+
+  it('точки нет: приход из выписки (там — вопрос «Недели»), сумма вне допуска, уже отмечено, viewer', async () => {
+    await withIncome(income({ source: undefined }))
+    expect(q('[data-arrival-dot]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    await withIncome(income({ amount: 500_000 }))
+    expect(q('[data-arrival-dot]')).toBeNull()
+    expect(q('[data-salary="a"] [data-salary-came-btn]')).not.toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    const finance = await withIncome(income())
+    await press(q('[data-salary="a"] [data-salary-came-btn]'))
+    expect(salaries(finance)).toHaveLength(1)
+    expect(q('[data-arrival-dot]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    await withIncome(income(), 'viewer')
+    expect(q('[data-arrival-dot]')).toBeNull()
   })
 })
 

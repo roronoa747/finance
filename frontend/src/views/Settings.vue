@@ -7,6 +7,7 @@ import { AI_AUTO, AI_NO_TRAINING, AI_SENDS, AI_TO, useAiStore } from '@/stores/a
 import { useInvite, useMembers } from '@/components/useInvite'
 import AppearancePanel from '@/components/AppearancePanel.vue'
 import ParseSettings from '@/components/ParseSettings.vue'
+import ApplePayCard from '@/components/applepay/ApplePayCard.vue'
 import SyncBadge from '@/components/SyncBadge.vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Card from '@/components/kit/Card.vue'
@@ -142,6 +143,9 @@ async function deleteAccount() {
           <div class="mt-3 border-t border-line pt-3"><ParseSettings /></div>
         </details>
       </Card>
+
+      <!-- Apple Pay (бэклог «Apple Pay», AP-06): свой iPhone — траты сами; карточка сама решает, видна ли. -->
+      <ApplePayCard />
 
       <Card v-if="ai.available" data-ai-card>
         <h2 class="type-h3 text-ink">ИИ</h2>

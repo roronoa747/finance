@@ -16,6 +16,9 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
+import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
+import MarkSheet from '@/components/MarkSheet.vue'
+import { arrivalNote } from '@/components/useSalaryTap'
 import { recentOperations, type MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
@@ -31,10 +34,13 @@ import type { MerchantRule } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 import {
   firstWeek,
+  lastAccountFor,
   myWeek,
+  periodMonth,
   planFromSource,
   prevWeekKey,
   decisionQueue,
+  salaryOf,
   startWeek,
   weekTrend,
   weekUploads,
@@ -241,8 +247,22 @@ watch(
 )
 const progress = computed(() => (seen.value.length > 1 ? { n: seen.value.length - queue.value.length + 1, k: seen.value.length } : null))
 
+/**
+ * Первая зарплата пушем (владелец 2026-10-19, хвост критика возврата): «Да, зарплата» по приходу из пуша, а прошлой
+ * отметки зарплаты нет — лист отметки с суммой прихода, как первая «Пришла» (`useSalaryTap`): счёт спросить один раз,
+ * дальше — на счёт прошлой зарплаты. Иначе «Да» молча «не зачисляла», и каждая следующая «Пришла» тоже. Тенговая
+ * только, как точка «Пришла»: валютная приходит на валютный счёт (Р-73).
+ */
+const firstSalary = ref<{ c: MatchCandidate; amount: number; note: string; title: string } | null>(null)
+
 /** «Да»: отметка и правило «это платёж по …». */
 function acceptMatch(c: MatchCandidate) {
+  const op = store.ops[c.opId]
+  const person = c.kind === 'salary' && op?.source === 'push' ? people.value.find((p) => p.id === c.targetId) : undefined
+  if (op && person && salaryOf(person, periodMonth(c.period)).currency === 'KZT' && lastAccountFor(finance.payments, c.targetId, finance.accounts) === undefined) {
+    firstSalary.value = { c, amount: Math.abs(op.amount), note: arrivalNote(op), title: `Зарплата · ${person.name}` }
+    return
+  }
   void store.acceptMatch(c)
 }
 
@@ -377,6 +397,8 @@ onBeforeUnmount(() => {
         </button>
       </template>
     </div>
+    <!-- Apple Pay (AP-06, Р-6): тихая строка под «Загрузить» — iPhone, пока не подключено. -->
+    <ApplePayWeekLine />
 
     <!-- Сумма недели: моя, крупно; ‹ › — недели. Сравнение с прошлой — в «8 недель» (Р-116). -->
     <Card tight class="flex flex-col gap-1" data-week-sum>
@@ -493,6 +515,17 @@ onBeforeUnmount(() => {
       </div>
     </Sheet>
 
+    <MarkSheet
+      :open="firstSalary ? 'mark' : null"
+      kind="salary"
+      :target-id="firstSalary?.c.targetId ?? ''"
+      :period="firstSalary?.c.period ?? ''"
+      :title="firstSalary?.title ?? ''"
+      :amount="firstSalary?.amount ?? 0"
+      :first-time="true"
+      :amount-note="firstSalary?.note ?? ''"
+      @close="firstSalary = null"
+    />
     <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 

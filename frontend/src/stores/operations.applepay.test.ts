@@ -1,0 +1,356 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { apiClient, type ApiClient } from '@/api/client'
+import { useAuthStore } from './auth'
+import { useFinanceStore } from './finance'
+import { PHONE_PULL_MS, fromWire, toWire, useOperationsStore } from './operations'
+import { normalizeMerchant, unknownGroups } from '@/lib/statements/model'
+import { phoneOpTenge } from '@/lib/finance'
+import type { OperationsPage, OperationWire } from '@/types/api'
+
+// Траты с телефона (Apple Pay, AP-04): `pull` раскладывает их — курс, раздел, итоги — и шлёт назад.
+
+const storage = new Map<string, string>()
+
+function signIn(slot: 'a' | 'b' = 'a') {
+  useAuthStore().setAuthData({
+    token: `t-${slot}`,
+    user: { id: `u-${slot}`, email: `${slot}@b.kz`, created_at: '' },
+    household: { id: 'h1', name: 'Семья', created_by: 'u-a', created_at: '' },
+    member: { household_id: 'h1', user_id: `u-${slot}`, slot, display_name: slot, role: 'member', joined_at: '' },
+  })
+  useFinanceStore().claimFor('h1')
+}
+
+/** Сервер операций: лента отдаёт то, что положили в `feed` (как курсор — новое с прошлого раза). */
+function fakeServer() {
+  const server = { feed: [] as OperationWire[], sent: [] as OperationWire[], rates: {} as Record<string, Record<string, number>> }
+  const client = {
+    upsertOperations: vi.fn(async (ops: OperationWire[]) => {
+      server.sent.push(...ops)
+      return { upserted: ops.length }
+    }),
+    listOperations: vi.fn(async (): Promise<OperationsPage> => {
+      const operations = server.feed
+      server.feed = []
+      return { operations, next: operations.length ? '2026-10-16T10:00:00Z' : null }
+    }),
+    listStatementUploads: vi.fn(async () => ({ uploads: [] })),
+    // Курса нет — сбой ответа (как без сети): книга не считает отрезок закрытым и спросит снова.
+    fxRates: vi.fn(async (code: string) => {
+      if (!server.rates[code]) throw new Error('offline')
+      return { code, rates: server.rates[code], partial: false }
+    }),
+  }
+  return { server, client: client as unknown as ApiClient, calls: client }
+}
+
+const tap = (id: string, merchant: string, amount: number, extra: Partial<OperationWire> = {}): OperationWire => ({
+  id, bank: 'kaspi', date: '2026-10-14', amount, kind: 'purchase', merchant, category_id: null, internal: false,
+  source: 'tap', occurred_at: '2026-10-14T09:00:00Z', updated_at: '2026-10-14T09:00:01Z', ...extra,
+})
+
+const weekTotal = (categoryId: string) =>
+  (useFinanceStore().householdDoc.spendTotals ?? []).find((t) => t.by === 'a' && t.kind === 'week' && t.period === '2026-W42' && t.categoryId === categoryId)
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-16T08:00:00Z'))
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => storage.set(k, String(v)),
+    removeItem: (k: string) => storage.delete(k),
+    clear: () => storage.clear(),
+  })
+  storage.clear()
+  setActivePinia(createPinia())
+  vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+describe('lib/finance — phoneOpTenge', () => {
+  it('USD 6.22 по 480.5 → −2989; без курса — null; тенге без fx — не трогается', () => {
+    const book = { USD: { '2026-10-14': 480.5 } }
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'USD', amount: 622 } }, book)).toBe(-2989)
+    // Выходной — курс последнего дня до него.
+    expect(phoneOpTenge({ date: '2026-10-17', fx: { currency: 'USD', amount: 622 } }, book)).toBe(-2989)
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'EUR', amount: 500 } }, book)).toBeNull()
+    expect(phoneOpTenge({ date: '2026-10-13', fx: { currency: 'USD', amount: 622 } }, book)).toBeNull()
+    expect(phoneOpTenge({ date: '2026-10-14' }, book)).toBeNull()
+  })
+
+  it('курс старше недели — null: курс июня не курс октября (критик Б1)', () => {
+    const book = { USD: { '2026-06-01': 400, '2026-10-07': 480 } }
+    // Ровно неделя — ещё курс (праздники и выходные); восемь дней — ждём курс дня.
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'USD', amount: 100 } }, book)).toBe(-480)
+    expect(phoneOpTenge({ date: '2026-10-15', fx: { currency: 'USD', amount: 100 } }, book)).toBeNull()
+    expect(phoneOpTenge({ date: '2026-10-14', fx: { currency: 'USD', amount: 100 } }, { USD: { '2026-06-01': 400 } })).toBeNull()
+  })
+})
+
+describe('провод — новые поля', () => {
+  it('fromWire читает source, момент и валюту; toWire их не шлёт (пишет сервер)', () => {
+    const w = tap('a1', 'Apple Store', 0, { fx_currency: 'USD', fx_amount: 622 })
+    const op = fromWire(w)
+    expect(op).toMatchObject({ source: 'tap', at: '2026-10-14T09:00:00Z', fx: { currency: 'USD', amount: 622 }, amount: 0 })
+    const back = toWire(op)
+    expect(back).not.toHaveProperty('source')
+    expect(back).not.toHaveProperty('fx_amount')
+    expect(fromWire({ ...back, source: 'tap', occurred_at: op.at, fx_currency: 'USD', fx_amount: 622 })).toEqual(op)
+    // Выписка — без новых полей.
+    expect(fromWire({ ...w, source: 'statement', fx_currency: undefined, fx_amount: undefined, occurred_at: undefined })).not.toHaveProperty('source')
+  })
+})
+
+describe('stores/operations — траты с телефона (pull)', () => {
+  it('продавец с правилом — раздел из правила, операция уходит назад, итог недели вырос', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const finance = useFinanceStore()
+    finance.addMerchantRules([{ match: { merchant: normalizeMerchant('Coffee Boom') }, to: { categoryId: 'sc_cafe' } }], 'a')
+    const { server, client } = fakeServer()
+    server.feed = [tap('a1', 'Coffee Boom', -1500)]
+
+    await store.pull(client)
+
+    expect(store.ops.a1).toMatchObject({ categoryId: 'sc_cafe', source: 'tap', amount: -1500 })
+    expect(server.sent.map((o) => [o.id, o.category_id])).toEqual([['a1', 'sc_cafe']])
+    expect(weekTotal('sc_cafe')).toMatchObject({ amount: 1500, ops: 1 })
+  })
+
+  it('незнакомый продавец — без раздела, в вопросах «куда отнести?»; итог «Без раздела»', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    server.feed = [tap('a2', 'ZZ Unknown Shop', -700)]
+
+    await store.pull(client)
+
+    expect(store.ops.a2.categoryId).toBeNull()
+    expect(unknownGroups(store.all).map((g) => g.label)).toEqual(['ZZ Unknown Shop'])
+    expect(weekTotal('_unknown')).toMatchObject({ amount: 700, ops: 1 })
+    // Раздел не изменился — назад нечего слать.
+    expect(server.sent).toEqual([])
+  })
+
+  it('надгробие — операции нет, итог периода обнулён', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    server.feed = [tap('a3', 'Magnum', -5000)]
+    await store.pull(client)
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000 })
+
+    server.feed = [{ ...tap('a3', 'Magnum', -5000, { category_id: 'sc_food' }), deleted: true }]
+    await store.pull(client)
+
+    expect(store.ops.a3).toBeUndefined()
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 0, ops: 0 })
+  })
+
+  it('валюта без курса — amount 0, в итогах нет; курс пришёл — пересчитана при следующем pull и отправлена', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client, calls } = fakeServer()
+    server.feed = [tap('a4', 'Apple Store', 0, { bank: 'card', fx_currency: 'USD', fx_amount: 622 })]
+
+    await store.pull(client)
+    expect(store.ops.a4.amount).toBe(0)
+    expect(calls.fxRates).toHaveBeenCalledWith('USD', '2026-10-07', '2026-10-14')
+    expect((useFinanceStore().householdDoc.spendTotals ?? []).filter((t) => t.amount > 0)).toEqual([])
+    expect(server.sent).toEqual([])
+
+    // Курс появился на сервере — следующий pull догружает книгу и пересчитывает.
+    server.rates.USD = { '2026-10-14': 480.5 }
+    await store.pull(client)
+
+    expect(store.ops.a4.amount).toBe(-2989)
+    expect(server.sent.map((o) => [o.id, o.amount])).toEqual([['a4', -2989]])
+  })
+
+  it('трата с разделом от другого устройства — раздел цел при отставших правилах, назад ничего (ревью frontend Н-2)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    // На компьютере ответили «куда отнести?» → «Кафе»; правило на этот iPhone ещё не доехало.
+    server.feed = [tap('a6', 'ZZ Unknown Shop', -1500, { category_id: 'sc_cafe' })]
+
+    await store.pull(client)
+
+    expect(store.ops.a6.categoryId).toBe('sc_cafe')
+    expect(server.sent).toEqual([])
+    expect(weekTotal('sc_cafe')).toMatchObject({ amount: 1500, ops: 1 })
+  })
+
+  it('строки выписки из pull — без изменений и не уходят назад (регрессия)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    server.feed = [{ ...tap('s1', 'ZZ Shop', -100), source: 'statement', occurred_at: undefined }]
+
+    await store.pull(client)
+
+    expect(store.ops.s1).toMatchObject({ categoryId: null })
+    expect(store.ops.s1.source).toBeUndefined()
+    expect(server.sent).toEqual([])
+    expect(useFinanceStore().householdDoc.spendTotals ?? []).toEqual([])
+  })
+
+  it('возврат в приложение — pull не чаще раза в 30 с, у demo/viewer — никогда', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { client, calls } = fakeServer()
+    store.pullOnReturn(client)
+    await vi.advanceTimersByTimeAsync(0)
+    store.pullOnReturn(client)
+    await vi.advanceTimersByTimeAsync(PHONE_PULL_MS - 1000)
+    store.pullOnReturn(client)
+    expect(calls.listOperations).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1001)
+    store.pullOnReturn(client)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(calls.listOperations).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('stores/operations — выписка заменяет траты с телефона (AP-05)', () => {
+  const statement = (merchant = 'MAGNUM ALMATY KZ') => [{
+    name: 'kaspi.pdf',
+    parsed: {
+      bank: 'kaspi' as const, from: '2026-10-01', to: '2026-10-15', skipped: 0,
+      operations: [{ id: 'f0000001', bank: 'kaspi' as const, date: '2026-10-14', amount: -5000, kind: 'purchase' as const, merchant, categoryId: null, internal: false }],
+    },
+  }]
+
+  async function withTap() {
+    signIn()
+    const store = useOperationsStore()
+    const fake = fakeServer()
+    Object.assign(fake.calls, {
+      createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })),
+    })
+    fake.server.feed = [tap('a1', 'Magnum', -5000)]
+    await store.pull(fake.client)
+    fake.server.sent = []
+    return { store, ...fake }
+  }
+
+  it('совпадающая покупка: в копии одна (из выписки), надгробие ушло, итог недели не удвоен — и во время тоста', async () => {
+    const { store, server, client } = await withTap()
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+
+    await store.upload(statement(), client)
+    // Тост «Отменить» ещё висит — показ уже без дубля.
+    const shownFood = store.shownTotals.find((t) => t.by === 'a' && t.kind === 'week' && t.period === '2026-W42' && t.categoryId === 'sc_food')
+    expect(shownFood).toMatchObject({ amount: 5000, ops: 1 })
+    expect(store.shown.map((o) => o.id)).toEqual(['f0000001'])
+
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['a1'])
+    expect(server.sent.find((o) => o.id === 'f0000001')?.deleted).toBeUndefined()
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+  })
+
+  it('«Отменить» — трата с телефона на месте, надгробия нет', async () => {
+    const { store, server, client } = await withTap()
+    await store.upload(statement(), client)
+    store.undoUpload()
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.map((o) => o.id)).toEqual(['a1'])
+    expect(server.sent).toEqual([])
+  })
+
+  it('медленный pull, начатый до выписки, не возвращает убранную трату (критик Б1)', async () => {
+    const { store, server, client, calls } = await withTap()
+    let release!: (p: OperationsPage) => void
+    calls.listOperations.mockImplementationOnce(() => new Promise<OperationsPage>((r) => (release = r)))
+    const slow = store.pull(client)
+    await vi.advanceTimersByTimeAsync(0)
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    // Страница медленного pull пришла после замены: на ней трата ещё живая.
+    release({ operations: [tap('a1', 'Magnum', -5000, { category_id: 'sc_food' })], next: '2026-10-16T10:00:00Z' })
+    await slow
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['a1'])
+  })
+
+  it('вторая выписка с перекрытием не сопоставляет уже учтённую строку ещё раз (критик Б1)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    // Kaspi «Coffee Boom» и неузнанная карта «Coffee» — по 1 200 ₸; в выписке Kaspi — «IP AHMETOV» 1 200 ₸.
+    server.feed = [tap('k1', 'Coffee Boom', -1200), tap('c1', 'Coffee', -1200, { bank: 'card', date: '2026-10-15' })]
+    await store.pull(client)
+    const line = { id: 'f0000002', bank: 'kaspi' as const, date: '2026-10-14', amount: -1200, kind: 'purchase' as const, merchant: 'IP AHMETOV', categoryId: null, internal: false }
+    const file = (from: string, to: string, extra: (typeof line)[] = []) => [{ name: 'kaspi.pdf', parsed: { bank: 'kaspi' as const, from, to, skipped: 0, operations: [line, ...extra] } }]
+
+    // Первая: два кандидата по сумме — пары нет; k1 — фантом периода; c1 (карта) остаётся.
+    await store.upload(file('2026-10-01', '2026-10-15'), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['k1'])
+
+    // Вторая перекрывает 14-е и несёт ту же строку: c1 по-прежнему не её пара.
+    const other = { ...line, id: 'f0000003', date: '2026-10-20', amount: -300, merchant: 'SMALL' }
+    await store.upload(file('2026-10-14', '2026-10-22', [other]), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(server.sent.filter((o) => o.deleted).map((o) => o.id)).toEqual(['k1'])
+    expect(store.ops.c1).toBeDefined()
+  })
+
+  it('курс пришёл после замены выпиской — ни ошибки, ни воскрешения, остальные разложены (ревью frontend Н-3)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    useFinanceStore().addMerchantRules([{ match: { merchant: normalizeMerchant('Coffee Boom') }, to: { categoryId: 'sc_cafe' } }], 'a')
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    // Курс дня отвечает долго (partial и повторы) — отдаём его после тоста выписки.
+    let rate!: () => void
+    calls.fxRates.mockImplementationOnce(
+      () => new Promise((resolve) => (rate = () => resolve({ code: 'USD', rates: { '2026-10-14': 480.5 }, partial: false }))),
+    )
+    server.feed = [
+      tap('a1', 'Magnum', -5000),
+      tap('h1', 'Coffee Boom', -1500, { bank: 'halyk' }),
+      tap('u1', 'Apple Store', 0, { bank: 'card', fx_currency: 'USD', fx_amount: 622 }),
+    ]
+    const pulling = store.pull(client)
+    await vi.advanceTimersByTimeAsync(0)
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.ops.a1).toBeUndefined()
+
+    rate()
+    await pulling
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.lastError).toBeNull()
+    expect(store.ops.a1).toBeUndefined()
+    expect(store.ops.h1.categoryId).toBe('sc_cafe')
+    expect(store.ops.u1.amount).toBe(-2989)
+    expect(weekTotal('sc_food')).toMatchObject({ amount: 5000, ops: 1 })
+    expect(weekTotal('sc_cafe')).toMatchObject({ amount: 1500, ops: 1 })
+  })
+
+  it('выписка без операций с телефона — прежний путь (без надгробий)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    const { server, client, calls } = fakeServer()
+    Object.assign(calls, { createStatementUpload: vi.fn(async (u: object) => ({ id: '00000000-0000-4000-8000-000000000001', slot: 'a', ...u, created_at: '' })) })
+    await store.upload(statement(), client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.map((o) => o.id)).toEqual(['f0000001'])
+    expect(server.sent.some((o) => o.deleted)).toBe(false)
+  })
+})

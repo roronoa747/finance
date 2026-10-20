@@ -813,6 +813,27 @@ export function rateOn(book: RateBook | null | undefined, code: Currency, day: s
   return fallback && fallback > 0 ? fallback : null;
 }
 
+/** Курс дня покупки с телефона — не старше недели (выходные и праздники — курс пятницы, Р-7). */
+export const PHONE_RATE_MAX_DAYS = 7;
+
+/**
+ * Тенге покупки Apple Pay в валюте (Р-15): минорные единицы → по курсу Нацбанка на день операции (`rateOn`) → целые
+ * тенге со знаком списания. Курса ещё нет — `null` (операция ждёт и в итоги не входит); операция без валюты — `null`.
+ * Последний курс книги старше недели — тоже `null`: запрос курса дня не удался, а курс июня — не курс октября, и
+ * пересчитанная трата больше не пересчитывается (критик Б1).
+ */
+export function phoneOpTenge(op: { date: string; fx?: { currency: Currency; amount: number } }, book: RateBook | null | undefined): number | null {
+  if (!op.fx) return null;
+  const from = addDaysIso(op.date, -PHONE_RATE_MAX_DAYS);
+  const days = Object.fromEntries(Object.entries(book?.[op.fx.currency] ?? {}).filter(([d]) => d >= from));
+  const rate = rateOn({ [op.fx.currency]: days }, op.fx.currency, op.date);
+  return rate === null ? null : -fxToTenge(op.fx.amount / 100, rate);
+}
+
+/** Сумма `actual` в пределах доли `share` от `expected` (модули сумм; знак сравнивает вызывающий). */
+export const withinShare = (actual: number, expected: number, share: number) =>
+  expected !== 0 && Math.abs(Math.abs(actual) - Math.abs(expected)) <= Math.abs(expected) * share;
+
 /** Валюты документа, которым нужна книга курсов (Р-72): счета, оклады и платежи (Р-75); без тенге. */
 export function docCurrencies(doc: { accounts?: Account[]; people?: Person[]; obligations?: Obligation[] }): Currency[] {
   const out = new Set<Currency>();

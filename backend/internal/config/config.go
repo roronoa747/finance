@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -41,6 +42,30 @@ type Config struct {
 	// negative or not a number falls back to the default: "no limit" is not a setting. The old
 	// AI_MONTHLY_LIMIT (requests) is no longer read.
 	AIMonthlyLimitMicros int64
+	// Apple Pay shortcut links (бэклог «Apple Pay», Р-17): iOS 27 with the trigger inside
+	// (APPLEPAY_SHORTCUT_URL) and iOS 17–26 without it (APPLEPAY_SHORTCUT_URL_LEGACY). Optional:
+	// without a link that phone path has no Apple Pay card. Only iCloud shortcut links count.
+	// Блок 2: the bank pushes command (APPLEPAY_PUSH_SHORTCUT_URL, iOS 27) — without it the sheet
+	// has no bank pushes step.
+	ApplePayShortcutURL       string
+	ApplePayShortcutURLLegacy string
+	ApplePayPushShortcutURL   string
+}
+
+// shortcutPrefix is the only kind of link the phone may open for the Apple Pay command.
+const shortcutPrefix = "https://www.icloud.com/shortcuts/"
+
+// shortcutURL reads an Apple Pay link: anything but an iCloud shortcut link counts as unset.
+func shortcutURL(key string) string {
+	v := strings.TrimSpace(getEnv(key, ""))
+	if v == "" {
+		return ""
+	}
+	if !strings.HasPrefix(v, shortcutPrefix) {
+		log.Printf("config: %s is not an iCloud shortcut link (%s…) — ignored", key, shortcutPrefix)
+		return ""
+	}
+	return v
 }
 
 // Defaults for the AI settings above.
@@ -69,11 +94,14 @@ func Load() (*Config, error) {
 		GoogleClientIDs: splitList(getEnv("GOOGLE_CLIENT_IDS", "")),
 		AdminEmails:     splitList(strings.ToLower(getEnv("ADMIN_EMAILS", ""))),
 
-		AnthropicAPIKey:      strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
-		AIModelReview:        strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
-		AIModelSellers:       strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
-		AIModelWish:          strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
-		AIMonthlyLimitMicros: int64(positiveInt(getEnv("AI_MONTHLY_LIMIT_USD", ""), DefaultAIMonthlyLimitUSD)) * microsPerUSD,
+		AnthropicAPIKey:           strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
+		AIModelReview:             strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
+		AIModelSellers:            strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
+		AIModelWish:               strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
+		AIMonthlyLimitMicros:      int64(positiveInt(getEnv("AI_MONTHLY_LIMIT_USD", ""), DefaultAIMonthlyLimitUSD)) * microsPerUSD,
+		ApplePayShortcutURL:       shortcutURL("APPLEPAY_SHORTCUT_URL"),
+		ApplePayShortcutURLLegacy: shortcutURL("APPLEPAY_SHORTCUT_URL_LEGACY"),
+		ApplePayPushShortcutURL:   shortcutURL("APPLEPAY_PUSH_SHORTCUT_URL"),
 	}
 	if cfg.IsProduction() {
 		if err := cfg.ValidateProduction(); err != nil {

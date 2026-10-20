@@ -42,6 +42,22 @@ type Metrics struct {
 		Done     int `json:"done"`
 	} `json:"funnel_28d"`
 	Weeks []MetricsWeek `json:"weeks"`
+	// PushStats: bank pushes the server read (бэклог «Apple Pay», Блок 2, Р-10), by bank.
+	PushStats []PushStats `json:"push_stats"`
+}
+
+// PushStats is one bank's pushes over the last 7 and 30 Almaty days (today included).
+type PushStats struct {
+	Bank   string     `json:"bank"` // kaspi | freedom | halyk | unknown
+	Days7  PushCounts `json:"d7"`
+	Days30 PushCounts `json:"d30"`
+}
+
+// PushCounts: read as an operation, read as not one (a decline, a code, an advert), not read.
+type PushCounts struct {
+	Parsed  int `json:"parsed"`
+	Ignored int `json:"ignored"`
+	Unknown int `json:"unknown"`
 }
 
 // MetricsWeek is one Almaty week (Monday) of the last eight.
@@ -135,7 +151,37 @@ func (r *sqlMetricsRepository) Metrics(ctx context.Context, now time.Time) (*Met
 		}
 		m.Weeks = append(m.Weeks, wk)
 	}
-	return m, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	m.PushStats, err = r.pushStats(ctx, now)
+	return m, err
+}
+
+func (r *sqlMetricsRepository) pushStats(ctx context.Context, now time.Time) ([]PushStats, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT bank,
+			COALESCE(sum(parsed) FILTER (WHERE day > $1::date - 7), 0),
+			COALESCE(sum(ignored) FILTER (WHERE day > $1::date - 7), 0),
+			COALESCE(sum(unknown) FILTER (WHERE day > $1::date - 7), 0),
+			sum(parsed), sum(ignored), sum(unknown)
+		FROM app.push_stats
+		WHERE day > $1::date - 30 AND day <= $1::date
+		GROUP BY bank ORDER BY bank`, now.In(almaty).Format(time.DateOnly))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read push stats: %w", err)
+	}
+	defer rows.Close()
+	out := []PushStats{}
+	for rows.Next() {
+		var s PushStats
+		if err := rows.Scan(&s.Bank, &s.Days7.Parsed, &s.Days7.Ignored, &s.Days7.Unknown,
+			&s.Days30.Parsed, &s.Days30.Ignored, &s.Days30.Unknown); err != nil {
+			return nil, fmt.Errorf("failed to scan push stats: %w", err)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
 }
 
 // MockEventRepo keeps events in memory with the same daily app_open rule.
@@ -171,6 +217,7 @@ func (MockMetricsRepo) Metrics(ctx context.Context, now time.Time) (*Metrics, er
 	m := &Metrics{Users: 2, Households: 1, HouseholdsWithUpload: 1, Active7: 1, Active28: 2}
 	m.SecondUpload.Eligible, m.SecondUpload.Retained = 1, 1
 	m.Funnel28.Created, m.Funnel28.Uploaded, m.Funnel28.Goal, m.Funnel28.Done = 1, 1, 1, 1
+	m.PushStats = []PushStats{}
 	for i := 7; i >= 0; i-- {
 		m.Weeks = append(m.Weeks, MetricsWeek{Week: now.In(almaty).AddDate(0, 0, -7*i).Format("2006-01-02")})
 	}

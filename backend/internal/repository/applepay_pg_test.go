@@ -1,0 +1,415 @@
+package repository
+
+import (
+	"context"
+	"io/fs"
+	"strings"
+	"testing"
+	"testing/fstest"
+	"time"
+
+	"finance-backend/internal/db"
+	"finance-backend/internal/models"
+	"finance-backend/internal/testdb"
+	"finance-backend/migrations"
+)
+
+// migrationsBefore is the embedded set up to (not including) the named file — a database of an
+// earlier release.
+func migrationsBefore(t *testing.T, name string) fstest.MapFS {
+	t.Helper()
+	out := fstest.MapFS{}
+	entries, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() >= name || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		data, _ := fs.ReadFile(migrations.FS, e.Name())
+		out[e.Name()] = &fstest.MapFile{Data: data}
+	}
+	return out
+}
+
+func TestPostgresApplePayMigrationOverExistingData(t *testing.T) {
+	database := testdb.Open(t)
+	ctx := context.Background()
+	// testdb applied everything; start again from the release before 000008 with data in it.
+	if _, err := database.ExecContext(ctx, `DROP SCHEMA app CASCADE`); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if err := db.RunMigrations(ctx, database, migrationsBefore(t, "000008")); err != nil {
+		t.Fatalf("migrate to 000007: %v", err)
+	}
+	users := NewSQLUserRepository(database)
+	alice, _ := users.Create(ctx, "alice@ap.pg", "hash")
+	h, _, err := NewSQLHouseholdRepository(database).CreateHousehold(ctx, "Семья", alice.ID, "Алия")
+	if err != nil {
+		t.Fatalf("household: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant)
+		VALUES ($1, 'aaaa0001', $2, 'kaspi', '2026-09-21', -1200, 'purchase', 'Magnum')`, alice.ID, h.ID); err != nil {
+		t.Fatalf("old row: %v", err)
+	}
+
+	if err := db.RunMigrations(ctx, database, migrations.FS); err != nil {
+		t.Fatalf("apply 000008: %v", err)
+	}
+	ops, err := NewSQLStatementRepository(database).ListOperations(ctx, alice.ID, time.Time{}, 10)
+	if err != nil || len(ops) != 1 || ops[0].Source != "statement" || ops[0].Deleted || ops[0].OccurredAt != nil || ops[0].FxCurrency != nil {
+		t.Fatalf("old row after 000008: %+v %v", ops, err)
+	}
+	for _, name := range []string{"operations_phone_idx", "phone_keys_user_idx"} {
+		var found int
+		if err := database.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname = 'app' AND indexname = $1`, name).Scan(&found); err != nil || found != 1 {
+			t.Errorf("index %s: %d, %v", name, found, err)
+		}
+	}
+}
+
+func TestPostgresApplePayTombstoneAndServerFields(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+
+	// A tap written by the server (AP-03 writes it the same way).
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, fx_currency, fx_amount)
+		VALUES ($1, 'cccc0001', $2, 'card', '2026-09-21', 0, 'purchase', 'Apple Store', 'tap', now(), 'USD', 622)`, f.aliceID, f.householdID); err != nil {
+		t.Fatalf("server row: %v", err)
+	}
+	// The phone files it and sends the amount in tenge back: the batch keeps source and fx_*.
+	back := models.Operation{ID: "cccc0001", Bank: "card", Date: "2026-09-21", Amount: -2989, Kind: "purchase",
+		Merchant: "Apple Store", CategoryID: strp("sc_fun"), Source: "statement"}
+	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{back}); err != nil {
+		t.Fatalf("upsert back: %v", err)
+	}
+	ops, _ := f.repo.ListOperations(ctx, f.aliceID, time.Time{}, 10)
+	if len(ops) != 1 || ops[0].Source != "tap" || ops[0].OccurredAt == nil || ops[0].FxCurrency == nil || *ops[0].FxCurrency != "USD" ||
+		ops[0].FxAmount == nil || *ops[0].FxAmount != 622 || ops[0].Amount != -2989 || ops[0].Deleted {
+		t.Fatalf("after batch: %+v", ops)
+	}
+	cursor := ops[0].UpdatedAt
+
+	// A statement replaced it: the tombstone travels the cursor with a new updated_at.
+	gone := back
+	gone.Deleted = true
+	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{gone, pgOp("aaaa0001", -1)}); err != nil {
+		t.Fatalf("tombstone: %v", err)
+	}
+	changed, _ := f.repo.ListOperations(ctx, f.aliceID, cursor, 10)
+	if len(changed) != 2 || changed[1].ID != "cccc0001" && changed[0].ID != "cccc0001" {
+		t.Fatalf("cursor after tombstone: %+v", changed)
+	}
+	for _, op := range changed {
+		if op.ID == "cccc0001" && (!op.Deleted || !op.UpdatedAt.After(cursor)) {
+			t.Fatalf("tombstone: %+v", op)
+		}
+		if op.ID == "aaaa0001" && (op.Deleted || op.Source != "statement") {
+			t.Fatalf("new batch row: %+v", op)
+		}
+	}
+
+	// An old client re-sends the operation without "deleted": the tombstone stays.
+	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{back}); err != nil {
+		t.Fatalf("resend: %v", err)
+	}
+	var deleted bool
+	if err := f.db.QueryRow(`SELECT deleted_at IS NOT NULL FROM app.operations WHERE id = 'cccc0001'`).Scan(&deleted); err != nil || !deleted {
+		t.Fatalf("tombstone resurrected: %v %v", deleted, err)
+	}
+
+	// fx_currency and fx_amount come in pairs.
+	for _, q := range []string{
+		`INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, fx_currency) VALUES ($1, 'dddd0001', $2, 'card', '2026-09-21', 0, 'purchase', 'X', 'USD')`,
+		`INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, fx_amount) VALUES ($1, 'dddd0002', $2, 'card', '2026-09-21', 0, 'purchase', 'X', 100)`,
+		`INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, fx_currency, fx_amount) VALUES ($1, 'dddd0003', $2, 'card', '2026-09-21', 0, 'purchase', 'X', 'GBP', 100)`,
+		`INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source) VALUES ($1, 'dddd0004', $2, 'card', '2026-09-21', 0, 'purchase', 'X', 'sms')`,
+	} {
+		if _, err := f.db.ExecContext(ctx, q, f.aliceID, f.householdID); err == nil {
+			t.Errorf("CHECK let through: %s", q)
+		}
+	}
+}
+
+// rollbackOf is the rollback line of a migration's header: the comment text after
+// "Rollback (with the code only):" up to its schema_migrations DELETE.
+func rollbackOf(t *testing.T, name string) string {
+	t.Helper()
+	data, err := fs.ReadFile(migrations.FS, name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	var parts []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		text, comment := strings.CutPrefix(line, "-- ")
+		if !comment {
+			break
+		}
+		if _, after, found := strings.Cut(text, "Rollback (with the code only):"); found {
+			text = after
+		} else if parts == nil {
+			continue
+		}
+		end := "version = '" + name + "';"
+		if before, _, found := strings.Cut(text, end); found {
+			return strings.Join(append(parts, strings.TrimSpace(before)+end), " ")
+		}
+		parts = append(parts, strings.TrimSpace(text))
+	}
+	t.Fatalf("no rollback line in %s: %q", name, parts)
+	return ""
+}
+
+// The rollback line of 000008 leaves only statement lines: a tombstone it kept would turn into
+// a live operation (no deleted_at), a live tap would sit next to its statement line in the old
+// code, which does not replace. The file applies again after it.
+func TestPostgresApplePayRollbackLine(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.operations (user_id, id, household_id, bank, op_date, amount, kind, merchant, source, occurred_at, deleted_at)
+		VALUES ($1, 'aaaa0001', $2, 'kaspi', '2026-09-21', -1200, 'purchase', 'MAGNUM', 'statement', NULL, NULL),
+		       ($1, 'cccc0001', $2, 'kaspi', '2026-09-21', -1200, 'purchase', 'Magnum', 'tap', now(), now()),
+		       ($1, 'cccc0002', $2, 'kaspi', '2026-09-22', -900, 'purchase', 'Coffee', 'tap', now(), NULL)`, f.aliceID, f.householdID); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, rollbackOf(t, "000008_applepay.sql")); err != nil {
+		t.Fatalf("rollback line: %v", err)
+	}
+	var ids []string
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM app.operations ORDER BY id`)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for rows.Next() {
+		var id string
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	_ = rows.Close()
+	if strings.Join(ids, ",") != "aaaa0001" {
+		t.Errorf("after the rollback line: %v, want only the statement line", ids)
+	}
+	file, _ := fs.ReadFile(migrations.FS, "000008_applepay.sql")
+	if _, err := tx.ExecContext(ctx, string(file)); err != nil {
+		t.Errorf("000008 again after the rollback line: %v", err)
+	}
+}
+
+func TestPostgresApplePayKeysCascade(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.phone_keys (key_hash, user_id) VALUES ('\x01'::bytea, $1)`, f.bobID); err != nil {
+		t.Fatalf("key: %v", err)
+	}
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.wallet_debug (user_id, body) VALUES ($1, 'x')`, f.bobID); err != nil {
+		t.Fatalf("debug: %v", err)
+	}
+	if _, err := f.db.ExecContext(ctx, `INSERT INTO app.wallet_debug (user_id, body) VALUES ($1, $2)`, f.aliceID, strings.Repeat("я", 2049)); err == nil {
+		t.Errorf("wallet_debug took a body over 2 KB")
+	}
+	if err := f.users.Delete(ctx, f.bobID); err != nil {
+		t.Fatalf("delete bob: %v", err)
+	}
+	var keys, debug int
+	_ = f.db.QueryRow(`SELECT count(*) FROM app.phone_keys`).Scan(&keys)
+	_ = f.db.QueryRow(`SELECT count(*) FROM app.wallet_debug`).Scan(&debug)
+	if keys != 0 || debug != 0 {
+		t.Fatalf("after deleting the user: %d keys, %d debug rows", keys, debug)
+	}
+}
+
+func TestPostgresPhoneKeys(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	keys := NewSQLPhoneKeyRepository(f.db)
+	hash := func(b byte) []byte { return []byte{b, 0xAA} }
+
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s != (PhoneKeyStatus{}) {
+		t.Fatalf("empty status: %+v %v", s, err)
+	}
+	if _, err := keys.UserByHash(ctx, hash(1)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("unknown key: %v", err)
+	}
+	for i := byte(1); i <= 6; i++ {
+		if err := keys.Add(ctx, f.aliceID, hash(i)); err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+		time.Sleep(2 * time.Millisecond) // distinct created_at: "the oldest" is well defined
+	}
+	if err := keys.Add(ctx, f.bobID, hash(9)); err != nil {
+		t.Fatalf("bob: %v", err)
+	}
+	// The sixth key pushed out the first; Bob's keys do not count against Alice.
+	if _, err := keys.UserByHash(ctx, hash(1)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("oldest key survived: %v", err)
+	}
+	user, err := keys.UserByHash(ctx, hash(2))
+	if err != nil || user != f.aliceID {
+		t.Fatalf("second key: %q %v", user, err)
+	}
+	// Finding the key is not a payment (Н-5): five keys, none paid.
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s != (PhoneKeyStatus{Issued: 5}) {
+		t.Fatalf("status after lookup: %+v %v", s, err)
+	}
+	if err := keys.MarkUsed(ctx, hash(2), "tap"); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	s, err := keys.Status(ctx, f.aliceID)
+	if err != nil || s.Paid != 1 || s.Issued != 5 || !s.Tap || s.Push || s.LastUsedAt == nil || time.Since(*s.LastUsedAt) > time.Minute {
+		t.Fatalf("status after a payment: %+v %v", s, err)
+	}
+	// The commands, not the phones (владелец 2026-10-19): a push with the same key adds "push", a
+	// tap again keeps both; another person's push is not Alice's.
+	for _, src := range []string{"push", "tap"} {
+		if err := keys.MarkUsed(ctx, hash(2), src); err != nil {
+			t.Fatalf("mark %s: %v", src, err)
+		}
+	}
+	if err := keys.MarkUsed(ctx, hash(9), "push"); err != nil {
+		t.Fatalf("mark bob: %v", err)
+	}
+	if s, err := keys.Status(ctx, f.aliceID); err != nil || s.Paid != 1 || !s.Tap || !s.Push {
+		t.Fatalf("one key, both commands: %+v %v", s, err)
+	}
+	if s, err := keys.Status(ctx, f.bobID); err != nil || s.Paid != 1 || s.Tap || !s.Push {
+		t.Fatalf("bob, push only: %+v %v", s, err)
+	}
+	// A working key outlives never-used ones (критик Б1): the next drops the oldest never-used (3), not 2.
+	if err := keys.Add(ctx, f.aliceID, hash(7)); err != nil {
+		t.Fatalf("add 7: %v", err)
+	}
+	if _, err := keys.UserByHash(ctx, hash(3)); err != ErrPhoneKeyNotFound {
+		t.Fatalf("a never-used key outlived a working one: %v", err)
+	}
+	if user, err := keys.UserByHash(ctx, hash(2)); err != nil || user != f.aliceID {
+		t.Fatalf("the working key was pushed out: %q %v", user, err)
+	}
+	if err := keys.DeleteAll(ctx, f.aliceID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if s, _ := keys.Status(ctx, f.aliceID); s != (PhoneKeyStatus{}) {
+		t.Fatalf("after delete: %+v", s)
+	}
+	if user, err := keys.UserByHash(ctx, hash(9)); err != nil || user != f.bobID {
+		t.Fatalf("Bob's key after Alice disconnected: %q %v", user, err)
+	}
+}
+
+func TestPostgresPhoneOperationsAndDebug(t *testing.T) {
+	f := newStatementFixture(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	usd, cents := "USD", int64(622)
+
+	for _, op := range []PhoneOperation{
+		{ID: "a1a1a1a1a1a1a1a1", Bank: "kaspi", Date: "2026-10-16", Amount: -5000, Merchant: "MAGNUM", Source: "tap", OccurredAt: now},
+		{ID: "b2b2b2b2b2b2b2b2", Bank: "card", Date: "2026-10-16", Amount: 0, Merchant: "Apple Store", Source: "tap", OccurredAt: now, FxCurrency: &usd, FxAmount: &cents},
+	} {
+		if done, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, repeatOnly); err != nil || done != PhoneSaved {
+			t.Fatalf("insert %s: %v %v", op.ID, done, err)
+		}
+	}
+	// The CHECKs of 000002 still hold: a merchant with a card number never reaches the table.
+	bad := PhoneOperation{ID: "c3c3c3c3c3c3c3c3", Bank: "kaspi", Date: "2026-10-16", Amount: -1, Merchant: "Card 1234567", Source: "tap", OccurredAt: now}
+	if _, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, bad, repeatOnly); err == nil {
+		t.Fatal("a merchant with 7 digits was stored")
+	}
+
+	// A repeat is the same source and money within the window on either side of the moment (Alice
+	// has −5000 ₸ and $6.22 at `now`). A written case is deleted again: it must not become the
+	// base of the next one.
+	eur := "EUR"
+	for i, c := range []struct {
+		source   string
+		currency *string
+		amount   int64
+		at       time.Time
+		want     bool // written
+	}{
+		{"tap", nil, -5000, now.Add(90 * time.Second), false},
+		{"tap", nil, -5000, now.Add(-90 * time.Second), false},
+		{"tap", nil, -5001, now, true},
+		{"push", nil, -5000, now, true},
+		{"tap", nil, -5000, now.Add(3 * time.Minute), true},
+		{"tap", &usd, 622, now.Add(time.Minute), false},
+		{"tap", &eur, 622, now, true},
+		{"tap", nil, 0, now, true}, // a foreign op is not 0 tenge
+	} {
+		op := PhoneOperation{ID: strings.Repeat(string("123456789"[i]), 16), Bank: "kaspi", Date: "2026-10-16", Amount: c.amount,
+			Merchant: "X", Source: c.source, OccurredAt: c.at}
+		if c.currency != nil {
+			minor := c.amount
+			op.Amount, op.FxCurrency, op.FxAmount = 0, c.currency, &minor
+		}
+		done, err := f.repo.InsertPhoneOperation(ctx, f.aliceID, f.householdID, op, repeatOnly)
+		if err != nil || (done == PhoneSaved) != c.want {
+			t.Errorf("insert %d %+v: %v %v", i, c, done, err)
+		}
+		if _, err := f.db.ExecContext(ctx, `DELETE FROM app.operations WHERE user_id = $1 AND id = $2`, f.aliceID, op.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Two firings of the trigger at the same moment (two serverless instances): one operation.
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	for i := range 2 {
+		go func() {
+			<-start
+			done, err := f.repo.InsertPhoneOperation(ctx, f.bobID, f.householdID, PhoneOperation{ID: strings.Repeat(string(rune('0'+i)), 16),
+				Bank: "kaspi", Date: "2026-10-16", Amount: -777, Merchant: "Twice", Source: "tap", OccurredAt: now}, repeatOnly)
+			if err != nil {
+				t.Errorf("concurrent insert: %v", err)
+			}
+			results <- done == PhoneSaved
+		}()
+	}
+	close(start)
+	if a, b := <-results, <-results; a == b {
+		t.Fatalf("two firings at once: saved %v and %v, want exactly one", a, b)
+	}
+	// Statement lines do not count against the daily limit.
+	if _, err := f.repo.UpsertOperations(ctx, f.aliceID, f.householdID, []models.Operation{pgOp("dddd0001", -1)}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.repo.CountPhoneOperationsSince(ctx, f.aliceID, now.Add(-time.Hour)); err != nil || n != 2 {
+		t.Fatalf("count: %d %v", n, err)
+	}
+	ops, _ := f.repo.ListOperations(ctx, f.aliceID, time.Time{}, 10)
+	for _, op := range ops {
+		if op.ID == "a1a1a1a1a1a1a1a1" && (op.Source != "tap" || op.Kind != "purchase" || op.CategoryID != nil || op.OccurredAt == nil || !op.OccurredAt.Equal(now)) {
+			t.Fatalf("tap row: %+v", op)
+		}
+	}
+
+	keys := NewSQLPhoneKeyRepository(f.db)
+	if d, err := keys.LastDebug(ctx, f.aliceID); err != nil || d != nil {
+		t.Fatalf("no debug yet: %+v %v", d, err)
+	}
+	_ = keys.SaveDebug(ctx, f.aliceID, "first")
+	if err := keys.SaveDebug(ctx, f.aliceID, "second"); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if d, err := keys.LastDebug(ctx, f.aliceID); err != nil || d == nil || d.Body != "second" {
+		t.Fatalf("debug: %+v %v", d, err)
+	}
+	// Rows older than a day go on the next write and are not shown.
+	if _, err := f.db.ExecContext(ctx, `UPDATE app.wallet_debug SET at = now() - interval '25 hours'`); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := keys.LastDebug(ctx, f.aliceID); d != nil {
+		t.Fatalf("old debug shown: %+v", d)
+	}
+	_ = keys.SaveDebug(ctx, f.bobID, "bob")
+	var rows int
+	_ = f.db.QueryRow(`SELECT count(*) FROM app.wallet_debug`).Scan(&rows)
+	if rows != 1 {
+		t.Fatalf("old rows kept: %d", rows)
+	}
+}

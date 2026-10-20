@@ -30,4 +30,12 @@ type Operation struct {
 	Internal     bool      `json:"internal"`
 	UploadID     *string   `json:"upload_id,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// Apple Pay (Р-14): the server writes source, occurred_at and fx_* itself — a batch never
+	// changes them. A foreign-currency operation has amount 0 until the phone converts it.
+	Source     string     `json:"source"` // statement | tap | push
+	OccurredAt *time.Time `json:"occurred_at,omitempty"`
+	FxCurrency *string    `json:"fx_currency,omitempty"`
+	FxAmount   *int64     `json:"fx_amount,omitempty"` // minor units
+	// Deleted is a tombstone: once set it stays (a statement replaced the operation, Р-16).
+	Deleted bool `json:"deleted,omitempty"`
 }

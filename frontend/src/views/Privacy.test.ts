@@ -48,10 +48,10 @@ describe('B2C-26: /privacy — публичная политика конфид�
   it('RZ-03: согласие v3 — продавцы с суммами частых трат, списаний и крупнейших покупок без дат и людей, чек, фраза мечты, разбор сам; RU и EN', async () => {
     const html = await renderScreen(Privacy, '/privacy')
     expect(html).not.toContain('названия продавцов и подписок без сумм')
-    for (const text of ['названия продавцов и суммы частых трат, повторяющихся списаний и крупнейших покупок, число повторов (без дат, без людей)', 'фото чека', 'фраза о мечте', 'Разбор месяца приходит сам', '1-го числа и после отметки зарплаты', 'Фото чека уходит ИИ-помощнику и нигде не сохраняется', '18 октября 2026']) {
+    for (const text of ['названия продавцов и суммы частых трат, повторяющихся списаний и крупнейших покупок, число повторов (без дат, без людей)', 'фото чека', 'фраза о мечте', 'Разбор месяца приходит сам', '1-го числа и после отметки зарплаты', 'Фото чека уходит ИИ-помощнику и нигде не сохраняется', '20 октября 2026']) {
       expect(html, text).toContain(text)
     }
-    for (const text of ['amounts of frequent spending, repeated charges and the largest purchases, and repeat counts (no dates, no people)', 'receipt photos (never stored)', 'dream phrase', 'arrives by itself', 'after a salary is marked', 'October 18, 2026']) {
+    for (const text of ['amounts of frequent spending, repeated charges and the largest purchases, and repeat counts (no dates, no people)', 'receipt photos (never stored)', 'dream phrase', 'arrives by itself', 'after a salary is marked', 'October 20, 2026']) {
       expect(html, text).toContain(text)
     }
   })
@@ -66,5 +66,14 @@ describe('B2C-26: /privacy — публичная политика конфид�
     expect(router.currentRoute.value.path).toBe('/who')
     await router.push('/privacy')
     expect(router.currentRoute.value.path).toBe('/privacy')
+  })
+
+  it('AP-06: Apple Pay — и в русском списке, и в английской сводке (ревью frontend Н-7)', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    expect(html).toContain('Apple Pay и пуши банков, если подключите')
+    expect(html).toContain('без номера карты, остатка и текста пуша')
+    const english = html.slice(html.indexOf('Privacy policy (summary)'))
+    expect(english).toContain('Apple Pay')
+    expect(english.replace(/\s+/g, ' ')).toContain('no card number, balance or notification text')
   })
 })

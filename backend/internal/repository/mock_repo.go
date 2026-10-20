@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"finance-backend/internal/applepay"
 	"finance-backend/internal/models"
 )
 
@@ -653,6 +654,7 @@ type MockStatementRepo struct {
 	uploads    []mockUpload
 	ops        map[string]map[string]*mockOperation // userID -> id -> operation
 	lastStamp  time.Time
+	pushStats  map[string]*PushStat // "day bank" -> counts
 }
 
 func NewMockStatementRepo(households *MockHouseholdRepo) *MockStatementRepo {
@@ -711,8 +713,14 @@ func (m *MockStatementRepo) UpsertOperations(ctx context.Context, userID, househ
 		if op.UploadID != nil && !m.ownsUpload(userID, *op.UploadID) {
 			op.UploadID = nil
 		}
-		if prev, ok := m.ops[userID][op.ID]; ok && op.UploadID == nil {
-			op.UploadID = prev.op.UploadID
+		// As in SQL: source, occurred_at and fx_* stay the server's; the tombstone is one-way.
+		op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = "statement", nil, nil, nil
+		if prev, ok := m.ops[userID][op.ID]; ok {
+			if op.UploadID == nil {
+				op.UploadID = prev.op.UploadID
+			}
+			op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = prev.op.Source, prev.op.OccurredAt, prev.op.FxCurrency, prev.op.FxAmount
+			op.Deleted = op.Deleted || prev.op.Deleted
 		}
 		m.ops[userID][op.ID] = &mockOperation{op: op, householdID: householdID}
 	}
@@ -743,6 +751,134 @@ func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, s
 		end++
 	}
 	return all[:end], nil
+}
+
+// sameMoney: as moneyMatch in SQL — tenge by amount, a foreign currency by fx_*.
+func sameMoney(prev models.Operation, op PhoneOperation) bool {
+	if op.FxCurrency == nil {
+		return prev.FxCurrency == nil && prev.Amount == op.Amount
+	}
+	return op.FxAmount != nil && prev.FxCurrency != nil && prev.FxAmount != nil &&
+		*prev.FxCurrency == *op.FxCurrency && *prev.FxAmount == *op.FxAmount
+}
+
+// nearest: the operation of the person matching ok within `window` of the moment, nearest first.
+func (m *MockStatementRepo) nearest(userID string, at time.Time, window time.Duration, ok func(models.Operation) bool) *mockOperation {
+	var best *mockOperation
+	var bestGap time.Duration
+	for _, o := range m.ops[userID] {
+		prev := o.op
+		if prev.OccurredAt == nil || prev.OccurredAt.Before(at.Add(-window)) || prev.OccurredAt.After(at.Add(window)) || !ok(prev) {
+			continue
+		}
+		gap := prev.OccurredAt.Sub(at)
+		if gap < 0 {
+			gap = -gap
+		}
+		if best == nil || gap < bestGap || gap == bestGap && prev.ID < best.op.ID {
+			best, bestGap = o, gap
+		}
+	}
+	return best
+}
+
+// isTransfer: a transfer names its person — a repeat of it is also the same merchant (Р-9).
+func isTransfer(kind string) bool { return kind == "transfer-out" || kind == "transfer-in" }
+
+func (m *MockStatementRepo) InsertPhoneOperation(ctx context.Context, userID, householdID string, op PhoneOperation, w PhoneWindows) (PhoneInsert, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ops[userID] == nil {
+		m.ops[userID] = make(map[string]*mockOperation)
+	}
+	kind := phoneKind(op)
+	// As in SQL: (1) the same source and money within Repeat is a repeat.
+	if m.nearest(userID, op.OccurredAt, w.Repeat, func(prev models.Operation) bool {
+		return prev.Source == op.Source && sameMoney(prev, op) && (op.Source == "tap" || prev.Bank == op.Bank && prev.Kind == kind &&
+			(!isTransfer(kind) || prev.Merchant == op.Merchant))
+	}) != nil {
+		return PhoneRepeat, nil
+	}
+	// (2) A tap and a push of one purchase.
+	if kind == "purchase" && w.Pair > 0 {
+		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
+			return prev.Source == otherSource(op.Source) && prev.Kind == "purchase" && !prev.Deleted && sameMoney(prev, op) &&
+				(prev.Bank == "card" || op.Bank == "card" || prev.Bank == op.Bank)
+		}); o != nil {
+			bank, merchant := mergedFields(op, o.op.Bank, o.op.Merchant)
+			if merchant != o.op.Merchant {
+				o.op.CategoryID = nil
+			}
+			o.op.Bank, o.op.Merchant, o.op.UpdatedAt = bank, merchant, m.stamp()
+			return PhoneMerged, nil
+		}
+	}
+	// (3) A transfer between own banks: neither half names a person.
+	internal, result := op.Internal, PhoneSaved
+	stamp := m.stamp()
+	if opposite := oppositeTransfer(op); opposite != "" && w.Pair > 0 {
+		if o := m.nearest(userID, op.OccurredAt, w.Pair, func(prev models.Operation) bool {
+			return prev.Source != "statement" && prev.Kind == opposite && !prev.Internal && !prev.Deleted &&
+				prev.Bank != op.Bank && prev.FxCurrency == nil && prev.Amount == -op.Amount && prev.Merchant == applepay.Placeholder(opposite)
+		}); o != nil {
+			o.op.Internal, o.op.CategoryID, o.op.UpdatedAt = true, nil, stamp
+			internal, result = true, PhonePaired
+		}
+	}
+	at := op.OccurredAt
+	m.ops[userID][op.ID] = &mockOperation{householdID: householdID, op: models.Operation{
+		ID: op.ID, Bank: op.Bank, Date: op.Date, Amount: op.Amount, Kind: kind, Merchant: op.Merchant, Internal: internal,
+		UpdatedAt: stamp, Source: op.Source, OccurredAt: &at, FxCurrency: op.FxCurrency, FxAmount: op.FxAmount,
+	}}
+	return result, nil
+}
+
+// PushStat is one row of the mock push counter.
+type PushStat struct{ Parsed, Ignored, Unknown int }
+
+func (m *MockStatementRepo) CountPush(ctx context.Context, day, bank, column string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.pushStats == nil {
+		m.pushStats = map[string]*PushStat{}
+	}
+	key := day + " " + bank
+	s := m.pushStats[key]
+	if s == nil {
+		s = &PushStat{}
+		m.pushStats[key] = s
+	}
+	switch column {
+	case PushParsed:
+		s.Parsed++
+	case PushIgnored:
+		s.Ignored++
+	case PushUnknown:
+		s.Unknown++
+	}
+	return nil
+}
+
+// PushStats returns the counter of a day and bank (tests).
+func (m *MockStatementRepo) PushStats(day, bank string) PushStat {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s := m.pushStats[day+" "+bank]; s != nil {
+		return *s
+	}
+	return PushStat{}
+}
+
+func (m *MockStatementRepo) CountPhoneOperationsSince(ctx context.Context, userID string, since time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, o := range m.ops[userID] {
+		if o.op.Source != "statement" && o.op.OccurredAt != nil && !o.op.OccurredAt.Before(since) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (m *MockStatementRepo) ownsUpload(userID, uploadID string) bool {
