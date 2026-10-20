@@ -24,7 +24,7 @@ import {
 } from '@/lib/finance'
 import { ARTICLE_COLORS, spendColor } from '@/lib/palette'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
-import { isHand } from '@/lib/statements/model'
+import { isHand, spendOf } from '@/lib/statements/model'
 import type { Operation } from '@/lib/statements/types'
 import type { Allocation, Payment } from '@/types/finance'
 
@@ -38,7 +38,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import MonthSummaryCard from '@/components/MonthSummaryCard.vue'
-import OpCategorySheet from '@/components/OpCategorySheet.vue'
+import OpSheet from '@/components/OpSheet.vue'
 import { useQueryValue } from '@/components/useQuerySheet'
 
 /**
@@ -60,7 +60,9 @@ const canEdit = computed(() => !authStore.isViewer)
 /* ------------------ Период и лента ------------------ */
 const months = ref<string[]>([key.value])
 const moments = computed(() => progressMoments({ credits: financeStore.householdDoc.credits, goals: financeStore.goals, payments: financeStore.payments }))
-const source = computed(() => ({ ops: ops.all, payments: financeStore.payments, moments: moments.value, allocations: financeStore.allocations }))
+// Приход, которым вернули трату (Р-12, «Мне вернули» переводом), — не доход и не строка «Истории».
+const refundIncomes = computed(() => new Set(ops.all.flatMap((o) => (o.refund?.opId ? [o.refund.opId] : []))))
+const source = computed(() => ({ ops: ops.all.filter((o) => !refundIncomes.value.has(o.id)), payments: financeStore.payments, moments: moments.value, allocations: financeStore.allocations }))
 const feed = computed(() => historyFeed(source.value, months.value))
 const start = computed(() => historyStart(source.value))
 const canEarlier = computed(() => !!start.value && start.value < months.value[months.value.length - 1])
@@ -200,9 +202,9 @@ function openRecord(id: string) {
 }
 
 /* ------------------ Листы ------------------ */
-// Раздел задним числом — лист операции (`OpCategorySheet`). Ручную трату — нет: её раздел выбрал человек, правило по
+// Лист операции (`OpSheet`: заметка, раздел задним числом, «Мне вернули»). Ручную трату — нет: её раздел выбрал человек, правило по
 // продавцу её не меняет (бэклог «Ручная трата», Р-1); правится она на «Неделе» (лист «Трата»).
-const opOpen = ref<Operation | null>(null)
+const opOpen = ref<string | null>(null)
 // Отметка — её лист (снять отметку, «К плану месяца» у зарплаты); у досрочки листа отметки нет.
 const markOpen = ref<Payment | null>(null)
 </script>
@@ -236,10 +238,11 @@ const markOpen = ref<Payment | null>(null)
           :merchant="x.op.merchant"
           :letter="letter(x.op)"
           :category="opCategory(x.op)"
-          :amount="x.op.amount"
+          :amount="x.op.amount < 0 ? -spendOf(x.op) : x.op.amount"
+          :refund="x.op.refund?.amount"
           :muted="x.op.internal"
           :clickable="canEdit && !x.op.internal && !isHand(x.op)"
-          @click="opOpen = x.op"
+          @click="opOpen = x.op.id"
         />
         <Row
           v-else-if="x.kind === 'mark'"
@@ -302,7 +305,7 @@ const markOpen = ref<Payment | null>(null)
     <MonthSummaryCard :month="summaryKey" />
   </Sheet>
 
-  <OpCategorySheet :op="opOpen" @close="opOpen = null" />
+  <OpSheet :op-id="opOpen" @close="opOpen = null" />
 
   <MarkSheet
     v-if="markOpen && markOpen.kind !== 'prepay'"

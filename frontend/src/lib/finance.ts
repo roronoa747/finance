@@ -5194,8 +5194,11 @@ export type SectionWeek = {
   count: number
   /** Топ продавцов: имя, число операций, сумма — по убыванию суммы. */
   tops: { name: string; count: number; amount: number }[]
-  /** Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата», Р-2). */
-  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean }[] }[]
+  /**
+   * Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата»,
+   * Р-2); `amount` — `spendOf`, `refund` — сколько вернули (FB-04, Р-12).
+   */
+  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number }[] }[]
   /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
   more: { count: number; amount: number } | null
 }
@@ -5214,7 +5217,7 @@ export function sectionWeek(
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: spendOf(op), hand: isHand(op), key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5230,7 +5233,7 @@ export function sectionWeek(
   const days: SectionWeek['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }
@@ -5255,8 +5258,10 @@ export type WeekFeedOp = {
   categoryId: string
   /** Пришла с телефона (касание Apple Pay или пуш банка); нет — строка выписки. */
   phone: boolean
-  /** Вписана руками (бэклог «Ручная трата», Р-2): нажатие — лист правки «Трата», а не «куда отнести?». */
+  /** Вписана руками (бэклог «Ручная трата», Р-2): нажатие — лист правки «Трата», а не лист операции. */
   hand: boolean
+  /** «Мне вернули» (FB-04, Р-12): сколько вернули; `amount` — уже за вычетом (`spendOf`). */
+  refund?: number
 }
 
 /**
@@ -5288,6 +5293,7 @@ export function weekFeed(
       categoryId: op.categoryId ?? UNKNOWN_CATEGORY,
       phone: !!op.source,
       hand: isHand(op),
+      ...(op.refund ? { refund: op.refund.amount } : {}),
     }
     const last = days.at(-1)
     if (last?.date === op.date) last.ops.push(item)

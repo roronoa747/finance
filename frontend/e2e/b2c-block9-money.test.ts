@@ -171,7 +171,7 @@ describe('e2e / B2C Блок 9 — «Деньги без лишнего» на �
     // по-прежнему трата «Свободно» (мелочи ML-03, хвост 952: из «Свободно» уходят только строки платежей месяца).
     const target = ops.all[0]
     await screen(A.pinia, Money, '/money/history', undefined, [
-      screenMixin({ opOpen: target }, (s) => (s.recategorize as (to: unknown) => void)({ categoryId: 'sc_subscriptions' })),
+      screenMixin({ opOpen: target.id }, (s) => (s.choose as (to: unknown) => void)({ categoryId: 'sc_subscriptions' })),
     ])
     await Promise.resolve()
     const totals = A.store.householdDoc.spendTotals ?? []

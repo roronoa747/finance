@@ -17,14 +17,20 @@ import NewCategoryChip from '@/components/NewCategoryChip.vue'
  * же (FB-03). Ответ — правило
  * `MerchantRule['to']`; что с ним делать (в разборе или задним числом), решает родитель.
  */
-// `top` — сколько разделов видно до «Ещё N ▾» (док пачки — 3, как в макете: док не закрывает список).
-const props = withDefaults(defineProps<{ counterparty?: boolean; forgot?: boolean; top?: number }>(), { top: 6 })
+// `top` — сколько разделов видно до «Ещё N ▾» (док пачки — 3, как в макете: док не закрывает список). `current` — раздел
+// операции сейчас (лист операции, FB-04): чип выбран и виден и свёрнутым.
+const props = withDefaults(defineProps<{ counterparty?: boolean; forgot?: boolean; top?: number; current?: string | null }>(), { top: 6, current: null })
 const emit = defineEmits<{ (e: 'choose', to: MerchantRule['to']): void }>()
 
 const finance = useFinanceStore()
 const categories = computed(() => liveSpendCategories(finance.householdDoc.spendCategories))
 const more = ref(false)
-const shown = computed(() => (more.value ? categories.value : categories.value.slice(0, props.top)))
+const shown = computed(() => {
+  if (more.value) return categories.value
+  const top = categories.value.slice(0, props.top)
+  const picked = categories.value.find((c) => c.id === props.current)
+  return picked && !top.includes(picked) ? [...top, picked] : top
+})
 const personOpen = ref(false)
 const personText = ref('')
 
@@ -42,8 +48,8 @@ function savePerson() {
 <template>
   <div class="flex flex-col gap-2">
     <div class="flex flex-wrap gap-2">
-      <Chip v-for="c in shown" :key="c.id" :sw="spendColor(c)" @click="choose({ categoryId: c.id })">{{ c.name }}</Chip>
-      <Chip v-if="!more && categories.length > top" quiet @click="more = true">Ещё {{ categories.length - top }} ▾</Chip>
+      <Chip v-for="c in shown" :key="c.id" :on="c.id === current" :sw="spendColor(c)" @click="choose({ categoryId: c.id })">{{ c.name }}</Chip>
+      <Chip v-if="!more && categories.length > shown.length" quiet @click="more = true">Ещё {{ categories.length - shown.length }} ▾</Chip>
       <NewCategoryChip @created="(id) => choose({ categoryId: id })" />
       <Chip v-if="counterparty" quiet @click="(personOpen = true), (personText = '')">Кому → что</Chip>
       <Chip quiet @click="choose({ internal: true })">Между своими</Chip>

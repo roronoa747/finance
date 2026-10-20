@@ -218,7 +218,7 @@ describe('MAN-02: правка и удаление ручной траты', () 
     await press(q('[data-week-feed]'))
     await press(q(`[data-feed-op="${LINE.id}"]`))
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2)
-    expect(txt(document.querySelectorAll('[role="dialog"]')[1])).toContain('Magnum — куда отнести?')
+    expect(txt(document.querySelectorAll('[role="dialog"]')[1])).toContain('Мне вернули') // лист операции (FB-04)
     expect(q('[data-hand-sheet]')).toBeNull()
   })
 

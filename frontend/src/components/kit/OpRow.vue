@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { PhDeviceMobile } from '@phosphor-icons/vue'
-import { money } from '@/lib/money'
+import { money, plain } from '@/lib/money'
 
 /**
  * Строка операции `.op` (DESIGN.md §5): квадрат 36 с буквой на цвете раздела, продавец,
@@ -20,8 +20,10 @@ withDefaults(
     muted?: boolean
     /** Пришла с телефона (Apple Pay, пуш банка) — маленький значок у продавца. */
     phone?: boolean
+    /** «Мне вернули» (FB-04): сколько вернули — мелко в строке раздела; `amount` — уже за вычетом. */
+    refund?: number | null
   }>(),
-  { category: null, date: '', letter: '', clickable: false, muted: false, phone: false },
+  { category: null, date: '', letter: '', clickable: false, muted: false, phone: false, refund: null },
 )
 
 const emit = defineEmits<{ (e: 'click'): void }>()
@@ -49,10 +51,10 @@ const emit = defineEmits<{ (e: 'click'): void }>()
       </span>
       <span class="flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: category?.color ?? 'var(--s-unknown)' }" aria-hidden="true" />
-        <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template></span>
+        <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template><template v-if="refund"> · <span data-refund>вернули {{ plain(refund) }}</span></template></span>
       </span>
     </span>
     <span v-if="muted" class="money whitespace-nowrap text-ink-2">{{ money(Math.abs(amount)) }}</span>
-    <span v-else class="money whitespace-nowrap" :class="amount > 0 ? 'text-ok' : 'text-ink'">{{ amount > 0 ? '+' : '−' }}{{ money(Math.abs(amount)) }}</span>
+    <span v-else class="money whitespace-nowrap" :class="amount > 0 ? 'text-ok' : 'text-ink'">{{ amount > 0 ? '+' : amount < 0 ? '−' : '' }}{{ money(Math.abs(amount)) }}</span>
   </component>
 </template>

@@ -19,6 +19,7 @@ import UploadsSheet from '@/components/week/UploadsSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
 import { useQuerySheet } from '@/components/useQuerySheet'
 import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
+import OpSheet from '@/components/OpSheet.vue'
 import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import { arrivalNote } from '@/components/useSalaryTap'
@@ -146,6 +147,8 @@ const feedOpen = ref(false)
 
 /* ---------- листы: раздел (Р-101) и «Мои выписки» (Р-102) ---------- */
 const sectionFor = ref<string | null>(null)
+/** Операция из листа раздела — лист операции поверх (FB-04). */
+const sectionOp = ref<string | null>(null)
 const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === sectionFor.value) ?? null)
 const uploadsOpen = ref(false)
 
@@ -582,7 +585,9 @@ onBeforeUnmount(() => {
       :amount-note="firstSalary?.note ?? ''"
       @close="firstSalary = null"
     />
-    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" />
+    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" @open="(id) => (sectionOp = id)" />
+    <!-- Строка выписки в листе раздела — лист операции поверх (FB-04, Р-14). -->
+    <OpSheet :op-id="sectionOp" :z="60" @close="sectionOp = null" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
     <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />

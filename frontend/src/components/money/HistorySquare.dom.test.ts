@@ -68,7 +68,7 @@ describe('B2C-44: «куда отнести?» из «Истории»', () => {
     row.click()
     await nextTick()
     const dialog = document.querySelector('[role="dialog"]')!
-    expect(dialog.textContent).toContain('Непонятно ТОО — куда отнести?')
+    expect(dialog.textContent).toContain('Мне вернули') // лист операции (FB-04)
     for (const t of ['Продукты', 'Между своими']) expect(dialog.textContent).toContain(t)
     ;[...dialog.querySelectorAll<HTMLButtonElement>('button')].find((x) => x.textContent?.trim() === 'Продукты')!.click()
     await nextTick()
@@ -212,5 +212,54 @@ describe('RZ-08: раздел по адресу `?cat=<id>` («Открыть» 
     await mountAt('/money/history?cat=sc_cafe')
     expect(document.querySelector('[data-chip="sc_cafe"]')!.getAttribute('aria-pressed')).toBe('true')
     expect(document.body.textContent).toContain('Здесь пока ничего.')
+  })
+})
+
+describe('FB-04: лист операции из «Истории»', () => {
+  async function history(role: 'member' | 'viewer') {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs(role))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const ops = useOperationsStore()
+    ops.ops.s1 = { ...op('s1', '2026-09-11', -30_000, 'Дана К.'), kind: 'transfer-out', counterparty: 'Дана К.', categoryId: 'sc_people' }
+    ops.ops.i1 = { ...op('i1', '2026-09-14', 30_000, 'Дана К.'), kind: 'transfer-in', counterparty: 'Дана К.' }
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/money/history')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(HistorySquare)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+    return ops
+  }
+
+  it('заметка и «Мне вернули» на месте; вернули переводом — приход ушёл из «Истории», строка траты — 0 и «вернули»', async () => {
+    const ops = await history('member')
+    expect(document.querySelectorAll('button').length).toBeGreaterThan(0)
+    const rows = () => [...document.querySelectorAll<HTMLButtonElement>('button')].filter((b) => b.textContent?.includes('Дана К.'))
+    // Перевод и приход — две строки (приход не трата — не кнопка, но строка есть).
+    expect(document.body.textContent).toContain('+30')
+    rows().find((b) => b.textContent?.includes('−'))!.click()
+    await nextTick()
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.querySelector('[data-op-memo]')).toBeTruthy()
+    ;(dialog.querySelector('[data-op-refund]') as HTMLElement).click()
+    await nextTick()
+    ;(dialog.querySelector('[data-op-income="i1"]') as HTMLElement).click()
+    await nextTick()
+    await nextTick()
+    expect(ops.all.find((o) => o.id === 's1')?.refund).toEqual({ amount: 30_000, opId: 'i1' })
+    expect(document.body.textContent).not.toContain('+30')
+    expect(document.querySelector('[data-refund]')?.textContent?.replace(/\s/g, '')).toBe('вернули30000')
+  })
+
+  it('viewer — строки операций не кнопки', async () => {
+    await history('viewer')
+    expect([...document.querySelectorAll('button')].some((b) => b.textContent?.includes('Дана К.'))).toBe(false)
+    expect(document.body.textContent).toContain('Дана К.')
   })
 })
