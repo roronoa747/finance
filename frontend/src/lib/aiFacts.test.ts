@@ -6,10 +6,12 @@ import {
   derivedCredits,
   dreamShift,
   firstDebt,
+  goalPace,
   goalTerm,
   habitImages,
   imageLine,
   interestImage,
+  mainGoal,
   moneySettingsOf,
   monthPlan,
   shiftSpan,
@@ -173,12 +175,24 @@ describe('buildReviewFacts — факты разбора v2 (AU-11)', () => {
     expect(find(facts, /проценты банку/)).toBeUndefined()
   })
 
-  it('без привычек — проценты банку образом (`interestImage`)', () => {
+  it('без привычек — проценты банку в месяц; «за год» модели не идёт («Фидбек», Р-8)', () => {
     const doc = family({ habitTotals: [] })
     const img = interestImage(stateOf(doc))!
     const { facts } = build(doc).payload
     expect(find(facts, 'проценты банку в месяц')).toMatchObject({ raw: img.perMonth })
-    expect(find(facts, 'во что складываются проценты банку за год')).toMatchObject({ value: imageLine(img), raw: [img.yearly] })
+    expect(find(facts, /проценты банку за год/)).toBeUndefined()
+    expect(JSON.stringify(facts)).not.toMatch(/за год|в год/)
+  })
+
+  it('образ привычки «за год — доля мечты» модели не идёт («Фидбек», Р-8): только привычка в месяц', () => {
+    const doc = family({ habitTotals: CLOSED.map((m) => ht(m, 'delivery', 10, 40_000)) })
+    const img = habitImages(stateOf(doc), KEY)[0]!
+    expect(img.kind).toBe('dream')
+    expect(imageLine(img)).toMatch(/за год/)
+    const { facts } = build(doc).payload
+    expect(find(facts, /^привычка «.+» — в месяц$/)).toMatchObject({ raw: 40_000 })
+    expect(find(facts, /^во что складывается/)).toBeUndefined()
+    expect(JSON.stringify(facts)).not.toMatch(/за год|в год/)
   })
 
   it('перенос образа уже сделан — «уже переносим …», а не строка образа', () => {
@@ -335,20 +349,23 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
   it('факты каждого вида находки и сценария первыми; raw согласован с value; about без цифр вне «»', () => {
     const doc = withFinds()
     const { payload, findings } = build(doc, 'month')
-    // Утечка и двойное — по 144 000 в год: порядок находок сохраняется.
+    // Утечка и двойное — по 12 000 в месяц: порядок находок сохраняется.
     expect(findings.map((f) => f.kind)).toEqual(['recurring', 'leak', 'double', 'pricier'])
     const facts = payload.facts
-    // Утечка: (10 500 + 13 500) / 2 = 12 000 в месяц, 8 раз, 144 000 за год; образ — доля главной мечты.
+    // Утечка: (10 500 + 13 500) / 2 = 12 000 в месяц, 8 раз; образ — доля месячного взноса в главную мечту. Фактов «за год» нет.
+    const main = mainGoal(doc.goals, doc.goalOrder, doc.moneySettings)!
     expect(find(facts, 'частые траты у «APTEKA PLUS» — в месяц')).toMatchObject({ value: money(12_000), raw: 12_000 })
     expect(find(facts, 'частые траты у «APTEKA PLUS» — раз в месяц')).toMatchObject({ value: '8 раз', raw: 8 })
-    expect(find(facts, 'частые траты у «APTEKA PLUS» — за год')).toMatchObject({ value: money(144_000), raw: 144_000 })
-    expect(find(facts, /^частые траты у «APTEKA PLUS» за год — доля мечты «.+»$/)?.value).toMatch(/^\d+ %$/)
-    expect(find(facts, 'новое регулярное списание «FITNESS LAB 24», которого нет в плане — в месяц')).toMatchObject({ raw: 15_000 })
-    expect(find(facts, 'новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toMatchObject({ raw: 180_000, value: money(180_000) })
+    const share = Math.round((12_000 * 100) / goalPace(main, KEY))
+    expect(find(facts, `частые траты у «APTEKA PLUS» в месяц — это доля взноса в мечту «${main.name}»`)).toMatchObject({ value: `${share} %`, raw: share })
+    expect(find(facts, 'новое регулярное списание «FITNESS LAB 24», которого нет в плане — в месяц')).toMatchObject({ raw: 15_000, value: money(15_000) })
     expect(find(facts, 'подписка «Кинопоиск» стала дороже: было')).toMatchObject({ raw: 2_490 })
     expect(find(facts, 'подписка «Кинопоиск» стала дороже: стало')).toMatchObject({ raw: 2_990 })
-    expect(find(facts, 'списание «SPORT CLUB» прошло дважды одной суммой')).toMatchObject({ raw: 12_000 })
-    // Сценарий — по самой дорогой из утечек, новых и двойных: «Fitness Lab» 180 000 в год → 15 000 в месяц в мечту.
+    expect(find(facts, 'подписка «Кинопоиск» стала дороже на — в месяц')).toMatchObject({ raw: 500, value: money(500) })
+    expect(find(facts, 'списание «SPORT CLUB» прошло дважды одной суммой — лишнее в месяц')).toMatchObject({ raw: 12_000, value: money(12_000) })
+    // Ни одного факта «за год» (Р-19 «Фидбек»): годовых сумм модель не видит.
+    for (const f of facts) expect(`${f.about} ${f.value}`, f.about).not.toMatch(/за год|в год/)
+    // Сценарий — по самой дорогой из утечек, новых и двойных: «Fitness Lab» 15 000 в месяц в мечту.
     const s = find(facts, /^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)!
     expect(s.value).toBe(shiftSpan(s.raw as number))
     // Находки — первыми, факты v2 — после.
@@ -381,12 +398,13 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
     const label = (about: string | RegExp) => labels.get(find(payload.facts, about)!.id)
     expect(label('частые траты у «APTEKA PLUS» — в месяц')).toBe('в месяц · APTEKA PLUS')
     expect(label('частые траты у «APTEKA PLUS» — раз в месяц')).toBe('в месяц · APTEKA PLUS')
-    expect(label('частые траты у «APTEKA PLUS» — за год')).toBe('за год · APTEKA PLUS')
-    expect(label(/^частые траты у «APTEKA PLUS» за год — доля мечты «.+»$/)).toMatch(/^мечты «.+» за год · APTEKA PLUS$/)
-    expect(label('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe('за год · FITNESS LAB 24')
+    expect(label(/^частые траты у «APTEKA PLUS» в месяц — это доля взноса в мечту «.+»$/)).toMatch(/^взноса в «.+» · APTEKA PLUS$/)
+    expect(label('новое регулярное списание «FITNESS LAB 24», которого нет в плане — в месяц')).toBe('в месяц · FITNESS LAB 24')
     expect(label('подписка «Кинопоиск» стала дороже: было')).toBe('было · Кинопоиск')
     expect(label('подписка «Кинопоиск» стала дороже: стало')).toBe('стало · Кинопоиск')
-    expect(label('списание «SPORT CLUB» прошло дважды одной суммой')).toBe('дважды · SPORT CLUB')
+    expect(label('подписка «Кинопоиск» стала дороже на — в месяц')).toBe('дороже в месяц · Кинопоиск')
+    expect(label('списание «SPORT CLUB» прошло дважды одной суммой — лишнее в месяц')).toBe('лишнее в месяц · SPORT CLUB')
+    for (const l of labels.values()) expect(l).not.toMatch(/за год|в год/)
     expect(label(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toMatch(/^«.+» раньше · без FITNESS LAB 24$/)
     expect(label('доход месяца')).toBeUndefined()
     for (const f of payload.facts) expect(Object.keys(f).sort()).toEqual(['about', 'id', 'raw', 'value'])
@@ -407,11 +425,12 @@ describe('buildReviewFacts v3 — находки и действия (RZ-03)', (
     const owner = (about: string | RegExp) => byFact.get(find(payload.facts, about)!.id)
     const of = (kind: string) => findings.find((f) => f.kind === kind)
     expect(owner('частые траты у «APTEKA PLUS» — в месяц')).toBe(of('leak'))
-    expect(owner('частые траты у «APTEKA PLUS» — за год')).toBe(of('leak'))
-    expect(owner('новое регулярное списание «FITNESS LAB 24», которого нет в плане — за год')).toBe(of('recurring'))
+    expect(owner(/^частые траты у «APTEKA PLUS» в месяц — это доля взноса/)).toBe(of('leak'))
+    expect(owner('новое регулярное списание «FITNESS LAB 24», которого нет в плане — в месяц')).toBe(of('recurring'))
     expect(owner('подписка «Кинопоиск» стала дороже: было')).toBe(of('pricier'))
     expect(owner('подписка «Кинопоиск» стала дороже: стало')).toBe(of('pricier'))
-    expect(owner('списание «SPORT CLUB» прошло дважды одной суммой')).toBe(of('double'))
+    expect(owner('подписка «Кинопоиск» стала дороже на — в месяц')).toBe(of('pricier'))
+    expect(owner('списание «SPORT CLUB» прошло дважды одной суммой — лишнее в месяц')).toBe(of('double'))
     expect(owner(/^если убрать «FITNESS LAB 24» — мечта «.+» раньше на$/)).toBe(of('recurring'))
     expect(owner('доход месяца')).toBeUndefined()
     expect(owner(/^главная мечта/)).toBeUndefined()

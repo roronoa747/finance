@@ -526,45 +526,48 @@ describe('requestReview v3 — сохранение', () => {
     aiReview.mockImplementation(async (body: unknown) => {
       const b = body as ReviewPayloadV3
       const open = b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!
-      const yearly = b.facts.find((f) => f.about === 'частые траты у «APTEKA» — за год')!
+      const monthly = b.facts.find((f) => f.about === 'частые траты у «APTEKA» — в месяц')!
       return {
         where: 'Где.',
         advices: [
           { title: 'Досрочно', text: 'Текст.', figure: null, action: 'a1' },
           { title: 'Чужое', text: 'Текст.', figure: null, action: 'a9' },
-          { title: 'Аптека', text: 'Текст.', figure: yearly.id, action: open.id },
+          { title: 'Аптека', text: 'Текст.', figure: monthly.id, action: open.id },
         ],
       } as never
     })
     const r = await ai.runReview(KEY, 'month', client)
     expect(r!.advices!.map((a) => a.title)).toEqual(['Досрочно', 'Аптека'])
     expect(r!.advices![0].action).toMatchObject({ kind: 'do', candidate: { kind: 'prepay' } })
-    expect(r!.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA» — за год', value: money(144_000) }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka' } } })
-    // Утечка: 12 000 в месяц × 12 — только она в советах; «Сделать» находки не несёт; двойное (60 000 в год) нашли, но
-    // совета о нём нет — в X не входит (Р-19, критик Блока 1: без `used` X был бы 204 000).
-    expect(r!.work).toMatchObject({ found: 2, yearly: 144_000 })
+    expect(r!.advices![1]).toMatchObject({
+      figure: { about: 'частые траты у «APTEKA» — в месяц', value: money(12_000), label: 'в месяц · APTEKA' },
+      action: { kind: 'open', target: { kind: 'seller', id: 'apteka' } },
+    })
+    // Утечка: 12 000 в месяц — только она в советах; «Сделать» находки не несёт; двойное (5 000 лишнего в месяц) нашли,
+    // но совета о нём нет — в X не входит (Р-19, критик Блока 1: без `used` X был бы 17 000). Годовой суммы нет.
+    expect(r!.work).toEqual({ ops: expect.any(Number), found: 2, monthly: 12_000 })
     expect(r!.where).toBe('Где.')
   })
 
   // Ревью frontend Н-2: X — по находке крупной цифры совета, без цифры — по кнопке.
-  it('цифра утечки + «Сделать» — X = цена утечки в год; цифра двойного + «Открыть» аптеки — X = двойное', async () => {
+  it('цифра утечки + «Сделать» — X = цена утечки в месяц; цифра двойного + «Открыть» аптеки — X = двойное', async () => {
     const answerWith = (figureAbout: string, action: (b: ReviewPayloadV3) => string) => async (body: unknown) => {
       const b = body as ReviewPayloadV3
       return { where: 'Где.', advices: [{ title: 'Совет', text: 'Текст.', figure: b.facts.find((f) => f.about === figureAbout)!.id, action: action(b) }] } as never
     }
     let { ai } = family({ doc: doc() })
     let { client, aiReview } = fakeClient()
-    aiReview.mockImplementation(answerWith('частые траты у «APTEKA» — за год', () => 'a1'))
+    aiReview.mockImplementation(answerWith('частые траты у «APTEKA» — в месяц', () => 'a1'))
     let r = await ai.runReview(KEY, 'month', client)
     expect(r!.advices![0].action).toMatchObject({ kind: 'do' })
-    expect(r!.work).toMatchObject({ found: 2, yearly: 144_000 })
+    expect(r!.work).toMatchObject({ found: 2, monthly: 12_000 })
     ;({ ai } = family({ doc: doc() }))
     ;({ client, aiReview } = fakeClient())
-    aiReview.mockImplementation(answerWith('списание «SPORT CLUB» прошло дважды одной суммой', (b) => b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!.id))
+    aiReview.mockImplementation(answerWith('списание «SPORT CLUB» прошло дважды одной суммой — лишнее в месяц', (b) => b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!.id))
     r = await ai.runReview(KEY, 'month', client)
     expect(r!.advices![0].action).toMatchObject({ kind: 'open', target: { id: 'apteka' } })
-    // Двойное: 5 000 лишнего × 12; утечка кнопки (144 000) в X не идёт — на карточке число двойного.
-    expect(r!.work).toMatchObject({ found: 2, yearly: 60_000 })
+    // Двойное: 5 000 лишнего в месяц; утечка кнопки (12 000) в X не идёт — на карточке число двойного.
+    expect(r!.work).toMatchObject({ found: 2, monthly: 5_000 })
   })
 
   it('все советы на чужие действия — разбор не сохраняется, «Не вышло»', async () => {

@@ -29,8 +29,6 @@ import {
   stepCandidates,
   stepEffectText,
   usualMonths,
-  type HabitImage,
-  type InterestImage,
   type MonthPlanCtx,
   type MonthPlanState,
   type ReviewFinding,
@@ -100,22 +98,15 @@ export type ReviewFactsV3 = {
 const pctText = (n: number) => `${String(n).replace('.', ',')} %`
 const times = (n: number) => `${n} ${plural(n, 'раз', 'раза', 'раз')}`
 
-/** Числа строки-образа (Р-24): `imageLine` пишет их все — сервер сверяет каждое. */
-function imageRaw(image: HabitImage | InterestImage): number[] {
-  if (!('habit' in image)) return [image.yearly]
-  if (image.kind === 'dream') return image.share !== null ? [image.yearly!, image.share] : [image.yearly!]
-  return [image.months!]
-}
-
 /**
- * Черновик факта; `label` — короткая подпись крупной цифры совета для экрана («за год · Магазин у дома»; владелец
+ * Черновик факта; `label` — короткая подпись крупной цифры совета для экрана («в месяц · Магазин у дома»; владелец
  * 2026-10-19, RZ-15): `about` — строка для модели, на экране шумна. В тело ручки подпись не уходит.
  */
 type Draft = Omit<ReviewFact, 'id'> & { label?: string }
 /** Название в подписи — без «ёлочек», коротко. */
 const bare = (s: string) => clip(s.replace(/[«»]/g, '').trim(), NAME_MAX)
 
-/** Факты одной находки (Р-5): слова — черновик, финал — `/ux` Блока 2. */
+/** Факты одной находки (Р-5): всё — за месяц, фактов «за год» нет (бэклог «Фидбек», Р-8, Р-19). */
 function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
   const out: Draft[] = []
   const put = (about: string, value: string, raw: ReviewFact['raw'], label: string) => out.push({ about, value, raw, label })
@@ -124,9 +115,9 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
     const who = `частые траты у ${nm(seller(f))}`
     put(`${who} — в месяц`, money(f.monthly), f.monthly, `в месяц · ${s}`)
     put(`${who} — раз в месяц`, times(f.count), f.count, `в месяц · ${s}`)
-    put(`${who} — за год`, money(f.yearly), f.yearly, `за год · ${s}`)
-    if (f.image?.kind === 'dream') put(`${who} за год — доля мечты ${nm(f.image.name)}`, pctText(f.image.share), f.image.share, `мечты «${bare(f.image.name)}» за год · ${s}`)
-    else if (f.image) put(`${who} за год — это`, f.image.name, f.image.price, `за год · ${s}`)
+    if (f.image?.kind === 'dream')
+      put(`${who} в месяц — это доля взноса в мечту ${nm(f.image.name)}`, pctText(f.image.share), f.image.share, `взноса в «${bare(f.image.name)}» · ${s}`)
+    else if (f.image) put(`${who} в месяц — это`, f.image.name, f.image.price, `в месяц · ${s}`)
   } else if (f.kind === 'grew') {
     const cat = nm(f.name)
     const c = bare(f.name)
@@ -140,13 +131,15 @@ function findingFacts(f: ReviewFinding, thisMonth: boolean): Draft[] {
   } else if (f.kind === 'recurring') {
     const s = bare(seller(f))
     const who = `новое регулярное списание ${nm(seller(f))}, которого нет в плане`
-    put(`${who} — в месяц`, money(f.amount), f.amount, `в месяц · ${s}`)
-    put(`${who} — за год`, money(f.yearly), f.yearly, `за год · ${s}`)
+    put(`${who} — в месяц`, money(f.monthly), f.monthly, `в месяц · ${s}`)
   } else if (f.kind === 'pricier') {
+    const every = f.every === 'year' ? 'раз в год' : 'в месяц'
     put(`подписка ${nm(f.name)} стала дороже: было`, money(f.was), f.was, `было · ${bare(f.name)}`)
     put(`подписка ${nm(f.name)} стала дороже: стало`, money(f.amount), f.amount, `стало · ${bare(f.name)}`)
+    put(`подписка ${nm(f.name)} стала дороже на — ${every}`, money(f.monthly), f.monthly, `дороже ${every} · ${bare(f.name)}`)
   } else {
-    put(`списание ${nm(seller(f))} прошло дважды одной суммой`, money(f.amount), f.amount, `дважды · ${bare(seller(f))}`)
+    const s = bare(seller(f))
+    put(`списание ${nm(seller(f))} прошло дважды одной суммой — лишнее в месяц`, money(f.monthly), f.monthly, `лишнее в месяц · ${s}`)
   }
   return out
 }
@@ -244,10 +237,12 @@ function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefi
     fact(`привычка ${name} — в месяц`, money(h.monthly), h.monthly)
     // Перенос уже сделан (Х-9) — не повод звать перенести ещё раз.
     if (h.moved) fact(`уже переносим из ${name} в мечту каждый месяц`, money(h.moved), h.moved)
-    else fact(`во что складывается привычка ${name}`, maskNames(imageLine(h), people), imageRaw(h))
+    // Образ «за год — доля мечты» модели не идёт (бэклог «Фидбек», Р-8): годовых цифр в разборе нет. Срок «накопить» и
+    // «окупится» — одно число строки (`imageLine`), сервер сверяет его.
+    else if (h.kind !== 'dream') fact(`во что складывается привычка ${name}`, maskNames(imageLine(h), people), [h.months!])
   } else if (image) {
+    // «Проценты банку за год» — тоже нет (Р-8): только месяц.
     fact('проценты банку в месяц', money(image.perMonth), image.perMonth)
-    fact('во что складываются проценты банку за год', maskNames(imageLine(image), people), imageRaw(image))
   }
 
   // Итог закрытого прошлого месяца — для повода «месяц», если выписки его покрывают целиком.

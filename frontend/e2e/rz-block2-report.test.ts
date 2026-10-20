@@ -64,7 +64,7 @@ function answerFor(body: ReviewPayloadV3) {
     advices: [
       { title: 'Отложим в подушку', text: 'Подушки почти нет — остаток месяца в неё.', figure: null, action: id('из остатка месяца в подушку') },
       { title: 'Кафе', text: 'Один вечер раздул раздел.', figure: fact('траты на «Кафе и рестораны» выше обычного на'), action: id('открыть траты «Кафе и рестораны»') },
-      { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact('частые траты у «APTEKA PLUS» — за год'), action: id('открыть покупки у «APTEKA PLUS»') },
+      { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact('частые траты у «APTEKA PLUS» — в месяц'), action: id('открыть покупки у «APTEKA PLUS»') },
     ],
   }
 }
@@ -139,8 +139,9 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
     const shown = visible(html)
     expect(shown).toContain('Работа ИИ')
-    // RZ-14: крупно «≈ X ₸», «в год уходит на найденное», строка «K находок из N операций».
-    expect(shown).toMatch(/≈ [\d ]+ ₸ в год уходит на найденное \d+ наход\S* из [\d ]+ операц/)
+    // RZ-14: крупно «≈ X ₸», «в месяц уходит на найденное» («Фидбек», Р-19), строка «K находок из N операций».
+    expect(shown).toMatch(/≈ [\d ]+ ₸ в месяц уходит на найденное \d+ наход\S* из [\d ]+ операц/)
+    expect(shown).not.toMatch(/за год|в год/)
     expect(shown).toContain('Куда ушло в октябре')
     // Полосы — разделы октября; кафе выше обычного — отмечено.
     expect([...html.matchAll(/data-where-row="([^"]+)"/g)].map((m) => m[1])).toEqual(['sc_cafe', 'sc_food'])

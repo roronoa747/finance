@@ -25,11 +25,11 @@ const familyDoc = (): SyncDoc => planFamilyDoc({ reviewFinds: [leak('a', '2026-0
 
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 
-/** Ответ модели: один совет «Открыть покупки у аптеки» с годовой суммой. */
+/** Ответ модели: один совет «Открыть покупки у аптеки» с суммой в месяц («Фидбек», Р-19). */
 function answerFor(body: ReviewPayloadV3) {
   const apteka = body.actions.find((a) => a.kind === 'open' && a.about === 'открыть покупки у «APTEKA PLUS»')!
-  const yearly = body.facts.find((f) => f.about === 'частые траты у «APTEKA PLUS» — за год')!
-  return { where: 'Аптека у дома тянет больше, чем кажется.', advices: [{ title: 'Аптека у дома', text: `За год у «APTEKA PLUS» уходит ${yearly.value}.`, figure: yearly.id, action: apteka.id }] }
+  const monthly = body.facts.find((f) => f.about === 'частые траты у «APTEKA PLUS» — в месяц')!
+  return { where: 'Аптека у дома тянет больше, чем кажется.', advices: [{ title: 'Аптека у дома', text: `В месяц у «APTEKA PLUS» уходит ${monthly.value}.`, figure: monthly.id, action: apteka.id }] }
 }
 
 describe('e2e / Разбор Блок 1 — приёмка: согласие v3 один раз', () => {
