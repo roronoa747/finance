@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '19 октября 2026'
+const UPDATED = '20 октября 2026'
 </script>
 
 <template>
@@ -100,7 +100,7 @@ const UPDATED = '19 октября 2026'
         on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent, the
         household's month reviews with the figures sent, and monthly AI request counts and spend.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 19, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 20, 2026.
       </p>
     </section>
   </article>
