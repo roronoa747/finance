@@ -10,6 +10,8 @@ import Toast from '@/components/kit/Toast.vue'
 import Toggle from '@/components/kit/Toggle.vue'
 import { useFlash } from '@/components/kit/useFlash'
 import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
+import { agoLabel } from '@/lib/dates'
 import { pct as share, usdFromMicros, usdWhole } from '@/lib/money'
 import { plural } from '@/lib/utils'
 
@@ -92,6 +94,24 @@ const spent = (requests: number, micros: number, limit: number) => {
   return `${n} · ${micros === 0 ? '≈ —' : `${usdFromMicros(micros)} из ${usdWhole(limit)}`}`
 }
 
+/**
+ * Список семей (бэклог «Семьи в админке», Р-1…Р-3): порядок — ответа сервера (ИИ, затем свежесть входа); на экране
+ * первые 10, остальные — тихой «Ещё N»; поиск по части почты — все совпадения без лимита. Зелёная точка — вход за
+ * 7 суток, то же окно, что у «Активные за 7 дней»; подпись «сегодня / вчера / N дней назад» — по дням Алматы.
+ */
+const FAMILIES_SHOWN = 10
+const ACTIVE_MS = 7 * 86_400_000
+const query = ref('')
+const showAll = ref(false)
+const needle = computed(() => query.value.trim().toLowerCase())
+const shownFamilies = computed(() => {
+  const all = families.value?.families ?? []
+  if (needle.value) return all.filter((f) => f.emails.some((e) => e.toLowerCase().includes(needle.value)))
+  return showAll.value ? all : all.slice(0, FAMILIES_SHOWN)
+})
+const moreFamilies = computed(() => (needle.value ? 0 : (families.value?.families.length ?? 0) - shownFamilies.value.length))
+const isActive = (at: string | null) => at !== null && Date.now() - Date.parse(at) < ACTIVE_MS
+
 onMounted(async () => {
   void loadFamilies()
   try {
@@ -149,25 +169,51 @@ const funnel = computed(() => {
       </p>
       <p v-if="familiesError" role="alert" class="mb-1 text-[13px] text-warn">{{ familiesError }}</p>
       <p v-if="!families.families.length" class="text-[14px] text-ink-2">Семей пока нет.</p>
-      <ul v-else>
-        <li
-          v-for="f in families.families"
-          :key="f.id"
-          class="flex items-center gap-3 border-t border-line py-2.5 first:border-0"
-          :data-family="f.id"
-        >
-          <div class="min-w-0 flex-1">
-            <div class="truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</div>
-            <div v-if="f.ai || f.requests > 0 || f.cost_micros > 0" class="type-meta mt-0.5 num" data-spent>{{ spent(f.requests, f.cost_micros, families.limit_micros) }}</div>
-          </div>
-          <Toggle
-            :model-value="f.ai"
-            :label="`ИИ: ${f.emails.join(', ') || 'семья'}`"
-            :disabled="pending.has(f.id)"
-            @update:model-value="(on) => setAi(f.id, on)"
-          />
-        </li>
-      </ul>
+      <template v-else>
+        <!-- Поиск нужен, когда список не помещается в первые 10 (Р-3); type text — у search крестик Chrome своего цвета, не токен. -->
+        <Input
+          v-if="families.families.length > FAMILIES_SHOWN"
+          v-model="query"
+          inputmode="search"
+          enterkeyhint="search"
+          placeholder="Поиск по почте"
+          class="mb-1.5 mt-1"
+          aria-label="Поиск семьи по почте"
+          data-family-search
+        />
+        <p v-if="!shownFamilies.length" class="py-2.5 text-[14px] text-ink-2" data-family-none>Никого не нашли</p>
+        <ul>
+          <li
+            v-for="f in shownFamilies"
+            :key="f.id"
+            class="flex items-center gap-3 border-t border-line py-2.5 first:border-0"
+            :data-family="f.id"
+          >
+            <div class="min-w-0 flex-1">
+              <!-- Одна линия: точка входа за 7 суток, почты (обрезаются), когда заходили — тихо справа. -->
+              <div class="flex items-center gap-2">
+                <span
+                  class="size-2 shrink-0 rounded-full"
+                  :class="isActive(f.last_active_at) && 'bg-ok'"
+                  :data-active="isActive(f.last_active_at) || undefined"
+                  aria-hidden="true"
+                />
+                <span class="min-w-0 flex-1 truncate text-[14px] text-ink" data-emails>{{ f.emails.join(' · ') || '—' }}</span>
+                <span v-if="f.last_active_at" class="type-meta shrink-0" data-ago>{{ agoLabel(f.last_active_at) }}</span>
+              </div>
+              <div v-if="f.ai || f.requests > 0 || f.cost_micros > 0" class="type-meta mt-0.5 pl-4 num" data-spent>{{ spent(f.requests, f.cost_micros, families.limit_micros) }}</div>
+            </div>
+            <Toggle
+              :model-value="f.ai"
+              :label="`ИИ: ${f.emails.join(', ') || 'семья'}`"
+              :disabled="pending.has(f.id)"
+              @update:model-value="(on) => setAi(f.id, on)"
+            />
+          </li>
+        </ul>
+        <!-- -ml-3: текст кнопки — по левому краю списка (у ghost sm поле 12). -->
+        <Button v-if="moreFamilies > 0" variant="ghost" size="sm" class="-ml-3" data-family-more @click="showAll = true">Ещё {{ moreFamilies }}</Button>
+      </template>
     </Card>
     <p v-else-if="familiesError" role="alert" class="text-[14px] text-warn">{{ familiesError }}</p>
 

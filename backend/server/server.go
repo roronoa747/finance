@@ -71,7 +71,10 @@ func NewHandler(cfg *config.Config, database *sql.DB) (http.Handler, error) {
 		log.Println("using in-memory mock repositories (development mode)")
 		mocks := repository.NewMockRepositories()
 		mocks.Households.SetDocRepo(mocks.Docs)
-		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: &repository.MockEventRepo{}, Metrics: repository.MockMetricsRepo{}, AI: repository.NewMockAIRepo(mocks.Households, mocks.Users)}
+		events := &repository.MockEventRepo{}
+		aiRepo := repository.NewMockAIRepo(mocks.Households, mocks.Users)
+		aiRepo.Events = events // the admin's families show the members' last app_open
+		repos = Repos{Users: mocks.Users, Households: mocks.Households, Docs: mocks.Docs, Statements: mocks.Statements, Photos: mocks.Photos, Fx: mocks.Fx, Accounts: repository.NewMockAccountRepo(mocks), Events: events, Metrics: repository.MockMetricsRepo{}, AI: aiRepo}
 		repos.PhoneKeys = repository.NewMockPhoneKeyRepo()
 	}
 

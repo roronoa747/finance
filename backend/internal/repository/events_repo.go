@@ -210,6 +210,23 @@ func (m *MockEventRepo) Record(ctx context.Context, userID, householdID, kind st
 	return nil
 }
 
+// lastOpen is the user's latest app_open; nil without one (or without the repo).
+func (m *MockEventRepo) lastOpen(userID string) *time.Time {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var last *time.Time
+	for _, e := range m.Events {
+		if e.Kind == "app_open" && e.UserID == userID && (last == nil || e.At.After(*last)) {
+			at := e.At
+			last = &at
+		}
+	}
+	return last
+}
+
 // MockMetricsRepo answers fixed numbers (the SQL is tested on PostgreSQL).
 type MockMetricsRepo struct{}
 

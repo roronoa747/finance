@@ -178,7 +178,7 @@ describe('e2e / ИИ Блок 1 — фундамент: флаг семьи, с�
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('member', 'a'))
     const list: AdminFamilies = {
-      families: [{ id: 'h-2', created_at: '2026-10-01T00:00:00Z', emails: ['bota@example.com'], ai: false, month: '2026-10', requests: 0, cost_micros: 0 }],
+      families: [{ id: 'h-2', created_at: '2026-10-01T00:00:00Z', emails: ['bota@example.com'], ai: false, month: '2026-10', requests: 0, cost_micros: 0, last_active_at: null }],
       limit_micros: 2_000_000,
       key: true,
     }

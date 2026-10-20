@@ -1,5 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { addedLabel, monthShort, weekKey, weekRange, weekRangeLabel } from './dates'
+import { addedLabel, agoLabel, monthShort, weekKey, weekRange, weekRangeLabel } from './dates'
+
+describe('agoLabel — когда заходили, по дням Алматы («Семьи в админке», Р-1)', () => {
+  // 20 октября, 00:30 в Алматы (19-е 19:30 UTC).
+  const now = new Date('2026-10-19T19:30:00Z')
+  it('сегодня — с полуночи Алматы, а не UTC; вчера — до неё', () => {
+    expect(agoLabel('2026-10-19T19:05:00Z', now)).toBe('сегодня')
+    expect(agoLabel('2026-10-19T18:55:00Z', now)).toBe('вчера')
+  })
+  it('N дней назад со склонением; будущее — сегодня', () => {
+    expect(agoLabel('2026-10-18T12:00:00Z', now)).toBe('2 дня назад')
+    expect(agoLabel('2026-10-15T12:00:00Z', now)).toBe('5 дней назад')
+    expect(agoLabel('2026-09-29T12:00:00Z', now)).toBe('21 день назад')
+    expect(agoLabel('2026-10-20T10:00:00Z', now)).toBe('сегодня')
+  })
+})
 
 describe('weekKey — ISO-неделя по Алматы', () => {
   afterEach(() => vi.useRealTimers())
