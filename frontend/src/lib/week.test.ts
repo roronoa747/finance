@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionWeek, startWeek, weekTrend, type MonthPlanState } from './finance'
+import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionWeek, startWeek, weekFeed, weekTrend, type MonthPlanState } from './finance'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
@@ -226,6 +226,71 @@ describe('sectionWeek — раздел за неделю (Р-101)', () => {
       expect(fromOps).toEqual(mine.rows.map((r) => r.amount))
       expect(fromOps.reduce((s, x) => s + x, 0)).toBe(mine.total)
     }
+  })
+})
+
+describe('weekFeed — лента трат недели (бэклог «Лента недели», Р-1)', () => {
+  it('W42: все траты по дням, свежие сверху; доходы и переводы между своими не входят; сумма = сумма недели', () => {
+    const f = weekFeed(OPS, { week: '2026-W42' })
+    // Продукты 25 000 (7 строк) + транспорт 4 000 + не разобрано 12 400 = 41 400, 9 трат.
+    expect(f).toMatchObject({ count: 9, total: 41_400 })
+    expect(f.days.map((d) => [d.date, d.ops.map((o) => o.amount)])).toEqual([
+      ['2026-10-18', [2_500]],
+      ['2026-10-17', [1_500]],
+      ['2026-10-16', [12_400, 3_000]],
+      ['2026-10-15', [4_000]],
+      ['2026-10-14', [4_000, 2_000]],
+      ['2026-10-13', [7_000]],
+      ['2026-10-12', [5_000]],
+    ])
+    // Продавец коротко (`shortMerchant`): правовая форма снята, как в «Разборе».
+    expect(f.days[2].ops[0]).toMatchObject({ name: 'Ахметова', categoryId: UNKNOWN_CATEGORY, phone: false })
+  })
+
+  it('сумма ленты = сумма недели (`myWeek`) каждой недели: коммуналка — раздел платежей — без отметок не входит', () => {
+    for (const w of ['2026-W40', '2026-W41', '2026-W42', '2026-W43']) {
+      expect(weekFeed(OPS, { week: w }).total).toBe(week(w, '2026-10-21').total)
+    }
+    // W41: 12 000 + 6 000 + 4 000 + 9 000 = 31 000 — без Алсеко 25 000.
+    expect(weekFeed(OPS, { week: '2026-W41' })).toMatchObject({ count: 4, total: 31_000 })
+  })
+
+  it('раздел платежей: строка без отметки — трата (в ленте и в сумме недели), отмеченная — платёж, её нет', () => {
+    const utility = OPS.find((o) => o.merchant === 'Алсеко')!
+    const sumOf = (marked: Set<string>) => {
+      const totals = periodsOf(OPS).flatMap(({ kind, period }) => spendTotals(OPS, 'a', kind, period, T0, { marked, categories: [] }))
+      return myWeek(state(), { ...base, totals, by: 'a', week: '2026-W41', today: '2026-10-21' }).total
+    }
+    // Не отмечена: 31 000 + 25 000 = 56 000.
+    const open = weekFeed(OPS, { week: '2026-W41', marked: new Set(), categories: [] })
+    expect(open).toMatchObject({ count: 5, total: 56_000 })
+    expect(open.total).toBe(sumOf(new Set()))
+    // Отмечена платежом коммуналки: снова 31 000.
+    const paid = weekFeed(OPS, { week: '2026-W41', marked: new Set([utility.id]), categories: [] })
+    expect(paid).toMatchObject({ count: 4, total: 31_000 })
+    expect(paid.total).toBe(sumOf(new Set([utility.id])))
+  })
+
+  it('с телефона — значок и сверху дня (свежие первыми), продавец коротко, перевод — имя получателя', () => {
+    const list = [
+      op('2026-10-14', 900, 'sc_food', 'MAGAZIN SMALL MARKET ASTANA Q. KZ'),
+      op('2026-10-14', 3_500, 'sc_cafe', 'COFFEE BOOM ALMATY KZ', { source: 'tap', at: '2026-10-14T05:00:00Z' }),
+      op('2026-10-14', 2_000, null, 'Перевод', { source: 'push', at: '2026-10-14T09:00:00Z', kind: 'transfer-out', counterparty: 'Дана К.' }),
+      op('2026-10-14', 1_200, 'sc_transport', 'YANDEX.GO ALMATY KZ'),
+      op('2026-10-15', 700, 'sc_food', 'Magnum', { source: 'tap', at: '2026-10-15T03:00:00Z' }),
+    ]
+    const f = weekFeed(list, { week: '2026-W42' })
+    expect(f).toMatchObject({ count: 5, total: 8_300 })
+    expect(f.days.map((d) => d.ops.map((o) => [o.name, o.amount, o.phone]))).toEqual([
+      [['Magnum', 700, true]],
+      [
+        ['Дана К.', 2_000, true],
+        ['COFFEE BOOM', 3_500, true],
+        ['YANDEX.GO', 1_200, false],
+        ['MAGAZIN SMALL MARKET', 900, false],
+      ],
+    ])
+    expect(weekFeed(list, { week: '2026-W41' })).toEqual({ count: 0, total: 0, days: [] })
   })
 })
 

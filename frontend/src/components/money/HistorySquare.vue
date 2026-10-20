@@ -24,8 +24,7 @@ import {
 } from '@/lib/finance'
 import { ARTICLE_COLORS, spendColor } from '@/lib/palette'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
-import { ruleMatchOf } from '@/lib/statements/model'
-import type { MerchantRule, Operation } from '@/lib/statements/types'
+import type { Operation } from '@/lib/statements/types'
 import type { Allocation, Payment } from '@/types/finance'
 
 import Avatar from '@/components/kit/Avatar.vue'
@@ -36,9 +35,9 @@ import OpRow from '@/components/kit/OpRow.vue'
 import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
-import CategoryChips from '@/components/CategoryChips.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import MonthSummaryCard from '@/components/MonthSummaryCard.vue'
+import OpCategorySheet from '@/components/OpCategorySheet.vue'
 import { useQueryValue } from '@/components/useQuerySheet'
 
 /**
@@ -200,12 +199,8 @@ function openRecord(id: string) {
 }
 
 /* ------------------ Листы ------------------ */
-// Раздел задним числом: правило по продавцу, итоги и «Свободно» пересчитывает стор.
+// Раздел задним числом — лист операции (`OpCategorySheet`).
 const opOpen = ref<Operation | null>(null)
-function recategorize(to: MerchantRule['to']) {
-  if (opOpen.value) void ops.recategorize(ruleMatchOf(opOpen.value), to)
-  opOpen.value = null
-}
 // Отметка — её лист (снять отметку, «К плану месяца» у зарплаты); у досрочки листа отметки нет.
 const markOpen = ref<Payment | null>(null)
 </script>
@@ -305,13 +300,7 @@ const markOpen = ref<Payment | null>(null)
     <MonthSummaryCard :month="summaryKey" />
   </Sheet>
 
-  <Sheet :open="!!opOpen" :title="opOpen ? `${opOpen.merchant} — куда отнести?` : ''" @close="opOpen = null">
-    <template v-if="opOpen">
-      <p class="mb-3 type-meta num">{{ dayTitle(opOpen.date) }} · {{ money(Math.abs(opOpen.amount)) }}</p>
-      <CategoryChips :counterparty="!!opOpen.counterparty" @choose="recategorize" />
-      <p class="mt-3 text-[12px] text-ink-2">Ответ запомним — такие строки разложатся сами.</p>
-    </template>
-  </Sheet>
+  <OpCategorySheet :op="opOpen" @close="opOpen = null" />
 
   <MarkSheet
     v-if="markOpen && markOpen.kind !== 'prepay'"

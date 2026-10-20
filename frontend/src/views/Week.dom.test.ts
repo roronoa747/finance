@@ -8,7 +8,8 @@ import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
-import { monthPlan, myWeek, sectionWeek } from '@/lib/finance'
+import { monthPlan, myWeek, sectionWeek, weekFeed } from '@/lib/finance'
+import { dayWeekdayLabel } from '@/lib/dates'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { money, plain } from '@/lib/money'
 import { WEEK_VIEW_KEY } from '@/lib/storage'
@@ -475,5 +476,56 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     await press(all('[role="dialog"] button').find((b) => txt(b) === 'Оставить'))
     expect(q('[role="dialog"]')).toBeNull()
     expect(q('[data-bang]')).toBeNull()
+  })
+})
+
+describe('WK-01: «Траты недели · N» — лента трат по дням (бэклог «Лента недели», Р-1)', () => {
+  it('тихая строка под разделами → лист по дням: с телефона — значок, продавец коротко, раздел; цифры — из weekFeed', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+    vi.spyOn(apiClient, 'upsertOperations').mockResolvedValue({ upserted: 0 })
+    const { store } = await openWeek()
+    // Касание Apple Pay сегодня (не разобрано) и коммуналка без отметки — раздел платежей, но не отмечена: трата.
+    store.ops.t1 = { ...op('2026-09-24', 3_500, null, 'COFFEE BOOM ALMATY KZ'), id: 't1', source: 'tap', at: '2026-09-24T06:00:00Z' }
+    store.ops.c1 = { ...op('2026-09-21', 25_000, 'sc_utilities', 'Алсеко'), id: 'c1' }
+    await flush()
+    const feed = weekFeed(store.shown, { week: '2026-W39', marked: new Set(), categories: [] })
+    // W39: 8 строк выписки (продукты 6, такси, цветы) + коммуналка + касание = 10; прошлые недели — не здесь.
+    expect(feed.count).toBe(10)
+    expect(feed.days.flatMap((d) => d.ops).some((o) => o.id === 'c1')).toBe(true)
+    const line = q('[data-week-feed]')!
+    expect(txt(line)).toBe('Траты недели · 10')
+    // Строка — тихая, не брендовая и ниже разделов (правило 12: действие у предмета, не крупный блок).
+    expect(line.className).not.toContain('bg-brand')
+    expect(q('[data-week-list]')!.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await press(line)
+    const sheet = q('[role="dialog"]')!
+    expect(txt(sheet.querySelector('h3'))).toBe('Траты недели')
+    expect(txt(q('[data-feed-meta]'))).toBe('21–27 сентября · 10 трат')
+    expect(all('[data-feed-day]').map(txt)).toEqual(feed.days.map((d) => norm(dayWeekdayLabel(d.date))))
+    const rows = all('[data-feed-op]')
+    expect(rows.map((r) => r.dataset.feedOp)).toEqual(feed.days.flatMap((d) => d.ops.map((o) => o.id)))
+    // Сегодня сверху: касание — первым (буква «C», имя коротко), «Не разобрано», со значком телефона; у строк выписки его нет.
+    expect(txt(rows[0])).toBe(`CCOFFEE BOOMНе разобрано−${norm(money(3_500))}`)
+    expect(rows[0].querySelector('[data-phone]')).not.toBeNull()
+    expect(rows.slice(1).every((r) => !r.querySelector('[data-phone]'))).toBe(true)
+    expect(txt(rows[1])).toContain('Продукты')
+    // Нажатие на трату — лист операции «куда отнести?» поверх ленты; ответ раскладывает трату, лента видит новый раздел.
+    await press(rows[0])
+    const sheets = all('[role="dialog"]')
+    expect(sheets).toHaveLength(2)
+    expect(txt(sheets[1])).toContain('COFFEE BOOM ALMATY KZ — куда отнести?')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Кафе и рестораны'))
+    expect(store.ops.t1.categoryId).toBe('sc_cafe')
+    expect(all('[role="dialog"]')).toHaveLength(1)
+    expect(txt(q('[data-feed-op="t1"]'))).toContain('Кафе и рестораны')
+    // ‹ — прошлая неделя: в строке — её траты (W38: продукты 20 000 и такси 5 000).
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    await press(q('button[aria-label="Прошлая неделя"]'))
+    expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 2')
+  })
+
+  it('своих трат за неделю нет — строки нет; у партнёра на экране — только его траты (чужих операций стор не отдаёт)', async () => {
+    await openWeek({ slot: 'b' })
+    expect(q('[data-week-feed]')).toBeNull()
   })
 })
