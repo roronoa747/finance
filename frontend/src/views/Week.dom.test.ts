@@ -337,6 +337,11 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 11')
     expect(txt(row('_unknown')!.querySelector('[data-amount]'))).toBe(norm(plain(4_000)))
     expect(q('[data-bang]')).toBeNull()
+    // Критик: трата выписки, что ждёт тост, в ленте нажимается — лист «куда отнести?» ищет её среди показанных (`shown`).
+    await press(q('[data-week-feed]'))
+    await press(all('[data-feed-op]').find((r) => txt(r).includes('ТОСТОВ')))
+    expect(all('[role="dialog"]')).toHaveLength(2)
+    expect(txt(all('[role="dialog"]')[1])).toContain('ИП ТОСТОВ — куда отнести?')
   })
 
   it('выбрал файл — тост «Загружено N · Отменить» и неделя уже с выпиской; ничего не записано; «Отменить» возвращает как было', async () => {
