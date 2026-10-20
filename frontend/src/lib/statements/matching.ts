@@ -1,6 +1,6 @@
 import type { Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
-import { dayNumber, ruleFor } from './model'
+import { dayNumber, isHand, ruleFor } from './model'
 import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
 import { addMonths, dayLabel, daysInMonth, monthKey, todayIso } from '@/lib/dates'
 import { money } from '@/lib/money'
@@ -230,7 +230,8 @@ export function matchCandidates(
   type Scored = MatchCandidate & { tier: 0 | 1; score: number; date: string; index: number }
   const all: Scored[] = []
   ops.forEach((op, index) => {
-    if (op.internal || linked.has(op.id)) return
+    // Ручная трата — уже трата раздела, который выбрал человек (Р-1): вопросом «это платёж по …?» не становится.
+    if (op.internal || linked.has(op.id) || isHand(op)) return
     // Зачисление обмена валютной зарплаты (B2C-80) — отметка этого обмена, не зарплата и не вопрос.
     if (me && exchangeOfOperation(op, state.fxExchanges ?? [], me)) return
     const amount = Math.abs(op.amount)

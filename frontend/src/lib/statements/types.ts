@@ -1,8 +1,11 @@
 import type { HueKey } from '@/lib/palette'
 import type { Currency, PersonId, Tracked } from '@/types/finance'
 
-/** Банк операции: выписки — Kaspi и Freedom; касание Apple Pay — ещё Halyk и «карта» (банк не узнан, Р-14). */
-export type BankId = 'kaspi' | 'freedom' | 'halyk' | 'card'
+/**
+ * Банк операции: выписки — Kaspi и Freedom; касание Apple Pay — ещё Halyk и «карта» (банк не узнан, Р-14); `hand` —
+ * трата, вписанная руками (бэклог «Ручная трата», Р-2): банка нет, выписка её не заменяет (`isHand`).
+ */
+export type BankId = 'kaspi' | 'freedom' | 'halyk' | 'card' | 'hand'
 
 /**
  * Вид операции. `income` — доход (зарплата — когда банк её напечатает, CORPUS.md);

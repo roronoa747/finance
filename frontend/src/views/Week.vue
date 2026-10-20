@@ -16,6 +16,8 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
+import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
+import { useQuerySheet } from '@/components/useQuerySheet'
 import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import { arrivalNote } from '@/components/useSalaryTap'
@@ -134,6 +136,20 @@ const trendDay = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)
 const sectionFor = ref<string | null>(null)
 const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === sectionFor.value) ?? null)
 const uploadsOpen = ref(false)
+
+/*
+ * «Трата» руками (бэклог «Ручная трата», Р-1): из «+» — `/week?spend=1`. Сохранили — неделя этой траты на экране.
+ */
+const { open: spendOpen, close: closeSpend } = useQuerySheet('spend')
+const handEdit = ref<string | null>(null)
+function closeHand() {
+  handEdit.value = null
+  closeSpend()
+}
+function onHandSaved(date: string) {
+  turned.value = true
+  week.value = weekKey(date)
+}
 function pickFile() {
   uploadsOpen.value = false
   fileInput.value?.click()
@@ -527,6 +543,7 @@ onBeforeUnmount(() => {
       @close="firstSalary = null"
     />
     <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
+    <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->

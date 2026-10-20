@@ -40,8 +40,10 @@ const (
 
 var (
 	// Operations may come from Apple Pay too (Р-14): Halyk, or "card" when the card's bank is
-	// not recognised. Statements are still parsed for Kaspi and Freedom only.
-	knownBanks  = map[string]bool{"kaspi": true, "freedom": true, "halyk": true, "card": true}
+	// not recognised. "hand" — a spend typed in by hand (backlog «Ручная трата», Р-2): an ordinary
+	// statement-source row (no DB change — bank is free text), the client tells it by the bank.
+	// Statements are still parsed for Kaspi and Freedom only.
+	knownBanks  = map[string]bool{"kaspi": true, "freedom": true, "halyk": true, "card": true, "hand": true}
 	uploadBanks = map[string]bool{"kaspi": true, "freedom": true}
 	opKinds     = map[string]bool{
 		"purchase": true, "transfer-out": true, "transfer-in": true, "income": true,
