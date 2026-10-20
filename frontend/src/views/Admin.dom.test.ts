@@ -32,6 +32,7 @@ const fam = (over: Partial<AdminFamily>): AdminFamily => ({
   month: '2026-10',
   requests: 3,
   cost_micros: 420_000,
+  last_active_at: null,
   ...over,
 })
 
@@ -218,6 +219,94 @@ describe('AI-04: админка — семьи и ИИ', () => {
     expect(el.textContent).toContain('Нет такой страницы.')
     expect(el.querySelector('[data-families]')).toBeNull()
     expect(el.querySelector('[role="alert"]')).toBeNull()
+  })
+})
+
+describe('ADM-01: семьи — активность, первые 10, поиск', () => {
+  // 20 октября, 12:00 в Алматы.
+  const NOW = new Date('2026-10-20T07:00:00Z')
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      fam({ id: `h-${i + 1}`, emails: [`user${i + 1}@example.com`], ai: false, requests: 0, cost_micros: 0 }),
+    )
+  const type = async (el: HTMLElement, text: string) => {
+    const input = el.querySelector<HTMLInputElement>('[data-family-search]')!
+    input.value = text
+    input.dispatchEvent(new Event('input'))
+    await settle()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('зелёная точка — вход за 7 суток; подпись по дням Алматы; не заходили — ни точки, ни подписи', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(
+      list({
+        families: [
+          fam({ id: 'today', last_active_at: '2026-10-19T19:30:00Z' }), // 00:30 20-го в Алматы
+          fam({ id: 'yday', last_active_at: '2026-10-19T18:30:00Z' }), // 23:30 19-го
+          fam({ id: 'six', last_active_at: '2026-10-13T08:00:00Z' }), // 6 суток 23 ч — ещё активна
+          fam({ id: 'old', last_active_at: '2026-10-13T06:00:00Z' }), // 7 суток 1 ч — уже нет
+          fam({ id: 'never' }),
+        ],
+      }),
+    )
+    const el = await mount()
+    const row = (id: string) => el.querySelector<HTMLElement>(`[data-family="${id}"]`)!
+    const ago = (id: string) => row(id).querySelector('[data-ago]')?.textContent ?? null
+    const dot = (id: string) => row(id).querySelector('[data-active]') !== null
+    expect([ago('today'), ago('yday'), ago('six'), ago('old'), ago('never')]).toEqual(['сегодня', 'вчера', '7 дней назад', '7 дней назад', null])
+    expect([dot('today'), dot('yday'), dot('six'), dot('old'), dot('never')]).toEqual([true, true, true, false, false])
+    expect(row('today').querySelector('[data-active]')!.classList.contains('bg-ok')).toBe(true)
+    // Одна линия: почты и подпись — в одной строке.
+    expect(row('yday').querySelector('[data-emails]')!.parentElement).toBe(row('yday').querySelector('[data-ago]')!.parentElement)
+  })
+
+  it('15 семей — первые 10 в порядке ответа и «Ещё 5»; нажали — все, кнопки нет', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: many(15) }))
+    const el = await mount()
+    expect(rows(el).map((r) => r.dataset.family)).toEqual(many(10).map((f) => f.id))
+    const more = el.querySelector<HTMLButtonElement>('[data-family-more]')!
+    expect(more.textContent!.trim()).toBe('Ещё 5')
+    more.click()
+    await settle()
+    expect(rows(el)).toHaveLength(15)
+    expect(el.querySelector('[data-family-more]')).toBeNull()
+  })
+
+  it('10 семей и меньше — ни поиска, ни «Ещё»', async () => {
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families: many(10) }))
+    const el = await mount()
+    expect(rows(el)).toHaveLength(10)
+    expect(el.querySelector('[data-family-search]')).toBeNull()
+    expect(el.querySelector('[data-family-more]')).toBeNull()
+  })
+
+  it('поиск по части почты без регистра — все совпадения без лимита 10; ничего — «Никого не нашли»', async () => {
+    const families = many(15)
+    families[1].emails = ['aigul@example.com', 'Ilyas.M@Mail.kz']
+    families[13].emails = ['bota@mail.kz']
+    vi.spyOn(apiClient, 'adminFamilies').mockResolvedValue(list({ families }))
+    const el = await mount()
+
+    await type(el, '  MAIL.KZ ')
+    expect(rows(el).map((r) => r.dataset.family)).toEqual(['h-2', 'h-14'])
+    expect(el.querySelector('[data-family-more]')).toBeNull()
+
+    await type(el, 'user1')
+    expect(rows(el).map((r) => r.dataset.family)).toEqual(['h-1', 'h-10', 'h-11', 'h-12', 'h-13', 'h-15']) // h-11…h-15 — за первыми 10
+    expect(el.querySelector('[data-family-none]')).toBeNull()
+
+    await type(el, 'нет-такой')
+    expect(rows(el)).toHaveLength(0)
+    expect(el.querySelector('[data-family-none]')!.textContent).toBe('Никого не нашли')
+
+    await type(el, '')
+    expect(rows(el)).toHaveLength(10)
+    expect(el.querySelector('[data-family-more]')!.textContent!.trim()).toBe('Ещё 5')
   })
 })
 

@@ -220,8 +220,10 @@ REST API приложения: вход, домохозяйство, синхр�
   (больше SDK отказывает до отправки → `ErrFailed`). Ошибки — `ErrRateLimited`, `ErrRefused`, `ErrFailed`,
   только со статусом. Цены — `price.go` (центы за MTok), `CostMicros`; неизвестная модель — 0 (в админке «≈ —»).
 - **Админка** (только `ADMIN_EMAILS`, остальным и без переменной — 404, хелпер `adminOnly`):
-  `GET /api/admin/families` → `{families: [{id, created_at, emails, ai, month, requests, cost_micros}],
-  limit_micros, key}` за текущий месяц (ИИ сверху, затем новые); `PUT /api/admin/families/{id}/ai` `{on}` →
+  `GET /api/admin/families` → `{families: [{id, created_at, emails, ai, month, requests, cost_micros,
+  last_active_at}], limit_micros, key}` за текущий месяц; `last_active_at` — последний `app_open` кого-то из
+  нынешних участников (то же событие, что «Активные за 7 дней» в метриках), `null` — не заходили. Порядок:
+  ИИ сверху, затем свежий вход, не заходившие — в конце, при равенстве новые; `PUT /api/admin/families/{id}/ai` `{on}` →
   строка (неизвестная семья — 404, лишнее поле — 400, > 64 Б — 413); `POST /api/admin/ai-check` —
   короткий вызов лёгкой модели (`AI_MODEL_SELLERS`) → `{ok, model, ms}` или `{ok: false, reason:
   no_key|failed|rate_limited|refused}`, в расход семей не пишется.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"finance-backend/internal/testdb"
 )
@@ -152,5 +153,48 @@ func TestPostgresAIFamilies(t *testing.T) {
 	}
 	if other.ID != hNew.ID || other.AI || other.Requests != 0 || other.CostMicros != 0 || fmt.Sprint(other.Emails) != "[bota@example.com]" {
 		t.Errorf("other = %+v", other)
+	}
+	if top.LastActiveAt != nil || other.LastActiveAt != nil {
+		t.Errorf("no app_open yet: last = %v / %v", top.LastActiveAt, other.LastActiveAt)
+	}
+
+	// Last activity (бэклог «Семьи в админке», Р-1): the members' latest app_open — the event of
+	// Metrics.Active7; other kinds do not count. Among AI-off families the freshest goes first,
+	// a never-active one last even if it is the newest.
+	c1 := mk("cara@example.com")
+	hC, _, err := households.CreateHousehold(ctx, "", c1, "d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewSQLEventRepository(database)
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, e := range []struct {
+		user, kind string
+		ago        time.Duration
+	}{
+		{a1, "app_open", 5 * 24 * time.Hour},
+		{a2, "app_open", 26 * time.Hour}, // the partner is fresher
+		{a2, "week_done", time.Hour},     // not an app_open
+		{b1, "app_open", 3 * 24 * time.Hour},
+	} {
+		if err := events.Record(ctx, e.user, "", e.kind, now.Add(-e.ago)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fams, err = repo.Families(ctx, "2026-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fams) != 3 || fams[0].ID != hOld.ID || fams[1].ID != hNew.ID || fams[2].ID != hC.ID {
+		t.Fatalf("order with activity = %+v", fams)
+	}
+	if l := fams[0].LastActiveAt; l == nil || !l.Equal(now.Add(-26*time.Hour)) {
+		t.Errorf("AI family last = %v, want %v", l, now.Add(-26*time.Hour))
+	}
+	if l := fams[1].LastActiveAt; l == nil || !l.Equal(now.Add(-72*time.Hour)) {
+		t.Errorf("active family last = %v", l)
+	}
+	if fams[2].LastActiveAt != nil {
+		t.Errorf("never-active family last = %v", fams[2].LastActiveAt)
 	}
 }

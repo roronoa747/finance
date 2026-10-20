@@ -21,10 +21,13 @@ type adminAIFixture struct {
 	router   *chi.Mux
 	tokens   *auth.TokenService
 	aiRepo   *repository.MockAIRepo
-	admin    string // token
-	stranger string // token
-	familyA  string // AI on, spent this month
-	familyB  string // AI off
+	events   *repository.MockEventRepo
+	repos    *repository.MockRepositories
+	users    map[string]string // email → id
+	admin    string            // token
+	stranger string            // token
+	familyA  string            // AI on, spent this month
+	familyB  string            // AI off
 }
 
 // newAdminAIFixture: owner@example.com is the admin; two families, A with AI on and usage
@@ -35,13 +38,17 @@ func newAdminAIFixture(t *testing.T, admins []string, client *ai.Client) *adminA
 	repos := repository.NewMockRepositories()
 	tokens := auth.NewTokenService("test-secret-salt-key", time.Hour)
 	aiRepo := repository.NewMockAIRepo(repos.Households, repos.Users)
+	events := &repository.MockEventRepo{}
+	aiRepo.Events = events
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	users := map[string]string{}
 
 	mkUser := func(email string) string {
 		u, err := repos.Users.Create(ctx, email, "hash")
 		if err != nil {
 			t.Fatal(err)
 		}
+		users[email] = u.ID
 		return u.ID
 	}
 	owner := mkUser("owner@example.com")
@@ -88,7 +95,7 @@ func newAdminAIFixture(t *testing.T, admins []string, client *ai.Client) *adminA
 		}
 		return s
 	}
-	return &adminAIFixture{router: r, tokens: tokens, aiRepo: aiRepo, admin: tok(owner), stranger: tok(stranger), familyA: hA.ID, familyB: hB.ID}
+	return &adminAIFixture{router: r, tokens: tokens, aiRepo: aiRepo, events: events, repos: repos, users: users, admin: tok(owner), stranger: tok(stranger), familyA: hA.ID, familyB: hB.ID}
 }
 
 func (f *adminAIFixture) do(t *testing.T, token, method, path, body string) (int, string) {
@@ -156,6 +163,73 @@ func TestAdminFamiliesList(t *testing.T) {
 	}
 	if b.Requests != 0 || b.CostMicros != 0 {
 		t.Errorf("B usage = %d %d", b.Requests, b.CostMicros)
+	}
+	// Nobody opened the app: the field is there and null.
+	if a.LastActiveAt != nil || !strings.Contains(body, `"last_active_at":null`) {
+		t.Errorf("no app_open → last_active_at null: %s", body)
+	}
+}
+
+// Last activity (бэклог «Семьи в админке», Р-1): the latest app_open of any member — other
+// events do not count; within the AI flag the freshest family goes first, never-active last.
+func TestAdminFamiliesLastActive(t *testing.T) {
+	f := newAdminAIFixture(t, []string{"owner@example.com"}, nil)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	family := func(email string) string {
+		u, err := f.repos.Users.Create(ctx, email, "hash")
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.users[email] = u.ID
+		h, _, err := f.repos.Households.CreateHousehold(ctx, "", u.ID, email)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h.ID
+	}
+	cID, dID := family("cara@example.com"), family("dana@example.com")
+	open := func(email string, ago time.Duration, kind string) {
+		if err := f.events.Record(ctx, f.users[email], "", kind, now.Add(-ago)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open("aigul@example.com", 5*24*time.Hour, "app_open")
+	open("ilyas@example.com", 26*time.Hour, "app_open")  // the partner is fresher
+	open("ilyas@example.com", time.Hour, "week_done")    // not an app_open
+	open("bota@example.com", 3*24*time.Hour, "app_open") // B: older than C, but fresher
+	open("cara@example.com", 10*24*time.Hour, "app_open")
+	open("stranger@example.com", 10*time.Minute, "app_open") // no family: no row
+
+	code, body := f.do(t, f.admin, http.MethodGet, "/api/admin/families", "")
+	if code != http.StatusOK {
+		t.Fatalf("families: %d %s", code, body)
+	}
+	var resp struct {
+		Families []repository.AIFamily `json:"families"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, fam := range resp.Families {
+		ids = append(ids, fam.ID)
+	}
+	if strings.Join(ids, ",") != strings.Join([]string{f.familyA, f.familyB, cID, dID}, ",") {
+		t.Fatalf("order = %v, want A (AI), B (3 days), C (10 days), D (never, newest)", ids)
+	}
+	a, b, c, d := resp.Families[0], resp.Families[1], resp.Families[2], resp.Families[3]
+	if a.LastActiveAt == nil || !a.LastActiveAt.Equal(now.Add(-26*time.Hour)) {
+		t.Errorf("A last = %v, want the partner's app_open 26 h ago", a.LastActiveAt)
+	}
+	if b.LastActiveAt == nil || !b.LastActiveAt.Equal(now.Add(-72*time.Hour)) {
+		t.Errorf("B last = %v", b.LastActiveAt)
+	}
+	if c.LastActiveAt == nil || !c.LastActiveAt.Equal(now.Add(-240*time.Hour)) {
+		t.Errorf("C last = %v", c.LastActiveAt)
+	}
+	if d.LastActiveAt != nil {
+		t.Errorf("D last = %v, want null", d.LastActiveAt)
 	}
 }
 

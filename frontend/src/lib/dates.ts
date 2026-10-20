@@ -1,3 +1,5 @@
+import { plural } from './utils'
+
 export const MONTHS_NOM = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
@@ -148,6 +150,17 @@ export function weekRange(key: string): { from: string; to: string } {
 /** Сегодняшняя дата по Алматы, `YYYY-MM-DD` (день книги курсов). */
 export function todayIso(d = new Date()): string {
   return almaty(d).toISOString().slice(0, 10)
+}
+
+/**
+ * Когда это было по дням Алматы: «сегодня», «вчера», «5 дней назад» (последний вход семьи в админке,
+ * бэклог «Семьи в админке», Р-1). Момент из будущего (часы телефона отстают) — «сегодня».
+ */
+export function agoLabel(iso: string, now = new Date()): string {
+  const days = Math.round((Date.parse(todayIso(now)) - Date.parse(todayIso(new Date(iso)))) / DAY_MS)
+  if (days <= 0) return 'сегодня'
+  if (days === 1) return 'вчера'
+  return `${days} ${plural(days, 'день', 'дня', 'дней')} назад`
 }
 
 /** Дата `YYYY-MM-DD` на `n` дней раньше / позже. */

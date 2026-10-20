@@ -25,8 +25,8 @@ type AIRepository interface {
 	// AddUsage adds a call's spend to the month's counters: requests (1 on success, 0 on a
 	// billed failure — Блок 2 «ИИ»), tokens and cost.
 	AddUsage(ctx context.Context, householdID, month string, requests int, in, out, costMicros int64) error
-	// Families is every family for the admin page with month's requests and cost: AI on
-	// first, then newest first.
+	// Families is every family for the admin page with month's requests and cost and the
+	// members' last app_open: AI on first, then the freshest activity, then newest first.
 	Families(ctx context.Context, month string) ([]AIFamily, error)
 }
 
@@ -39,6 +39,9 @@ type AIFamily struct {
 	Month      string    `json:"month"`
 	Requests   int       `json:"requests"`
 	CostMicros int64     `json:"cost_micros"`
+	// LastActiveAt is the latest app_open of any current member — the event the admin's
+	// "active over 7 days" counts (Metrics.Active7); nil: nobody opened the app yet.
+	LastActiveAt *time.Time `json:"last_active_at"`
 }
 
 type sqlAIRepository struct{ db *sql.DB }
@@ -50,10 +53,12 @@ func (r *sqlAIRepository) Families(ctx context.Context, month string) ([]AIFamil
 		SELECT h.id, h.created_at, h.ai_enabled,
 			COALESCE((SELECT array_agg(u.email ORDER BY m.slot) FROM app.household_members m
 				JOIN app.users u ON u.id = m.user_id WHERE m.household_id = h.id), '{}'),
-			COALESCE(a.requests, 0), COALESCE(a.cost_micros, 0)
+			COALESCE(a.requests, 0), COALESCE(a.cost_micros, 0),
+			(SELECT max(e.at) FROM app.events e JOIN app.household_members m ON m.user_id = e.user_id
+				WHERE m.household_id = h.id AND e.kind = 'app_open') AS last_active
 		FROM app.households h
 		LEFT JOIN app.ai_usage a ON a.household_id = h.id AND a.month = $1
-		ORDER BY h.ai_enabled DESC, h.created_at DESC;`, month)
+		ORDER BY h.ai_enabled DESC, last_active DESC NULLS LAST, h.created_at DESC;`, month)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
@@ -61,8 +66,12 @@ func (r *sqlAIRepository) Families(ctx context.Context, month string) ([]AIFamil
 	families := []AIFamily{}
 	for rows.Next() {
 		f := AIFamily{Month: month}
-		if err := rows.Scan(&f.ID, &f.CreatedAt, &f.AI, pq.Array(&f.Emails), &f.Requests, &f.CostMicros); err != nil {
+		var last sql.NullTime
+		if err := rows.Scan(&f.ID, &f.CreatedAt, &f.AI, pq.Array(&f.Emails), &f.Requests, &f.CostMicros, &last); err != nil {
 			return nil, fmt.Errorf("failed to scan family: %w", err)
+		}
+		if last.Valid {
+			f.LastActiveAt = &last.Time
 		}
 		families = append(families, f)
 	}
@@ -135,6 +144,7 @@ type MockAIRepo struct {
 	users      *MockUserRepo
 	Flags      map[string]bool                   // household id → ai_enabled
 	Usage      map[string]map[string]MockAIUsage // household id → month → counters
+	Events     *MockEventRepo                    // app_open for LastActiveAt; nil — nobody active
 }
 
 func NewMockAIRepo(households *MockHouseholdRepo, users *MockUserRepo) *MockAIRepo {
@@ -198,6 +208,9 @@ func (m *MockAIRepo) Families(ctx context.Context, month string) ([]AIFamily, er
 			if u, err := m.users.GetByID(ctx, mem.UserID); err == nil {
 				f.Emails = append(f.Emails, u.Email)
 			}
+			if at := m.Events.lastOpen(mem.UserID); at != nil && (f.LastActiveAt == nil || at.After(*f.LastActiveAt)) {
+				f.LastActiveAt = at
+			}
 		}
 		families = append(families, f)
 	}
@@ -206,6 +219,12 @@ func (m *MockAIRepo) Families(ctx context.Context, month string) ([]AIFamily, er
 		a, b := families[i], families[j]
 		if a.AI != b.AI {
 			return a.AI
+		}
+		if (a.LastActiveAt == nil) != (b.LastActiveAt == nil) {
+			return a.LastActiveAt != nil
+		}
+		if a.LastActiveAt != nil && !a.LastActiveAt.Equal(*b.LastActiveAt) {
+			return a.LastActiveAt.After(*b.LastActiveAt)
 		}
 		if !a.CreatedAt.Equal(b.CreatedAt) {
 			return a.CreatedAt.After(b.CreatedAt)

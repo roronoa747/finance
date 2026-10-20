@@ -86,7 +86,7 @@ describe('e2e / Apple Pay Блок 2 — повторная приёмка: ИИ
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('member', 'a'))
     const families: AdminFamilies = {
-      families: [{ id: 'h-2', created_at: '2026-10-01T00:00:00Z', emails: ['bota@example.com'], ai: true, month: '2026-10', requests: 7, cost_micros: 1_500_000 }],
+      families: [{ id: 'h-2', created_at: '2026-10-01T00:00:00Z', emails: ['bota@example.com'], ai: true, month: '2026-10', requests: 7, cost_micros: 1_500_000, last_active_at: null }],
       limit_micros: 2_000_000,
       key: true,
     }

@@ -145,6 +145,8 @@ export interface AdminFamily {
   requests: number
   /** Расход ≈ $ целыми микродолларами. */
   cost_micros: number
+  /** Последний вход кого-то из семьи (`app_open`, как «Активные за 7 дней»); null — ещё не заходили. */
+  last_active_at: string | null
 }
 
 /**
