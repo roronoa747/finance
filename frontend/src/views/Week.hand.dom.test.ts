@@ -191,6 +191,37 @@ describe('MAN-02: правка и удаление ручной траты', () 
     expect(total(finance, 'a:week:2026-W43:sc_cafe')).toMatchObject({ amount: 3_000, ops: 1 })
   })
 
+  it('лента «Траты недели» (критик, Х-2): ручная строка — лист «Трата» с её полями, строка выписки — «куда отнести?»', async () => {
+    const { finance, store } = await openWeek('/week?spend=1')
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '2500')
+    await press(q('[data-hand-category="sc_food"]'))
+    await type(q<HTMLInputElement>('[data-hand-note]'), 'Базар')
+    await press(q('[data-hand-save]'))
+    const [own] = hands(store)
+    const rules = JSON.stringify(finance.merchantRules)
+
+    await press(q('[data-week-feed]'))
+    expect(txt(q(`[data-feed-op="${own.id}"]`))).toContain('Базар')
+    await press(q(`[data-feed-op="${own.id}"]`))
+    // Лента уступила место листу правки: один диалог, «куда отнести?» нет.
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1)
+    expect(q('[data-hand-sheet]'), 'лист правки').toBeTruthy()
+    expect(q<HTMLInputElement>('input[data-hand-amount]')!.value.replace(/\s/g, '')).toBe('2500')
+    expect(q('[data-hand-category="sc_food"]')!.getAttribute('aria-pressed')).toBe('true')
+    expect(txt(q('[role="dialog"]'))).not.toContain('куда отнести')
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '3000')
+    await press(q('[data-hand-save]'))
+    expect(hands(store)).toMatchObject([{ id: own.id, amount: -3_000 }])
+    // Правило семьи по «Базар» не заведено.
+    expect(JSON.stringify(finance.merchantRules)).toBe(rules)
+
+    await press(q('[data-week-feed]'))
+    await press(q(`[data-feed-op="${LINE.id}"]`))
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2)
+    expect(txt(document.querySelectorAll('[role="dialog"]')[1])).toContain('Magnum — куда отнести?')
+    expect(q('[data-hand-sheet]')).toBeNull()
+  })
+
   it('«Удалить трату» → подтверждение — трата ушла из копии и итога', async () => {
     const { finance, store } = await withHand()
     const [own] = hands(store)

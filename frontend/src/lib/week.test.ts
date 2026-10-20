@@ -292,6 +292,19 @@ describe('weekFeed — лента трат недели (бэклог «Лент
     ])
     expect(weekFeed(list, { week: '2026-W41' })).toEqual({ count: 0, total: 0, days: [] })
   })
+
+  it('ручная трата (бэклог «Ручная трата», Р-2): признак hand, без значка телефона, подпись как вписал человек', () => {
+    const list = [
+      op('2026-10-14', 2_500, 'sc_food', 'Базар Алматы', { bank: 'hand', note: 'Базар Алматы' }),
+      op('2026-10-14', 900, 'sc_food', 'MAGAZIN SMALL MARKET ASTANA Q. KZ'),
+    ]
+    const f = weekFeed(list, { week: '2026-W42' })
+    expect(f).toMatchObject({ count: 2, total: 3_400 })
+    expect(f.days[0].ops.map((o) => [o.name, o.hand, o.phone])).toEqual([
+      ['Базар Алматы', true, false],
+      ['MAGAZIN SMALL MARKET', false, false],
+    ])
+  })
 })
 
 describe('weekTrend — 8 недель (Р-98)', () => {

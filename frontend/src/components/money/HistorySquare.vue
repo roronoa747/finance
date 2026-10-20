@@ -24,6 +24,7 @@ import {
 } from '@/lib/finance'
 import { ARTICLE_COLORS, spendColor } from '@/lib/palette'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
+import { isHand } from '@/lib/statements/model'
 import type { Operation } from '@/lib/statements/types'
 import type { Allocation, Payment } from '@/types/finance'
 
@@ -199,7 +200,8 @@ function openRecord(id: string) {
 }
 
 /* ------------------ Листы ------------------ */
-// Раздел задним числом — лист операции (`OpCategorySheet`).
+// Раздел задним числом — лист операции (`OpCategorySheet`). Ручную трату — нет: её раздел выбрал человек, правило по
+// продавцу её не меняет (бэклог «Ручная трата», Р-1); правится она на «Неделе» (лист «Трата»).
 const opOpen = ref<Operation | null>(null)
 // Отметка — её лист (снять отметку, «К плану месяца» у зарплаты); у досрочки листа отметки нет.
 const markOpen = ref<Payment | null>(null)
@@ -236,7 +238,7 @@ const markOpen = ref<Payment | null>(null)
           :category="opCategory(x.op)"
           :amount="x.op.amount"
           :muted="x.op.internal"
-          :clickable="canEdit && !x.op.internal"
+          :clickable="canEdit && !x.op.internal && !isHand(x.op)"
           @click="opOpen = x.op"
         />
         <Row

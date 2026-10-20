@@ -151,12 +151,13 @@ const uploadsOpen = ref(false)
 
 /*
  * «Трата» руками (бэклог «Ручная трата», Р-1): из «+» — `/week?spend=1`; правка — нажатие своей ручной траты в листе
- * раздела (лист раздела уступает место). Сохранили — неделя этой траты на экране.
+ * раздела или в ленте «Траты недели» (лист уступает место). Сохранили — неделя этой траты на экране.
  */
 const { open: spendOpen, close: closeSpend } = useQuerySheet('spend')
 const handEdit = ref<string | null>(null)
 function editHand(id: string) {
   sectionFor.value = null
+  feedOpen.value = false
   handEdit.value = id
 }
 function closeHand() {
@@ -578,7 +579,7 @@ onBeforeUnmount(() => {
     />
     <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
-    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" />
+    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->

@@ -5255,6 +5255,8 @@ export type WeekFeedOp = {
   categoryId: string
   /** Пришла с телефона (касание Apple Pay или пуш банка); нет — строка выписки. */
   phone: boolean
+  /** Вписана руками (бэклог «Ручная трата», Р-2): нажатие — лист правки «Трата», а не «куда отнести?». */
+  hand: boolean
 }
 
 /**
@@ -5280,10 +5282,12 @@ export function weekFeed(
   for (const op of list) {
     const item: WeekFeedOp = {
       id: op.id,
-      name: op.counterparty ?? shortMerchant(op.merchant),
+      // Ручная — подпись как вписал человек (заметка или раздел), без сокращения продавца выписки.
+      name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)),
       amount: -op.amount,
       categoryId: op.categoryId ?? UNKNOWN_CATEGORY,
       phone: !!op.source,
+      hand: isHand(op),
     }
     const last = days.at(-1)
     if (last?.date === op.date) last.ops.push(item)

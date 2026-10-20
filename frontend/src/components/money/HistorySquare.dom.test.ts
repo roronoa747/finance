@@ -81,6 +81,31 @@ describe('B2C-44: «куда отнести?» из «Истории»', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(document.body.textContent).not.toContain('Не разобрано')
   })
+
+  it('ручная трата (бэклог «Ручная трата», критик): строка не кнопка — «куда отнести?» завёл бы правило семьи по заметке', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData(authAs('member'))
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const ops = useOperationsStore()
+    ops.ops.h1 = { ...op('h1', '2026-09-11', -2_500, 'Базар'), bank: 'hand', note: 'Базар', categoryId: 'sc_food' }
+    ops.ops.o1 = op('o1', '2026-09-12', -3_000, 'Непонятно ТОО')
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/money/history')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(HistorySquare)
+    app.use(pinia)
+    app.use(router)
+    app.mount(root)
+    await nextTick()
+
+    expect(document.body.textContent).toContain('Базар')
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('button')]
+    expect(buttons.some((x) => x.textContent?.includes('Базар'))).toBe(false)
+    expect(buttons.some((x) => x.textContent?.includes('Непонятно ТОО'))).toBe(true)
+  })
 })
 
 describe('B2C-58, B2C-89: записи денег в «Истории» (Р-85)', () => {
