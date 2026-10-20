@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionWeek, startWeek, weekFeed, weekTrend, type MonthPlanState } from './finance'
+import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionMonth, sectionWeek, startWeek, weekFeed, weekTrend, type MonthPlanState } from './finance'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
@@ -366,5 +366,34 @@ describe('«Мне вернули» в неделе (FB-02, Р-12): одна spe
     const s = sectionWeek(edited, { week: '2026-W42', categoryId: 'sc_food', limit: Infinity })
     expect(s.total).toBe(food(totals).amount)
     expect(s.count).toBe(7)
+  })
+})
+
+describe('sectionMonth — свои операции раздела за месяц (FB-05, Р-14)', () => {
+  it('октябрь, продукты: 11 строк по дням свежими сверху, первые 5 и «Ещё 6 · сумма»; сумма всех = факт раздела месяца', () => {
+    const m = sectionMonth(OPS, { month: '2026-10', categoryId: 'sc_food' })
+    // 8 000 + 18 000 + 25 000 + 6 000 = 57 000 (сентябрьские 10 000 не в счёт), 11 строк.
+    expect(m).toMatchObject({ total: 57_000, count: 11 })
+    expect(m.days.map((d) => d.date)).toEqual(['2026-10-20', '2026-10-18', '2026-10-17', '2026-10-16', '2026-10-15'])
+    expect(m.more).toEqual({ count: 6, amount: 57_000 - (6_000 + 2_500 + 1_500 + 3_000 + 4_000) })
+    const total = TOTALS.find((t) => t.by === 'a' && t.kind === 'month' && t.period === '2026-10' && t.categoryId === 'sc_food')!
+    expect(sectionMonth(OPS, { month: '2026-10', categoryId: 'sc_food', limit: Infinity }).days.flatMap((d) => d.ops).reduce((a, o) => a + o.amount, 0)).toBe(total.amount)
+    expect(sectionMonth(OPS, { month: '2026-09', categoryId: 'sc_food' })).toMatchObject({ total: 10_000, count: 1, more: null })
+  })
+
+  it('возврат — spendOf и «вернули» в строке; ручная — hand; раздел платежей — только строки без отметки', () => {
+    const list: Operation[] = [
+      op('2026-10-05', 12_000, 'sc_home', 'Leroy', { refund: { amount: 2_000 } }),
+      op('2026-10-06', 3_000, 'sc_home', 'Базар', { bank: 'hand' }),
+      op('2026-10-10', 25_000, 'sc_utilities', 'Алсеко', { id: 'u1' }),
+      op('2026-10-11', 5_000, 'sc_utilities', 'Алсеко', { id: 'u2' }),
+    ]
+    const home = sectionMonth(list, { month: '2026-10', categoryId: 'sc_home' })
+    expect(home.total).toBe(13_000)
+    expect(home.days.flatMap((d) => d.ops)).toEqual([
+      { id: expect.any(String), name: 'Базар', amount: 3_000, hand: true },
+      { id: expect.any(String), name: 'Leroy', amount: 10_000, hand: false, refund: 2_000 },
+    ])
+    expect(sectionMonth(list, { month: '2026-10', categoryId: 'sc_utilities', marked: new Set(['u1']), categories: [] }).days.flatMap((d) => d.ops.map((o) => o.id))).toEqual(['u2'])
   })
 })

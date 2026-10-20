@@ -34,6 +34,7 @@ import {
   spendCompare,
   spendFact,
   spendPlansBy,
+  sectionMonth,
   untilPayday,
   type ImageAction,
   type PlanDue,
@@ -69,6 +70,8 @@ import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import OpSheet from '@/components/OpSheet.vue'
+import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
 import { templateById } from '@/lib/goalTemplates'
 import { attachTemplate } from '@/lib/photos/goalPhoto'
@@ -403,6 +406,23 @@ const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
 const images = computed(() => habitImages(state.value, props.monthKey))
 const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)
+/**
+ * Свои операции раздела за месяц (FB-05, Р-14): `sectionMonth` по своей копии (партнёру — только его, viewer — нет);
+ * «Ещё N» — все. Строка выписки — лист операции поверх листа раздела, ручная — «Трата».
+ */
+const catAll = ref(false)
+watch(catFor, () => (catAll.value = false))
+const catOps = computed(() => {
+  if (!catFor.value || !canEdit.value) return null
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  return sectionMonth(ops.shown, { month: props.monthKey, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
+})
+const catOp = ref<string | null>(null)
+const catHand = ref<string | null>(null)
+function openCatHand(id: string) {
+  closeCat()
+  catHand.value = id
+}
 const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
 /** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
 function imageAct(a: ImageAction) {
@@ -930,10 +950,16 @@ function addFund(kind: 'reserve' | 'cushion') {
       :can-edit="canEdit && monthKey >= monthNow()"
       :image="catImage"
       :month="monthKey"
+      :ops="catOps"
       @close="closeCat"
       @edit="editCatPlan"
       @image="imageAct"
+      @more="catAll = true"
+      @open="(id) => (catOp = id)"
+      @hand="openCatHand"
     />
+    <OpSheet :op-id="catOp" :z="60" @close="catOp = null" />
+    <HandSpendSheet v-if="canEdit" :open="catHand !== null" :op-id="catHand" @close="catHand = null" />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->

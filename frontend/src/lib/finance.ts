@@ -5247,6 +5247,42 @@ export function sectionWeek(
   }
 }
 
+/** Лист раздела «Месяца» (FB-05, Р-14): свои операции раздела за месяц по дням — как у недели, без топа продавцов. */
+export type SectionMonth = Omit<SectionWeek, 'tops'>
+
+/**
+ * Свои операции раздела за месяц `YYYY-MM` (FB-05, Р-4, Р-14) — для листа раздела «Месяца»: отбор — как у факта
+ * раздела (`isSpend`; у разделов платежей — только строки без отметки `marked`, как `weekFeed` и итоги `unmarked`),
+ * сумма строки — `spendOf` (с «вернули»), дни свежими сверху, первые `limit` и «Ещё N · сумма». Сумма всех строк —
+ * своя часть факта раздела. Топа продавцов нет: в месяце он у находок.
+ */
+export function sectionMonth(
+  ops: Operation[],
+  where: { month: string; categoryId: string; limit?: number; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+): SectionMonth {
+  const planned = plannedElsewhere(where.categoryId, where.categories ?? [])
+  const list = ops
+    .filter(
+      (op) =>
+        isSpend(op) &&
+        (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
+        op.date.slice(0, 7) === where.month &&
+        (!planned || (!!where.marked && !where.marked.has(op.id))),
+    )
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
+  const shown = list.slice(0, where.limit ?? SECTION_OPS)
+  const days: SectionMonth['days'] = []
+  for (const op of shown) {
+    const last = days.at(-1)
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
+    if (last?.date === op.date) last.ops.push(item)
+    else days.push({ date: op.date, ops: [item] })
+  }
+  const rest = list.slice(shown.length)
+  return { total: amountTotal(list), count: list.length, days, more: rest.length ? { count: rest.length, amount: amountTotal(rest) } : null }
+}
+
 /** Трата ленты недели (`weekFeed`). */
 export type WeekFeedOp = {
   id: string

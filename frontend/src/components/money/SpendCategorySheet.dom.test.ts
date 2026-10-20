@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
-import type { HabitImage, SpendCompareRow } from '@/lib/finance'
+import type { HabitImage, SectionMonth, SpendCompareRow } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import type { PersonId } from '@/types/finance'
 import SpendCategorySheet from './SpendCategorySheet.vue'
@@ -20,14 +20,20 @@ const ROW: SpendCompareRow = {
 }
 const PLANS = [{ by: 'a' as PersonId, name: 'Ильяс', amount: 20_000 }, { by: 'b' as PersonId, name: 'Аруна', amount: 0 }]
 
-async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string } = {}) {
+const events: [string, string][] = []
+async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string; ops?: SectionMonth | null } = {}) {
   const edits: [PersonId, number][] = []
+  events.length = 0
   const root = document.createElement('div')
   document.body.appendChild(root)
   app = createApp({
     render: () => h(SpendCategorySheet, {
       row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
+      ops: extra.ops ?? null,
       onEdit: (by: PersonId, amount: number) => edits.push([by, amount]),
+      onOpen: (id: string) => events.push(['open', id]),
+      onHand: (id: string) => events.push(['hand', id]),
+      onMore: () => events.push(['more', '']),
     }),
   })
   app.mount(root)
@@ -149,5 +155,39 @@ describe('SpendCategorySheet', () => {
     await mount()
     expect(q('[data-cat-month]')).toBeNull()
     vi.useRealTimers()
+  })
+})
+
+describe('FB-05: свои операции в листе раздела «Месяца»', () => {
+  const OPS: SectionMonth = {
+    total: 21_000, count: 7,
+    days: [
+      { date: '2026-09-24', ops: [{ id: 'o1', name: 'Coffee Boom', amount: 3_000, hand: false, refund: 1_000 }, { id: 'h1', name: 'Обед с другом', amount: 4_000, hand: true }] },
+      { date: '2026-09-20', ops: [{ id: 'o2', name: 'Navat', amount: 5_000, hand: false }, { id: 'o3', name: 'Del Papa', amount: 2_000, hand: false }, { id: 'o4', name: 'Kofe', amount: 1_000, hand: false }] },
+    ],
+    more: { count: 2, amount: 6_000 },
+  }
+
+  it('«Мои операции · 7» — дни и строки, «вернули» в строке; «Ещё 2 · 6 000 ₸» — тихая строка → more; строка → open, ручная → hand', async () => {
+    await mount({}, { ops: OPS })
+    expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 7')
+    expect(document.querySelectorAll('[data-cat-op]')).toHaveLength(5)
+    expect(txt(q('[data-cat-op="o1"]'))).toContain(norm(`вернули ${plain(1_000)}`))
+    expect(txt(q('[data-cat-ops-more]'))).toBe(norm(`Ещё 2 · ${money(6_000)}`))
+    q('[data-cat-ops-more]')!.click()
+    q('[data-cat-op="o2"]')!.click()
+    q('[data-cat-op="h1"]')!.click()
+    expect(events).toEqual([['more', ''], ['open', 'o2'], ['hand', 'h1']])
+    // Брендовой кнопки не прибавилось.
+    expect([...document.querySelectorAll('[role="dialog"] button')].filter((b) => b.className.includes('bg-brand '))).toHaveLength(0)
+  })
+
+  it('своих операций нет (партнёр, viewer) — блока нет', async () => {
+    await mount({}, { ops: { total: 0, count: 0, days: [], more: null } })
+    expect(q('[data-cat-ops-title]')).toBeNull()
+    app!.unmount()
+    document.body.innerHTML = ''
+    await mount({}, { ops: null, canEdit: false })
+    expect(q('[data-cat-ops]')).toBeNull()
   })
 })
