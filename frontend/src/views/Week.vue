@@ -138,10 +138,15 @@ const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === s
 const uploadsOpen = ref(false)
 
 /*
- * «Трата» руками (бэклог «Ручная трата», Р-1): из «+» — `/week?spend=1`. Сохранили — неделя этой траты на экране.
+ * «Трата» руками (бэклог «Ручная трата», Р-1): из «+» — `/week?spend=1`; правка — нажатие своей ручной траты в листе
+ * раздела (лист раздела уступает место). Сохранили — неделя этой траты на экране.
  */
 const { open: spendOpen, close: closeSpend } = useQuerySheet('spend')
 const handEdit = ref<string | null>(null)
+function editHand(id: string) {
+  sectionFor.value = null
+  handEdit.value = id
+}
 function closeHand() {
   handEdit.value = null
   closeSpend()
@@ -542,7 +547,7 @@ onBeforeUnmount(() => {
       :amount-note="firstSalary?.note ?? ''"
       @close="firstSalary = null"
     />
-    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
+    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 

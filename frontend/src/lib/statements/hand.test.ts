@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyRules, categorize, handId, handOperation, isHand, spendTotals } from './model'
 import { matchCandidates } from './matching'
 import { replacedByStatement } from './phone'
+import { sectionWeek } from '@/lib/finance'
 import type { MerchantRule, Operation } from './types'
 import type { Obligation } from '@/types/finance'
 
@@ -66,11 +67,17 @@ describe('ручная трата среди операций', () => {
     expect(replacedByStatement([line], [magnum], [{ bank: 'kaspi', from: '2026-10-01', to: '2026-10-31' }]).size).toBe(0)
   })
 
-  it('в итогах раздела — как трата', () => {
+  it('в итогах раздела и в листе раздела «Недели» — как трата; в листе — с признаком правки', () => {
     const totals = spendTotals([magnum, hand()], 'a', 'week', '2026-W43', '')
     expect(totals.map((t) => [t.categoryId, t.amount, t.ops])).toEqual([
       ['sc_cafe', 2_500, 1],
       ['sc_food', 2_500, 1],
+    ])
+    const statement: Operation = { ...magnum, id: 'dddd000011112222', bank: 'kaspi', amount: -1_000 }
+    const sheet = sectionWeek([magnum, statement], { week: '2026-W43', categoryId: 'sc_cafe' })
+    expect(sheet.days[0].ops.map((o) => [o.amount, o.hand])).toEqual([
+      [2_500, true],
+      [1_000, false],
     ])
   })
 })

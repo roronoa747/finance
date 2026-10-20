@@ -1,7 +1,7 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
-import { isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
+import { isHand, isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -5194,8 +5194,8 @@ export type SectionWeek = {
   count: number
   /** Топ продавцов: имя, число операций, сумма — по убыванию суммы. */
   tops: { name: string; count: number; amount: number }[]
-  /** Операции по дням, свежие сверху — первые `limit`. */
-  days: { date: string; ops: { id: string; name: string; amount: number }[] }[]
+  /** Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата», Р-2). */
+  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean }[] }[]
   /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
   more: { count: number; amount: number } | null
 }
@@ -5214,7 +5214,7 @@ export function sectionWeek(
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, hand: isHand(op), key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5230,7 +5230,7 @@ export function sectionWeek(
   const days: SectionWeek['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }

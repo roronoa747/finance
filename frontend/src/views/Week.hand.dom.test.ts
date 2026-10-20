@@ -137,6 +137,11 @@ describe('MAN-01: разделы листа', () => {
     await press(q('[data-hand-save]'))
     const [own] = hands(store)
     expect(own).toMatchObject({ categoryId: 'sc_fun', amount: -5_000 })
+    await press(q('[data-row="sc_fun"] button.row-open'))
+    await press(q(`[data-hand-op="${own.id}"]`))
+    expect(chips()).toHaveLength(7)
+    expect(q('[data-hand-category="sc_fun"]')!.getAttribute('aria-pressed')).toBe('true')
+    expect(txt(q('[data-hand-more]'))).toBe('Ещё 11 ▾')
   })
 })
 
@@ -154,5 +159,47 @@ describe('MAN-01: дата ручной траты', () => {
     expect(txt(q('[data-week-label]'))).toBe('12–18 октября')
     expect(total(finance, 'a:week:2026-W42:sc_transport')).toMatchObject({ amount: 1_200, ops: 1 })
     expect(amountOf('sc_transport')).toBe(norm(plain(1_200)))
+  })
+})
+
+describe('MAN-02: правка и удаление ручной траты', () => {
+  async function withHand() {
+    const ctx = await openWeek('/week?spend=1')
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '2500')
+    await press(q('[data-hand-category="sc_food"]'))
+    await press(q('[data-hand-save]'))
+    await press(q('[data-row="sc_food"] button.row-open'))
+    return ctx
+  }
+
+  it('в листе раздела ручная строка — кнопка правки, строка выписки — нет; правка суммы и раздела переписывает итоги', async () => {
+    const { finance, store } = await withHand()
+    const [own] = hands(store)
+    expect(q(`[data-hand-op="${own.id}"]`), 'ручная — кнопка').toBeTruthy()
+    expect(document.querySelectorAll('[data-hand-op]')).toHaveLength(1)
+
+    await press(q(`[data-hand-op="${own.id}"]`))
+    expect(q('[data-hand-sheet]'), 'лист правки').toBeTruthy()
+    expect(q<HTMLInputElement>('input[data-hand-amount]')!.value.replace(/\s/g, '')).toBe('2500')
+    expect(q('[data-hand-category="sc_food"]')!.getAttribute('aria-pressed')).toBe('true')
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '3000')
+    await press(q('[data-hand-category="sc_cafe"]'))
+    await press(q('[data-hand-save]'))
+
+    expect(hands(store)).toMatchObject([{ id: own.id, amount: -3_000, categoryId: 'sc_cafe' }])
+    expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 4_000, ops: 1 })
+    expect(total(finance, 'a:week:2026-W43:sc_cafe')).toMatchObject({ amount: 3_000, ops: 1 })
+  })
+
+  it('«Удалить трату» → подтверждение — трата ушла из копии и итога', async () => {
+    const { finance, store } = await withHand()
+    const [own] = hands(store)
+    await press(q(`[data-hand-op="${own.id}"]`))
+    const zone = [...document.querySelectorAll<HTMLElement>('[data-hand-sheet] button')].find((b) => txt(b) === 'Удалить трату')
+    await press(zone)
+    const confirm = [...document.querySelectorAll<HTMLElement>('[data-hand-sheet] button')].find((b) => txt(b) === 'Удалить')
+    await press(confirm)
+    expect(hands(store)).toEqual([])
+    expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 4_000, ops: 1 })
   })
 })
