@@ -95,7 +95,7 @@ import type {
   DebtCard,
   TripExcluded,
 } from '@/types/finance'
-import type { MerchantRule } from '@/lib/statements/types'
+import type { MerchantRule, OpEdit } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
@@ -2051,6 +2051,31 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /* ---------------- правки своих операций (FB-02, Р-11) — личный документ ---------------- */
+  const OP_MEMO_MAX = 60
+  /** Все записи `opEdits` (и «без правок»): слой поверх копии операций (`withEdits` в сторе операций). */
+  const opEdits = computed(() => (privateDoc.value.opEdits as OpEdit[] | undefined) ?? [])
+
+  /**
+   * Правка операции: поля патча сливаются с записью; `undefined`/`null` в патче — снять поле (пишется `null`, см.
+   * `OpEdit`). Пустая заметка — снять; заметка — до 60 знаков. Та же запись — ничего не пишется. Партнёр личный документ
+   * не видит (Р-22); итоги пересчитывает стор операций (`editOp`).
+   */
+  function setOpEdit(id: string, patch: { memo?: string | null; oneOff?: boolean | null; refund?: OpEdit['refund'] }) {
+    const prev = opEdits.value.find((e) => e.id === id)
+    const next: OpEdit = { id, memo: prev?.memo ?? null, oneOff: prev?.oneOff ?? null, refund: prev?.refund ?? null, updatedAt: new Date().toISOString() }
+    if ('memo' in patch) next.memo = patch.memo?.trim().slice(0, OP_MEMO_MAX) || null
+    if ('oneOff' in patch) next.oneOff = patch.oneOff || null
+    if ('refund' in patch) next.refund = patch.refund && patch.refund.amount > 0 ? { amount: Math.round(patch.refund.amount), ...(patch.refund.opId ? { opId: patch.refund.opId } : {}) } : null
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+    if (prev && same(prev.memo, next.memo) && same(prev.oneOff, next.oneOff) && same(prev.refund, next.refund)) return
+    if (!prev && !next.memo && !next.oneOff && !next.refund) return
+    mutatePrivateDoc((doc) => {
+      const list = (doc.opEdits as OpEdit[] | undefined) ?? []
+      doc.opEdits = list.some((e) => e.id === id) ? list.map((e) => (e.id === id ? next : e)) : [...list, next]
+    })
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2455,6 +2480,8 @@ export const useFinanceStore = defineStore('finance', () => {
     tripExcluded,
     excludeFromTrip,
     includeInTrip,
+    opEdits,
+    setOpEdit,
     setSpendPlan,
     ensureFund,
     setFundMonths,

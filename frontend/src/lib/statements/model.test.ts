@@ -11,7 +11,10 @@ import {
   habitHints,
   isPhoneStub,
   matchPerson,
+  refundCandidates,
   ruleMatchOf,
+  spendOf,
+  withEdits,
   withPhoneCounterparty,
   normalizeMerchant,
   pairInternalTransfers,
@@ -22,7 +25,7 @@ import {
   spendTotals,
   unknownGroups,
 } from './model'
-import type { MerchantRule, Operation } from './types'
+import type { MerchantRule, OpEdit, Operation } from './types'
 
 const T = '2026-09-20T10:00:00.000Z'
 let seq = 0
@@ -442,4 +445,45 @@ describe('функции экрана выписок (B2C-07)', () => {
   })
 
 
+})
+
+describe('правки операций: withEdits, spendOf, refundCandidates (FB-02, Р-11, Р-12)', () => {
+  const edit = (p: Partial<OpEdit> & { id: string }): OpEdit => ({ updatedAt: T, ...p })
+  const spend = op({ id: 's1', date: '2026-10-10', amount: -30_000, kind: 'transfer-out', merchant: 'Дана К.', counterparty: 'Дана К.' })
+  const income = (id: string, date: string, amount: number, p: Partial<Operation> = {}) => op({ id, date, amount, kind: 'transfer-in', merchant: 'Дана К.', ...p })
+
+  it('withEdits: заметка и возврат — на операции; приход возврата — internal; без правок — те же объекты', () => {
+    const inc = income('i1', '2026-10-12', 30_000)
+    const other = op({ id: 'x' })
+    const out = withEdits([spend, inc, other], [edit({ id: 's1', memo: 'долг', refund: { amount: 30_000, opId: 'i1' } })])
+    expect(out[0]).toMatchObject({ memo: 'долг', refund: { amount: 30_000, opId: 'i1' } })
+    expect(out[1].internal).toBe(true)
+    expect(out[2]).toBe(other)
+    const list = [spend, inc]
+    expect(withEdits(list, [])).toBe(list)
+    // Снятые поля (null) и запись без полей — правки нет.
+    expect(withEdits(list, [edit({ id: 's1', memo: null, refund: null })])).toBe(list)
+    // Возврат больше траты — срезается до траты.
+    expect(withEdits([spend], [edit({ id: 's1', refund: { amount: 50_000 } })])[0].refund).toEqual({ amount: 30_000 })
+  })
+
+  it('spendOf: без возврата, частичный, полный, не ниже 0', () => {
+    expect(spendOf(spend)).toBe(30_000)
+    expect(spendOf({ ...spend, refund: { amount: 12_000 } })).toBe(18_000)
+    expect(spendOf({ ...spend, refund: { amount: 30_000 } })).toBe(0)
+    expect(spendOf({ ...spend, refund: { amount: 40_000 } })).toBe(0)
+  })
+
+  it('refundCandidates: окно ±14 дней, сумма не больше траты, ближайшие первыми; зарплата, свои переводы и взятые — нет', () => {
+    const near = income('i1', '2026-10-12', 30_000)
+    const far = income('i2', '2026-10-25', 10_000)
+    const tooBig = income('i3', '2026-10-11', 31_000)
+    const older = income('i4', '2026-10-01', 5_000, { kind: 'income' })
+    const internal = income('i5', '2026-10-10', 1_000, { internal: true })
+    const salary = income('i6', '2026-10-09', 20_000)
+    const taken = income('i7', '2026-10-10', 2_000)
+    const other = op({ id: 's2', date: '2026-10-10', amount: -2_000, refund: { amount: 2_000, opId: 'i7' } })
+    const ops = [spend, near, far, tooBig, older, internal, salary, taken, other]
+    expect(refundCandidates(spend, ops, new Set(['i6'])).map((o) => o.id)).toEqual(['i1', 'i4'])
+  })
 })

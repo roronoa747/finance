@@ -1,7 +1,7 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
-import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant } from '@/lib/statements/model'
+import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -2461,7 +2461,7 @@ export function historyCategories(ops: Operation[], months: string[]): string[] 
   for (const o of ops) {
     if (o.internal || o.amount >= 0 || !months.includes(o.date.slice(0, 7))) continue;
     const id = o.categoryId ?? UNKNOWN_CATEGORY;
-    sums.set(id, (sums.get(id) ?? 0) - o.amount);
+    sums.set(id, (sums.get(id) ?? 0) + spendOf(o));
   }
   return [...sums].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 }
@@ -5132,7 +5132,7 @@ export function myWeek(
   for (const op of ctx.ops ?? []) {
     if (!isSpend(op) || op.date <= end || op.date.slice(0, 7) !== month) continue
     const id = op.categoryId ?? UNKNOWN_CATEGORY
-    later.set(id, (later.get(id) ?? 0) - op.amount)
+    later.set(id, (later.get(id) ?? 0) + spendOf(op))
   }
 
   const ids = [...new Set([...now.keys(), ...planned.map((r) => r.categoryId)])]
@@ -5214,7 +5214,7 @@ export function sectionWeek(
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, hand: isHand(op), key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: spendOf(op), hand: isHand(op), key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5284,7 +5284,7 @@ export function weekFeed(
       id: op.id,
       // Ручная — подпись как вписал человек (заметка или раздел), без сокращения продавца выписки.
       name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)),
-      amount: -op.amount,
+      amount: spendOf(op),
       categoryId: op.categoryId ?? UNKNOWN_CATEGORY,
       phone: !!op.source,
       hand: isHand(op),
@@ -5639,8 +5639,8 @@ export function tripOps(
 }
 
 /** Сумма трат (положительная, целые тенге) и число строк. */
-export function tripTotal(ops: Pick<Operation, 'amount'>[]): { amount: number; ops: number } {
-  return { amount: ops.reduce((s, op) => s + Math.round(-op.amount), 0), ops: ops.length }
+export function tripTotal(ops: Pick<Operation, 'amount' | 'refund'>[]): { amount: number; ops: number } {
+  return { amount: ops.reduce((s, op) => s + Math.round(spendOf(op)), 0), ops: ops.length }
 }
 
 export type TripSpent = {

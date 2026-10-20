@@ -1,7 +1,7 @@
 import { addMonths } from '@/lib/dates'
 import type { PersonId } from '@/types/finance'
 import { words } from './dictionary'
-import { isSpend, normalizeMerchant } from './model'
+import { isSpend, normalizeMerchant, spendOf } from './model'
 import type { HabitId, HabitTotal, Operation } from './types'
 
 // Привычки трат (бэклог «ИИ-польза», Р-24, Р-29, Р-30, AU-27): каждый телефон находит их по своим операциям, в общий
@@ -69,10 +69,11 @@ export function habitTotals(ops: Operation[], by: PersonId, period: string, at =
   for (const op of ops) {
     if (op.date.slice(0, 7) !== period) continue
     const habit = habitOf(op)
-    if (!habit) continue
+    // Возврат на всю сумму (`spendOf` 0, FB-02) — не привычка.
+    if (!habit || !spendOf(op)) continue
     const t = out.get(habit) ?? { id: `${by}:${period}:${habit}`, by, period, habit, count: 0, amount: 0, updatedAt: at }
     t.count += 1
-    t.amount += -op.amount
+    t.amount += spendOf(op)
     out.set(habit, t)
   }
   return [...out.values()].filter(overThreshold).sort((a, b) => a.habit.localeCompare(b.habit))

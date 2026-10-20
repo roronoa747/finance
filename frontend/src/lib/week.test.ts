@@ -345,3 +345,26 @@ describe('startWeek · firstWeek — какую неделю открыть и �
     expect(firstWeek([], 'a')).toBeNull()
   })
 })
+
+describe('«Мне вернули» в неделе (FB-02, Р-12): одна spendOf у итогов, ленты и листа раздела', () => {
+  // W42: продукты Magnum 13-го 7 000 — вернули 3 000 (частично), Базар 15-го 4 000 — вернули всё.
+  const edited = OPS.map((o) =>
+    o.date === '2026-10-13' && o.merchant === 'Magnum' ? { ...o, refund: { amount: 3_000 } } : o.date === '2026-10-15' && o.merchant === 'Базар' ? { ...o, refund: { amount: 4_000 } } : o,
+  )
+  const totals = periodsOf(edited).flatMap(({ kind, period }) => spendTotals(edited, 'a', kind, period, T0))
+  const food = (t: SpendTotal[]) => t.find((x) => x.kind === 'week' && x.period === '2026-W42' && x.categoryId === 'sc_food')!
+
+  it('итог недели раздела: 25 000 − 3 000 − 4 000 = 18 000; строк — 7 (полный возврат остаётся строкой)', () => {
+    expect(food(totals)).toMatchObject({ amount: 18_000, ops: 7 })
+  })
+
+  it('лента и лист раздела — те же суммы: строка с полным возвратом — 0', () => {
+    const f = weekFeed(edited, { week: '2026-W42' })
+    // 41 400 − 7 000 = 34 400.
+    expect(f.total).toBe(34_400)
+    expect(f.days.find((d) => d.date === '2026-10-15')!.ops.map((o) => o.amount)).toEqual([0])
+    const s = sectionWeek(edited, { week: '2026-W42', categoryId: 'sc_food', limit: Infinity })
+    expect(s.total).toBe(food(totals).amount)
+    expect(s.count).toBe(7)
+  })
+})

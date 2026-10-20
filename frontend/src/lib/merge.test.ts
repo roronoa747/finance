@@ -929,7 +929,18 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [] })
+  })
+
+  it('FB-02: правки операций (opEdits) — по id операции, позднее побеждает; снятая заметка (null) не воскресает', () => {
+    const phone = { opEdits: [{ id: 'op1', memo: 'долг', refund: null, updatedAt: T1 }, { id: 'op2', memo: 'кофе', updatedAt: T1 }] }
+    const laptop = { opEdits: [{ id: 'op1', memo: null, refund: { amount: 5_000 }, updatedAt: T2 }, { id: 'op3', oneOff: true, updatedAt: T1 }] }
+    const merged = mergePrivateDocs(phone, laptop).opEdits as { id: string; memo?: string | null; refund?: unknown }[]
+    expect(merged.map((e) => e.id).sort()).toEqual(['op1', 'op2', 'op3'])
+    expect(merged.find((e) => e.id === 'op1')).toMatchObject({ memo: null, refund: { amount: 5_000 } })
+    // Порядок устройств не важен.
+    const back = mergePrivateDocs(laptop, phone).opEdits as typeof merged
+    expect(back.find((e) => e.id === 'op1')).toEqual(merged.find((e) => e.id === 'op1'))
   })
 })
 
