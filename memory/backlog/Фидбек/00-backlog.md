@@ -161,7 +161,7 @@
 | | FB-10 e2e и доки Блока 2; проверка Р-9 | `block-2-oneoff-subs/FB-10-e2e-docs.md` | FB-07…FB-09 | ⬜ |
 | 3. Партнёр: план · факт ⬜ *(S)* | FB-11 Расчёты по одному участнику: `by` у `spendCompare` / `usualSpend` / `monthSpendByCategory` / `rkShare`; строки участников (фронт, lib) | `block-3-partner/FB-11-partner-lib.md` | Блок 2 | ⬜ |
 | | FB-12 Экраны: «Месяц → Траты», лист раздела, `MonthPast`, viewer; DESIGN.md (фронт) | `block-3-partner/FB-12-partner-screens.md` | FB-11 | ⬜ |
-| 4. Разбор ИИ v4 ⬜ *(4а — M без `/ux`, деплой раньше; 4б — L)* | FB-13 Месяц вместо года: `monthly` у находок, факты, счётчик, Go-инструкция, демо (фронт + Go) | `block-4-review-v4/FB-13-monthly-figures.md` | — (можно параллельно Блоку 1) | ⬜ |
+| 4. Разбор ИИ v4 ⬜ *(4а — M без `/ux`, деплой раньше; 4б — L)* | FB-13 Месяц вместо года: `monthly` у находок, факты, счётчик, Go-инструкция, демо (фронт + Go) | `block-4-review-v4/FB-13-monthly-figures.md` | — (можно параллельно Блоку 1) | ✅ |
 | | FB-14 Исследование: какие инсайты и действия с призывом — варианты артефактом на данных владельца → решение владельца | `block-4-review-v4/FB-14-insights-research.md` | FB-13, Блок 3 | ⬜ |
 | | FB-15 *(заглушка)* Инсайты v4 — считает код | `block-4-review-v4/FB-15-insights-code.md` | решение по FB-14 | ⬜ |
 | | FB-16 *(заглушка)* Советы v4 с действием-призывом — факты, ручка, экран | `block-4-review-v4/FB-16-advice-actions.md` | FB-15 | ⬜ |
