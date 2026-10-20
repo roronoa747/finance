@@ -386,7 +386,8 @@ describe('AI-19: «ИП + фамилия» по привычке — «Прод�
     ai.setConsent(true)
     await openBatch()
     await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ думает…'))
-    expect(order()).toEqual(['Respect Boutique', 'Дана К.', 'ИП Абенова', 'Tau Lider'])
+    // По сумме этой недели (пачка — только выбранной недели, «Лента недели» Р-2): ИП Абенова 5 000 — после Tau Lider 8 000.
+    expect(order()).toEqual(['Respect Boutique', 'Дана К.', 'Tau Lider', 'ИП Абенова'])
     expect(q('[data-ai-hint]')).toBeNull()
     reply(ANSWER)
     await vi.waitFor(() => expect(txt(q('[data-ai-sellers]'))).toBe('ИИ предлагает · 2'))

@@ -142,13 +142,13 @@ describe('views/Week.vue', () => {
 
 // B2C-21 «Тесты»: SSR /week — очередь решений по одному после сопоставлений и итог недели.
 describe('views/Week.vue — решения по одному и итог недели', () => {
-  it('B2C-61: незнакомые месяца — пачкой: «Без раздела · N», 6 строк по сумме + «Ещё K · сумма ›»; без отмеченных — чипов нет; брендовых кнопок нет', async () => {
+  it('B2C-61: незнакомые недели — пачкой: «Без раздела · N», 6 строк по сумме + «Ещё K · сумма ›»; без отмеченных — чипов нет; брендовых кнопок нет', async () => {
     signIn()
     const store = useOperationsStore()
     // 8 продавцов: 8 000, 7 000 … 1 000; у TOO ROMASHKA — две операции.
     const names = ['IP ASANOVA', 'TOO ROMASHKA', 'IP KIM', 'IP OSPANOV', 'IP NURLANOVA', 'IP SEITKALI', 'IP ZHUMABAEV', 'IP AKHMETOVA']
-    names.forEach((n, i) => (store.ops[`o${i}`] = op(`o${i}`, '2026-09-05', -(8 - i) * 1_000 + (i === 1 ? 3_000 : 0), n)))
-    store.ops.r2 = op('r2', '2026-09-20', -3_000, 'TOO ROMASHKA')
+    names.forEach((n, i) => (store.ops[`o${i}`] = op(`o${i}`, '2026-09-22', -(8 - i) * 1_000 + (i === 1 ? 3_000 : 0), n)))
+    store.ops.r2 = op('r2', '2026-09-23', -3_000, 'TOO ROMASHKA')
     const raw = await asked()
     const html = text(raw)
     expect(html).toContain('Без раздела · 8')
@@ -250,13 +250,14 @@ describe('views/Week.vue — решения по одному и итог нед
     expect(brand(raw)).toEqual(['Загрузить', 'Отложить'])
   })
 
-  it('B2C-49: продавец раньше подписки и остатка; незнакомые — по своим операциям этого и прошлого месяца', async () => {
+  it('B2C-49: продавец раньше подписки и остатка; незнакомые — по своим операциям выбранной недели («Лента недели», Р-2)', async () => {
+    // Вторник 29 сентября: W40 = 28 сентября – 4 октября; воскресенье 27-го — уже прошлая неделя.
     vi.setSystemTime(new Date('2026-09-29T07:00:00Z'))
     signIn()
     const store = useOperationsStore()
-    store.ops.o1 = op('o1', '2026-09-10', -7_000, 'IP ASANOVA')
-    store.ops.o2 = op('o2', '2026-08-28', -3_000, 'IP KIM')
-    store.ops.o3 = op('o3', '2026-07-30', -9_000, 'IP OSPANOV')
+    store.ops.o1 = op('o1', '2026-09-28', -7_000, 'IP ASANOVA')
+    store.ops.o2 = op('o2', '2026-09-29', -3_000, 'IP KIM')
+    store.ops.o3 = op('o3', '2026-09-27', -9_000, 'IP OSPANOV')
     useFinanceStore().householdDoc.obligations = [netflix]
     const html = text(await asked())
     expect(html).toContain('Без раздела · 2')

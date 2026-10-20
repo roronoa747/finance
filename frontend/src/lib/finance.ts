@@ -1,7 +1,7 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
-import { isHand, isSpend, normalizeCounterparty, normalizeMerchant } from '@/lib/statements/model'
+import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant } from '@/lib/statements/model'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -5242,6 +5242,54 @@ export function sectionWeek(
     days,
     more: rest.length ? { count: rest.length, amount: amountTotal(rest) } : null,
   }
+}
+
+/** Трата ленты недели (`weekFeed`). */
+export type WeekFeedOp = {
+  id: string
+  /** Продавец коротко (`shortMerchant`) или получатель перевода. */
+  name: string
+  /** Целые тенге, больше нуля. */
+  amount: number
+  /** Раздел; `UNKNOWN_CATEGORY` — не разобрано. */
+  categoryId: string
+  /** Пришла с телефона (касание Apple Pay или пуш банка); нет — строка выписки. */
+  phone: boolean
+}
+
+/**
+ * Лента трат недели (бэклог «Лента недели», Р-1): свои траты ISO-недели по дням, свежие сверху, — и с телефона, и из
+ * выписки. Отбор — тот же, что у суммы недели (`myWeek` ← итоги `spendTotals` → `spentOf`): списания без переводов между
+ * своими; у разделов платежей (`plannedElsewhere`) — только строки без отметки (`marked`; нет набора — ни одной, как у
+ * `spendTotals` без отметок): отмеченная — платёж, а не трата (Р-94). Сумма ленты равна сумме недели. В дне: сначала
+ * с телефона — свежие сверху, потом выписка — крупные сверху.
+ */
+export function weekFeed(
+  ops: Operation[],
+  where: { week: string; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+): { count: number; total: number; days: { date: string; ops: WeekFeedOp[] }[] } {
+  const list = ops
+    .filter(
+      (op) =>
+        isSpend(op) &&
+        weekKey(op.date) === where.week &&
+        (!op.categoryId || !plannedElsewhere(op.categoryId, where.categories ?? []) || (!!where.marked && !where.marked.has(op.id))),
+    )
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.at ?? '').localeCompare(a.at ?? '') || a.amount - b.amount || a.id.localeCompare(b.id))
+  const days: { date: string; ops: WeekFeedOp[] }[] = []
+  for (const op of list) {
+    const item: WeekFeedOp = {
+      id: op.id,
+      name: op.counterparty ?? shortMerchant(op.merchant),
+      amount: -op.amount,
+      categoryId: op.categoryId ?? UNKNOWN_CATEGORY,
+      phone: !!op.source,
+    }
+    const last = days.at(-1)
+    if (last?.date === op.date) last.ops.push(item)
+    else days.push({ date: op.date, ops: [item] })
+  }
+  return { count: list.length, total: amountTotal(days.flatMap((d) => d.ops)), days }
 }
 
 /** Тренд (Р-98): мои суммы недель по порядку, текущая — последняя; недели без трат — 0. */
