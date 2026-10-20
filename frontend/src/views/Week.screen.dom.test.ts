@@ -124,9 +124,9 @@ describe('B2C-15: карточка сопоставления на «Недел�
 describe('ревью Блока 3 Н-22 (правило 12): брендовая на экране — «Загрузить»; в листе вопросов — не больше одной', () => {
   const brandButtons = () => [...document.querySelectorAll('button')].filter((b) => b.className.includes('bg-brand ')).map((b) => b.textContent?.trim())
   const brandFrames = () => document.querySelectorAll('.border-brand').length
-  /** Незнакомый продавец месяца — пачка «Без раздела» (ответ — чипы). */
+  /** Незнакомый продавец недели — пачка «Без раздела» (ответ — чипы; только выбранной недели — «Лента недели», Р-2). */
   const unknownOp = (store: ReturnType<typeof useOperationsStore>) => {
-    store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
+    store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-22', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
   }
 
   it('сопоставление и день своей зарплаты — в листе один вопрос с одной брендовой; о зарплате «Неделя» не спрашивает (Р-97)', async () => {
@@ -178,9 +178,9 @@ describe('ревью Блока 3 Н-22 (правило 12): брендовая 
 
 describe('B2C-49: одно решение за раз, «N из M» растёт, а не тает', () => {
   it('«! 3» → лист: «1 из 3» → ответ → «2 из 3» (не «1 из 2»); «Потом» сдвигает к следующему; после последнего — лист закрыт', async () => {
-    // Сопоставление кредита, незнакомый продавец месяца и подписка без ответа — три решения.
+    // Сопоставление кредита, незнакомый продавец недели и подписка без ответа — три решения.
     await openWeek((finance, store) => {
-      store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-08', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
+      store.ops['op-u'] = { id: 'op-u', bank: 'kaspi', date: '2026-09-22', amount: -7_500, kind: 'purchase', merchant: 'ИП ЖАНСАЯ', categoryId: null, internal: false }
       finance.householdDoc.obligations = [{ id: 'nf', name: 'Netflix', note: '', day: 3, category: 'd4', versions: [{ from: '2000-01', amount: 4_990 }], updatedAt: '' }]
     })
     await vi.waitFor(() => expect(page()).toContain(QUESTION))
@@ -210,7 +210,7 @@ describe('B2C-61: незнакомые продавцы пачкой → пра�
     openWeek((finance, store) => {
       finance.householdDoc.credits = []
       delete store.ops['op-1']
-      sells.forEach(([merchant, amount], i) => (store.ops[`u${i}`] = { id: `u${i}`, bank: 'kaspi', date: '2026-09-2' + (i % 3), amount: -amount, kind: 'purchase', merchant, categoryId: null, internal: false }))
+      sells.forEach(([merchant, amount], i) => (store.ops[`u${i}`] = { id: `u${i}`, bank: 'kaspi', date: '2026-09-2' + (1 + (i % 3)), amount: -amount, kind: 'purchase', merchant, categoryId: null, internal: false }))
     })
   const row = (name: string) => [...document.querySelectorAll('button[aria-pressed]')].find((b) => b.textContent?.includes(name)) as HTMLButtonElement
   const pick = async (...names: string[]) => {

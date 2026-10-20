@@ -979,6 +979,7 @@ export const useOperationsStore = defineStore('operations', () => {
     send,
     recategorize,
     recategorizeAll,
+    totalMarks,
     forgetRule,
     settleReleased,
     flush,

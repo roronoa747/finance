@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PhDeviceMobile } from '@phosphor-icons/vue'
 import { money } from '@/lib/money'
 
 /**
@@ -17,8 +18,10 @@ withDefaults(
     clickable?: boolean
     /** Не трата (перевод между своими): сумма без знака, тихим цветом. */
     muted?: boolean
+    /** Пришла с телефона (Apple Pay, пуш банка) — маленький значок у продавца. */
+    phone?: boolean
   }>(),
-  { category: null, date: '', letter: '', clickable: false, muted: false },
+  { category: null, date: '', letter: '', clickable: false, muted: false, phone: false },
 )
 
 const emit = defineEmits<{ (e: 'click'): void }>()
@@ -40,7 +43,10 @@ const emit = defineEmits<{ (e: 'click'): void }>()
       {{ letter || merchant.slice(0, 1).toUpperCase() }}
     </span>
     <span class="min-w-0 flex-1">
-      <span class="block truncate font-medium text-ink">{{ merchant }}</span>
+      <span class="flex items-center gap-1 font-medium text-ink">
+        <span class="truncate">{{ merchant }}</span>
+        <PhDeviceMobile v-if="phone" :size="13" class="shrink-0 text-ink-2" aria-label="с телефона" data-phone />
+      </span>
       <span class="flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: category?.color ?? 'var(--s-unknown)' }" aria-hidden="true" />
         <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template></span>

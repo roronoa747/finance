@@ -16,10 +16,11 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
+import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
 import { arrivalNote } from '@/components/useSalaryTap'
-import { recentOperations, type MatchCandidate } from '@/lib/statements/matching'
+import type { MatchCandidate } from '@/lib/statements/matching'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { useFinanceStore } from '@/stores/finance'
@@ -43,6 +44,7 @@ import {
   salaryOf,
   startWeek,
   weekTrend,
+  weekFeed,
   weekUploads,
   type Decision,
   type MyWeekRow,
@@ -130,6 +132,16 @@ const trendMax = computed(() => Math.max(...trend.value.map((t) => t.amount)))
 const trendOpen = ref(false)
 const trendDay = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`
 
+/**
+ * Лента трат недели (бэклог «Лента недели», Р-1): тихая строка «Траты недели · N» под разделами → лист по дням. Отбор —
+ * тот же, что у суммы недели (`weekFeed`: отмеченные платежи — не траты).
+ */
+const feed = computed(() => {
+  const { marked, categories } = store.totalMarks(store.shown)
+  return weekFeed(store.shown, { week: week.value, marked, categories })
+})
+const feedOpen = ref(false)
+
 /* ---------- листы: раздел (Р-101) и «Мои выписки» (Р-102) ---------- */
 const sectionFor = ref<string | null>(null)
 const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === sectionFor.value) ?? null)
@@ -207,8 +219,13 @@ const onHide = () => {
 // «Остались деньги?» (Р-19): ответ — до конца месяца, на устройстве (раскладку остатка семьи проверяет очередь).
 const answeredLocal = ref<string | null>(readMonthEnd())
 
-// Незнакомые продавцы — пачкой (Р-58) по своим операциям этого и прошлого месяца: раздел — задним числом.
-const unknownList = computed(() => unknownGroups(recentOperations(store.all)))
+/**
+ * Незнакомые продавцы — пачкой (Р-58), раздел задним числом — только по своим операциям выбранной недели (бэклог «Лента
+ * недели», Р-2): «Не разобрано · N вопросов», сумма пачки и «Разобрать» сходятся со строкой «Не разобрано» этой недели.
+ * Старые — в своих неделях (‹) и в «Месяце». Выписка, что ждёт тост, — в строке сразу, а вопросы о ней — после отправки
+ * (Р-97), поэтому `store.all`, а не `store.shown`.
+ */
+const unknownList = computed(() => unknownGroups(store.all.filter((o) => weekKey(o.date) === week.value)))
 
 /**
  * Очередь вопросов (`decisionQueue`): сопоставление → продавцы пачкой → подписка → «остались деньги?»; в листе —
@@ -462,6 +479,18 @@ onBeforeUnmount(() => {
       </Card>
     </Tip>
 
+    <!-- Лента трат недели (Р-1): тихая строка под разделами, лист — по дням -->
+    <button
+      v-if="feed.count"
+      type="button"
+      class="press flex w-full cursor-pointer items-center justify-between rounded-[20px] bg-surface px-4 py-3.5 text-left text-[15px] font-semibold text-ink-2"
+      data-week-feed
+      @click="feedOpen = true"
+    >
+      <span class="num">Траты недели · {{ feed.count }}</span>
+      <PhCaretRight :size="15" class="text-ink-3" />
+    </button>
+
     <!-- Тренд 8 недель — свёрнут -->
     <div v-if="trendMax > 0" data-week-trend>
       <button
@@ -527,6 +556,7 @@ onBeforeUnmount(() => {
       @close="firstSalary = null"
     />
     <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
+    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->
