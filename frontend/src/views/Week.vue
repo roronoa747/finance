@@ -16,6 +16,8 @@ import UnknownBatch from '@/components/UnknownBatch.vue'
 import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
+import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
+import { useQuerySheet } from '@/components/useQuerySheet'
 import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import ApplePayWeekLine from '@/components/applepay/ApplePayWeekLine.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
@@ -146,6 +148,26 @@ const feedOpen = ref(false)
 const sectionFor = ref<string | null>(null)
 const sectionRow = computed(() => mine.value.rows.find((r) => r.categoryId === sectionFor.value) ?? null)
 const uploadsOpen = ref(false)
+
+/*
+ * «Трата» руками (бэклог «Ручная трата», Р-1): из «+» — `/week?spend=1`; правка — нажатие своей ручной траты в листе
+ * раздела или в ленте «Траты недели» (лист уступает место). Сохранили — неделя этой траты на экране.
+ */
+const { open: spendOpen, close: closeSpend } = useQuerySheet('spend')
+const handEdit = ref<string | null>(null)
+function editHand(id: string) {
+  sectionFor.value = null
+  feedOpen.value = false
+  handEdit.value = id
+}
+function closeHand() {
+  handEdit.value = null
+  closeSpend()
+}
+function onHandSaved(date: string) {
+  turned.value = true
+  week.value = weekKey(date)
+}
 function pickFile() {
   uploadsOpen.value = false
   fileInput.value?.click()
@@ -555,8 +577,9 @@ onBeforeUnmount(() => {
       :amount-note="firstSalary?.note ?? ''"
       @close="firstSalary = null"
     />
-    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" />
-    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" />
+    <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" />
+    <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
+    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->

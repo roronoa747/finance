@@ -144,6 +144,7 @@ func TestStatementUploadsRolesAndFamily(t *testing.T) {
 
 	for _, bad := range []map[string]any{
 		{"bank": "halyk", "period_from": "2026-06-01", "period_to": "2026-06-30", "ops_count": 1},
+		{"bank": "hand", "period_from": "2026-06-01", "period_to": "2026-06-30", "ops_count": 1},
 		{"bank": "kaspi", "period_from": "2026-06-31", "period_to": "2026-07-30", "ops_count": 1},
 		{"bank": "kaspi", "period_from": "2026-07-30", "period_to": "2026-07-01", "ops_count": 1},
 		{"bank": "kaspi", "period_from": "2026-07-01", "period_to": "2026-07-30", "ops_count": -1},
@@ -226,8 +227,9 @@ func TestOperationsValidation(t *testing.T) {
 		}
 	}
 	// Операции с телефона (Apple Pay, Р-14): Halyk и «карта» без банка — банки операций, но
-	// не выписок (загрузка halyk — 400 в TestStatementUploadsRolesAndFamily).
-	for _, bank := range []string{"halyk", "card"} {
+	// не выписок (загрузка halyk — 400 в TestStatementUploadsRolesAndFamily). Ручная трата — банк
+	// «hand» (бэклог «Ручная трата», Р-2): операция есть, выписки такой нет.
+	for _, bank := range []string{"halyk", "card", "hand"} {
 		if rec := app.do(t, http.MethodPost, "/api/operations/batch", app.alice, map[string]any{"operations": []any{with("bank", bank)}}); rec.Code != http.StatusOK {
 			t.Errorf("bank %s: want 200, got %d %s", bank, rec.Code, rec.Body.String())
 		}

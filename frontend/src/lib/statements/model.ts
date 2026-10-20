@@ -200,6 +200,42 @@ export function isPhoneStub(op: Pick<Operation, 'source' | 'merchant' | 'counter
   return op.source === 'push' && !op.counterparty && phoneStubs.has(normalizeMerchant(op.merchant))
 }
 
+/**
+ * Трата, вписанная руками (бэклог «Ручная трата», Р-1, Р-2): обычная личная операция, банк `hand`. Раздел выбрал
+ * человек — правила семьи и словарь его не меняют (`categorize`), вопросом «это платёж по …?» она не становится
+ * (`matchCandidates`), выписка её не заменяет (`replacedByStatement` берёт только операции с телефона того же банка).
+ */
+export const isHand = (op: Pick<Operation, 'bank'>) => op.bank === 'hand'
+
+/** Id ручной траты: 16 hex-знаков случайно (сервер принимает `^[0-9a-f]{8,32}$`). */
+export function handId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8))
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Ручная трата из формы: сумма — целые тенге больше нуля (списание — минус), раздел, дата, заметка «что / где» —
+ * без длинных цифр и полных ФИО (`sanitize`, Р-23: сервер строку с номером отверг бы, очередь встала бы). Подпись
+ * строки (`merchant`) — заметка, пусто — имя раздела (сервер не берёт покупку без продавца).
+ */
+export function handOperation(
+  input: { id: string; amount: number; categoryId: string; date: string; note: string },
+  categoryName: string,
+): Operation {
+  const note = sanitize(input.note)
+  return {
+    id: input.id,
+    bank: 'hand',
+    date: input.date,
+    amount: -Math.abs(Math.round(input.amount)),
+    kind: 'purchase',
+    merchant: note || categoryName,
+    ...(note ? { note } : {}),
+    categoryId: input.categoryId,
+    internal: false,
+  }
+}
+
 /** Совпадение для правила по операции: получатель, если он есть, иначе продавец. */
 export function ruleMatchOf(op: Pick<Operation, 'merchant' | 'counterparty'>): MerchantRule['match'] {
   return op.counterparty ? { counterparty: normalizeCounterparty(op.counterparty) } : { merchant: normalizeMerchant(op.merchant) }
@@ -217,6 +253,8 @@ export function categorize(
   dictionary = DICTIONARY,
   fits?: PaymentFits,
 ): Categorized {
+  // Ручная трата: раздел выбрал человек (Р-1) — ни правило, ни словарь его не трогают.
+  if (isHand(op)) return { categoryId: op.categoryId, internal: false }
   const stub = isPhoneStub(op)
   // Заглушка пуша: свой ответ этой строки (`isPhoneStub`) сильнее разбора; правила семьи — только правило платежа.
   if (stub && op.categoryId && op.amount < 0 && !op.internal) return { categoryId: op.categoryId, internal: false }

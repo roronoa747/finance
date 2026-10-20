@@ -151,12 +151,16 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html).not.toMatch(/Обзор|Бюджет<\/span>|Капитал<\/span>/)
   })
 
-  it('лист «+» на Sheet: шесть действий в порядке §2, «Загрузить выписку» первым; закрытый лист не рендерится', async () => {
+  it('лист «+» на Sheet: действия в порядке §2, «Трата» первой, за ней «Загрузить выписку»; закрытый лист не рендерится', async () => {
     const closed = await renderScreen(AppShell, '/')
     expect(closed).not.toContain('role="dialog"')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).toContain('role="dialog"')
     expect(html).toContain('bg-scrim')
+    // Бэклог «Ручная трата», Р-1: «Трата» — первой, подпись «сумма и раздел».
+    expect(html.indexOf('>Трата<')).toBeGreaterThan(0)
+    expect(html.indexOf('>Трата<')).toBeLessThan(html.indexOf('Загрузить выписку'))
+    expect(html).toContain('сумма и раздел')
     const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку']
     const at = order.map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
@@ -183,6 +187,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     signIn('viewer', 'b')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
+    expect(html).not.toContain('сумма и раздел')
     for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
       expect(html).not.toContain(t)
     }

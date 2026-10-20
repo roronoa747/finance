@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { PhCaretRight } from '@phosphor-icons/vue'
+import { PhCaretRight, PhPencilSimple } from '@phosphor-icons/vue'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { dayWeekdayLabel, weekRange, weekRangeLabel } from '@/lib/dates'
@@ -10,12 +10,13 @@ import Sheet from '@/components/kit/Sheet.vue'
 
 /**
  * Лист раздела «Недели» (Р-101; макет week-month.html «Нажал „Такси“»): сумма за неделю, к прошлой, остаток на
- * месяц, топ продавцов и свои операции по дням — первые пять, остальные за «Ещё N». Только чтение; всё считает
+ * месяц, топ продавцов и свои операции по дням — первые пять, остальные за «Ещё N». Только чтение, кроме ручных трат
+ * (нажатие — `edit`, лист «Трата», бэклог «Ручная трата», Р-2); всё считает
  * `sectionWeek` / `myWeek` (`finance.ts`). Времени операции в выписке нет — строка без него. Операции — вместе с
  * выпиской, которая ещё ждёт тост (`store.shown`): лист сходится со строкой раздела и до отправки.
  */
 const props = defineProps<{ row: MyWeekRow | null; week: string; monthName: string }>()
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'edit', id: string): void }>()
 
 const store = useOperationsStore()
 const all = ref(false)
@@ -51,10 +52,25 @@ const detail = computed(() =>
       <div class="flex flex-col" data-section-ops>
         <template v-for="d in detail.days" :key="d.date">
           <p class="pb-1 pt-2.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ dayWeekdayLabel(d.date) }}</p>
-          <div v-for="o in d.ops" :key="o.id" class="flex items-baseline gap-2 border-t border-line py-[7px] text-[14.5px] text-ink">
-            <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
-            <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
-          </div>
+          <template v-for="o in d.ops" :key="o.id">
+            <!-- Ручная трата (бэклог «Ручная трата», Р-2): строка — кнопка правки, карандаш у суммы; строки выписки — только чтение. -->
+            <button
+              v-if="o.hand"
+              type="button"
+              class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-[7px] text-left text-[14.5px] text-ink"
+              :aria-label="`Поправить: ${o.name}`"
+              :data-hand-op="o.id"
+              @click="emit('edit', o.id)"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
+              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+              <PhPencilSimple :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+            </button>
+            <div v-else class="flex items-baseline gap-2 border-t border-line py-[7px] text-[14.5px] text-ink">
+              <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
+              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+            </div>
+          </template>
         </template>
       </div>
       <button

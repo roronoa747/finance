@@ -10,6 +10,7 @@ import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, tripOps, trip
 import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
+  isHand,
   isPhoneStub,
   pairInternalTransfers,
   periodsOf,
@@ -723,6 +724,34 @@ export const useOperationsStore = defineStore('operations', () => {
     await flush(client)
   }
 
+  /**
+   * Ручная трата (бэклог «Ручная трата», Р-1, Р-2): новая или правка своей ручной — в копию, итоги периодов (при смене
+   * даты — и старого) в общий документ, на сервер — тем же батчем, что строки выписки. Партнёр видит только итог
+   * раздела (`writeTotals` → `SpendTotal`). Разделов в документе ещё нет (выписок не было) — засеваются, как при
+   * первой загрузке. Строку выписки или с телефона этим не поправить.
+   */
+  async function saveHand(op: Operation, client: ApiClient = apiClient) {
+    const prev = ops.value[op.id]
+    if (!isHand(op) || (prev && !isHand(prev))) return
+    if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
+    remember([op])
+    writeTotals(periodsOf(prev ? [prev, op] : [op]))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: [op] })
+    save()
+    await flush(client)
+  }
+
+  /** Удалить свою ручную трату: из копии и итогов, на сервер — надгробием (`deleted`). Выписку так не удалить. */
+  async function removeHand(id: string, client: ApiClient = apiClient) {
+    const op = ops.value[id]
+    if (!op || !isHand(op)) return
+    delete ops.value[id]
+    writeTotals(periodsOf([op]))
+    if (!demo.value) pending.value.push({ key: newKey(), ops: [op], deleted: true })
+    save()
+    await flush(client)
+  }
+
   /** Досылает очередь: запись загрузки, затем операции кусками; после каждого шага — на диск. */
   async function flush(client: ApiClient = apiClient): Promise<void> {
     if (demo.value || !pending.value.length) return
@@ -982,6 +1011,8 @@ export const useOperationsStore = defineStore('operations', () => {
     totalMarks,
     forgetRule,
     settleReleased,
+    saveHand,
+    removeHand,
     flush,
     pull,
     pullOnReturn,
