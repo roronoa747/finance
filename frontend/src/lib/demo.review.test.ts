@@ -37,17 +37,17 @@ describe('DEMO_REVIEW v3 — без цифр, верен в любой день,
       const finance = useFinanceStore()
       const key = monthKey()
 
-      // Слова — без цифр; заголовок совета 1–4 слова (Р-12).
+      // Слова — без цифр и без года («Фидбек», Р-8); заголовок совета 1–4 слова (Р-12).
       const words = [DEMO_REVIEW.where, ...DEMO_REVIEW.advices.flatMap((a) => [a.title, a.text])]
-      for (const t of words) expect(t, t).not.toMatch(/\d/)
+      for (const t of words) expect(t, t).not.toMatch(/\d|за год|в год/)
       for (const a of DEMO_REVIEW.advices) expect(a.title.split(/\s+/).length, a.title).toBeLessThanOrEqual(4)
 
-      // Находки демо: утечка «Магазин у дома» (≈ 250 000 ₸ в год, ≈ 12 % поездки), новая подписка; «раздуло» кафе — когда
-      // месяц находок текущий (в первые дни месяца он прошлый — там кафе как обычно).
+      // Находки демо: утечка «Магазин у дома» (20 700 ₸ в месяц — 21 % месячного взноса 100 000 в поездку), новая
+      // подписка; «раздуло» кафе — когда месяц находок текущий (в первые дни месяца он прошлый — там кафе как обычно).
       const { state, ctx } = finance.planInput(key)
       const findings = reviewFindings(state, ctx)
       const leak = findings.find((f) => f.kind === 'leak')
-      expect(leak).toMatchObject({ name: 'Магазин у дома', yearly: 248_400, image: { kind: 'dream', name: 'Поездка в Японию', share: 12 } })
+      expect(leak).toMatchObject({ name: 'Магазин у дома', monthly: 20_700, image: { kind: 'dream', name: 'Поездка в Японию', share: 21 } })
       expect(findings.find((f) => f.kind === 'recurring')).toMatchObject({ name: 'Онлайн-кинотеатр', amount: 2_490 })
       if (findMonth(ctx) === key) expect(findings.find((f) => f.kind === 'grew')).toMatchObject({ categoryId: 'sc_cafe', why: { kind: 'purchases' } })
       // «Подушки почти нет» — верно.
@@ -61,16 +61,17 @@ describe('DEMO_REVIEW v3 — без цифр, верен в любой день,
       expect(r.where).toBe(DEMO_REVIEW.where)
       expect(r.advices!.map((a) => a.title)).toEqual(['Магазин у дома', 'Новое списание', 'Отложить в подушку'])
       expect(r.advices!.map((a) => a.action.kind)).toEqual(['open', 'open', 'do'])
-      // Подпись крупной цифры — коротко, кодом (RZ-15).
-      expect(r.advices![0].figure).toEqual({ about: 'частые траты у «Магазин у дома» — за год', value: money(248_400), label: 'за год · Магазин у дома' })
+      // Подпись крупной цифры — коротко, кодом (RZ-15); за месяц («Фидбек», Р-19).
+      expect(r.advices![0].figure).toEqual({ about: 'частые траты у «Магазин у дома» — в месяц', value: money(20_700), label: 'в месяц · Магазин у дома' })
       expect(r.advices![1].figure).toEqual({ about: DEMO_REVIEW.advices[1].figure, value: money(2_490), label: 'в месяц · Онлайн-кинотеатр' })
       expect(r.advices![2].figure).toBeNull()
       expect(r.advices![0].action).toEqual({ kind: 'open', target: { kind: 'seller', id: 'магазин у дома', name: 'Магазин у дома', categoryId: 'sc_food' } })
-      // Счётчик — по находкам советов: утечка и подписка (2 490 × 12).
+      // Счётчик — по находкам советов: утечка и подписка, ₸ в месяц.
       expect(r.work).toEqual(reviewWork(state, ctx, findings, [leak!, findings.find((f) => f.kind === 'recurring')!]))
-      expect(r.work!.yearly).toBe(248_400 + 29_880)
-      // «Что ушло» — факты и действия демо.
+      expect(r.work!.monthly).toBe(20_700 + 2_490)
+      // «Что ушло» — факты и действия демо; годовых фактов нет.
       expect(r.sent && 'facts' in r.sent && r.sent.facts.length).toBeGreaterThan(5)
+      expect(JSON.stringify(r.sent)).not.toMatch(/за год|в год/)
 
       // «Сделать» → подтвердил: остатка уже нет, но кандидат заготовки тот же — у совета «✓ Сделано», а не пусто.
       const fresh = stepCandidates(state, ctx).find((c) => c.id === 'cushion')

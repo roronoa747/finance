@@ -60,7 +60,7 @@ const upload = (slot: 'a' | 'b', from: string, to: string) => ({
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|[  ]/g, ' ').replace(/\s+/g, ' ')
 const cards = (html: string) => [...html.matchAll(/data-report-card="([^"]+)"/g)].map((m) => m[1])
 
-/** Ответ модели для сборки Блока 1: «в подушку» (do), аптека (open продавца, крупная цифра — за год). */
+/** Ответ модели для сборки Блока 1: «в подушку» (do), аптека (open продавца, крупная цифра — сумма утечки). */
 function answerFor(body: ReviewPayloadV3) {
   const act = (re: RegExp) => body.actions.find((a) => re.test(a.about))!.id
   const fact = (re: RegExp) => body.facts.find((f) => re.test(f.about))!.id
@@ -68,12 +68,19 @@ function answerFor(body: ReviewPayloadV3) {
     where: 'Кафе выросло из-за одного вечера.',
     advices: [
       { title: 'Отложим в подушку', text: 'Остаток месяца — в подушку.', figure: null, action: act(/в подушку/) },
-      { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(/^частые траты у .* — за год$/), action: act(/^открыть покупки у/) },
+      { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(/^частые траты у .* — в месяц$/), action: act(/^открыть покупки у/) },
     ],
   }
 }
-/** Разбор v3 так, как его сохранила сборка Блока 1: имя продавца — как печатает банк (`shortMerchant` ещё не было). */
-const oldBuild = (r: AiReview): AiReview => JSON.parse(JSON.stringify(r).replaceAll('APTEKA PLUS', 'APTEKA PLUS ALMATY KZ'))
+/**
+ * Разбор v3 так, как его сохранила сборка Блока 1: имя продавца — как печатает банк (`shortMerchant` ещё не было);
+ * счётчик — ₸ в год (до «Фидбек» Р-19).
+ */
+const oldBuild = (r: AiReview): AiReview => {
+  const copy: AiReview = JSON.parse(JSON.stringify(r).replaceAll('APTEKA PLUS', 'APTEKA PLUS ALMATY KZ'))
+  const { monthly, ...work } = copy.work!
+  return { ...copy, work: { ...work, yearly: monthly! * 12 } }
+}
 
 describe('e2e / Разбор Блок 2 — приёмка: обновление поверх старых разборов', () => {
   const storage = new Map<string, string>()
@@ -166,8 +173,10 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     const html = await screen(phone.pinia, Month, '/month?review=1')
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice'])
     const shown = visible(html)
-    // RZ-14: крупно «≈ X ₸», «в год уходит на найденное», строка «K находок из N операций».
-    expect(shown).toMatch(/≈ [\d ]+ ₸ в год уходит на найденное \d+ наход\S* из [\d ]+ операц/)
+    // RZ-14: крупно «≈ X ₸», «в месяц уходит на найденное» (старый счётчик в год — месяцем), строка «K находок из N операций».
+    expect(old.work).toMatchObject({ yearly: expect.any(Number) })
+    expect(old.work).not.toHaveProperty('monthly')
+    expect(shown).toMatch(/≈ [\d ]+ ₸ в месяц уходит на найденное \d+ наход\S* из [\d ]+ операц/)
     expect(shown).toContain('Кафе выросло из-за одного вечера.')
     // Имя продавца — как сохранила старая сборка (до следующего разбора), кнопка — туда же, что и раньше.
     expect(shown).toContain('APTEKA PLUS ALMATY KZ')

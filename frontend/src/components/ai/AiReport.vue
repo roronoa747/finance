@@ -8,7 +8,7 @@ import { useFinanceStore } from '@/stores/finance'
 import type { AiAdvice, AiReview, ReviewPayload, ReviewPayloadV3, ReviewReason } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { factsLines, openPath } from '@/lib/aiFacts'
-import { findMonth, reviewOutcome, shiftMade, stepCandidates, whereRows, type StepCandidate } from '@/lib/finance'
+import { findMonth, reviewOutcome, reviewWorkMonthly, shiftMade, stepCandidates, whereRows, type StepCandidate } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { addMonths, dayLabel, monthBy, monthIn, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
@@ -110,8 +110,9 @@ const advices = computed<AdviceRow[]>(() =>
   }),
 )
 /**
- * Подпись крупной цифры (RZ-15: «за год · Магазин у дома»); имя после « · », которое уже есть в заголовке совета, второй
- * раз не пишем — «Магазин у дома» над «за год» (`/ux` Блока 3: шумная подпись). Разбор до RZ-15 — `about`.
+ * Подпись крупной цифры (RZ-15: «в месяц · Магазин у дома»; у разборов до «Фидбек» Р-19 — «за год · …», как сохранены);
+ * имя после « · », которое уже есть в заголовке совета, второй раз не пишем — «Магазин у дома» над «в месяц» (`/ux`
+ * Блока 3: шумная подпись). Разбор до RZ-15 — `about`.
  */
 function figureLabel(a: AiAdvice): string {
   const label = a.figure?.label
@@ -122,17 +123,18 @@ function figureLabel(a: AiAdvice): string {
 }
 
 /**
- * «Работа ИИ» (Р-8; вид — владелец 2026-10-19, RZ-14): числа кода на момент разбора. Есть деньги находок советов (X > 0) —
- * крупно «≈ X ₸», подпись «в год уходит на найденное», строкой «K находок из N операций»; X = 0 — крупно N операций,
- * «нашёл K».
+ * «Работа ИИ» (Р-8; вид — владелец 2026-10-19, RZ-14; месяц — «Фидбек» Р-19): числа кода на момент разбора. Есть деньги
+ * находок советов (X > 0) — крупно «≈ X ₸», подпись «в месяц уходит на найденное», строкой «K находок из N операций»;
+ * X = 0 — крупно N операций, «нашёл K». Разбор до Р-19 хранит ₸ в год — показываем его месяцем (`reviewWorkMonthly`).
  */
 const work = computed(() => {
   const w = v3.value ? props.review?.work : undefined
   if (!w) return null
-  if (w.yearly > 0)
+  const monthly = reviewWorkMonthly(w)
+  if (monthly > 0)
     return {
-      big: `≈ ${money(w.yearly)}`,
-      word: 'в год уходит на найденное',
+      big: `≈ ${money(monthly)}`,
+      word: 'в месяц уходит на найденное',
       line: `${w.found} ${plural(w.found, 'находка', 'находки', 'находок')} из ${plain(w.ops)} ${plural(w.ops, 'операции', 'операций', 'операций')}`,
     }
   return {
@@ -466,7 +468,7 @@ onUnmounted(() => {
           :inert="ci !== active"
         >
           <div class="mx-auto flex min-h-full w-full max-w-[480px] flex-col px-6 pb-[max(28px,env(safe-area-inset-bottom))] pt-6">
-            <!-- Работа ИИ (Р-8, RZ-14): одна крупная цифра — «≈ X ₸» в год (без денег — операций); остальное строкой -->
+            <!-- Работа ИИ (Р-8, RZ-14): одна крупная цифра — «≈ X ₸» в месяц (без денег — операций); остальное строкой -->
             <template v-if="c.kind === 'work'">
               <h2 class="type-h2-lg text-ink">Работа ИИ</h2>
               <template v-if="work">
@@ -493,7 +495,7 @@ onUnmounted(() => {
                 <h2 class="mt-2 type-h2-lg text-ink" data-review-advice-title>{{ c.row.a.title }}</h2>
                 <template v-if="c.row.a.figure">
                   <p class="mt-6 type-big num text-ink" data-review-figure>{{ c.row.a.figure.value }}</p>
-                  <!-- Короткая подпись кода (RZ-15: «за год · Магазин у дома»); разбор до неё — `about`, переносом, не обрезкой (`/ux`). -->
+                  <!-- Короткая подпись кода (RZ-15: «в месяц · Магазин у дома»); разбор до неё — `about`, переносом, не обрезкой (`/ux`). -->
                   <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ figureLabel(c.row.a) }}</p>
                 </template>
                 <p class="mt-5 text-[17px] leading-snug text-ink num" data-review-advice-text>{{ keep(c.row.a.text) }}</p>

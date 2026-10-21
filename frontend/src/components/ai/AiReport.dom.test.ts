@@ -503,7 +503,7 @@ describe('RZ-07: отчёт разбора v3', () => {
       v: 3, reason: 'month', reasonKey: `month:${KEY}`, good: '', risk: '', steps: [],
       where: 'Кафе выросло — мечта отодвинулась.',
       advices: advices(candidate),
-      work: { ops: 1240, found: 4, yearly: 720_000 },
+      work: { ops: 1240, found: 4, monthly: 60_000 },
       sent: { v: 3, facts: [{ id: 'f1', about: 'доход месяца', value: '1 200 000 ₸', raw: 1_200_000 }], actions: [{ id: 'a1', kind: 'open', about: 'открыть траты «Кафе»', value: '', effect: '' }] },
       ...extra,
     })
@@ -536,9 +536,9 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(kinds()).toEqual(['work', 'where', 'advice', 'advice'])
     expect(document.querySelectorAll('[data-report-progress] > span')).toHaveLength(4)
     expect(activeKind()).toBe('work')
-    // RZ-14 (владелец 2026-10-19): крупно — деньги находок в год, операции — строкой.
-    expect(txt(q('[data-review-big]'))).toMatch(/^≈ 720\s000 ₸$/)
-    expect(txt(q('[data-review-work-word]'))).toBe('в год уходит на найденное')
+    // RZ-14 (владелец 2026-10-19): крупно — деньги находок в месяц («Фидбек», Р-19), операции — строкой.
+    expect(txt(q('[data-review-big]'))).toMatch(/^≈ 60\s000 ₸$/)
+    expect(txt(q('[data-review-work-word]'))).toBe('в месяц уходит на найденное')
     expect(txt(q('[data-review-work]'))).toMatch(/^4 находки из 1\s240 операций$/)
     // Повод и день — тихо: «12 сентября · начался месяц».
     expect(txt(q('[data-review-when]'))).toBe('12 сентября · начался месяц')
@@ -769,20 +769,32 @@ describe('RZ-07: отчёт разбора v3', () => {
   })
 
   it('без находок в советах — счётчик без «≈»: крупно операции, «нашёл K» (RZ-14 — как было)', async () => {
-    await openV3({ extra: { work: { ops: 12, found: 0, yearly: 0 } } })
+    await openV3({ extra: { work: { ops: 12, found: 0, monthly: 0 } } })
     expect(txt(q('[data-review-big]'))).toBe('12')
     expect(txt(q('[data-review-work-word]'))).toBe('операций просмотрено')
     expect(txt(q('[data-review-work]'))).toBe('нашёл 0')
   })
 
   it('RZ-14: склонения строки «K находок из N операций» — 1 находка из 21 операции, 5 находок из 1 операции', async () => {
-    await openV3({ extra: { work: { ops: 21, found: 1, yearly: 12_000 } } })
+    await openV3({ extra: { work: { ops: 21, found: 1, monthly: 12_000 } } })
     expect(txt(q('[data-review-work]'))).toBe('1 находка из 21 операции')
     app!.unmount()
     document.body.innerHTML = ''
-    await openV3({ extra: { work: { ops: 1, found: 5, yearly: 12_000 } } })
+    await openV3({ extra: { work: { ops: 1, found: 5, monthly: 12_000 } } })
     expect(txt(q('[data-review-work]'))).toBe('5 находок из 1 операции')
     expect(txt(q('[data-review-big]'))).toMatch(/^≈ 12\s000 ₸$/)
+  })
+
+  it('разбор до «Фидбек» Р-19 (₸ в год, подпись «за год · …») открывается: счётчик — месяцем, совет — как сохранён', async () => {
+    const old = { title: 'Магазин у дома', text: 'Частые покупки у дома.', figure: { about: 'частые траты у «Магазин у дома» — за год', value: '248 400 ₸', label: 'за год · Магазин у дома' }, action: { kind: 'open' as const, target: { kind: 'seller' as const, id: 'магазин у дома', name: 'Магазин у дома' } } }
+    await openV3({ extra: { work: { ops: 40, found: 2, yearly: 720_000 }, advices: [old] } })
+    expect(txt(q('[data-review-big]'))).toMatch(/^≈ 60\s000 ₸$/)
+    expect(txt(q('[data-review-work-word]'))).toBe('в месяц уходит на найденное')
+    expect(txt(q('[data-review-work]'))).toBe('2 находки из 40 операций')
+    expect(kinds()).toEqual(['work', 'where', 'advice'])
+    const card = q('[data-review-advice]')!
+    expect(txt(card.querySelector('[data-review-figure]'))).toBe('248 400 ₸')
+    expect(txt(card.querySelector('[data-review-figure-about]'))).toBe('за год')
   })
 
   it('viewer: «Открыть» есть, «Сделать» нет (текст совета остаётся), «Обновить» нет', async () => {

@@ -9,6 +9,7 @@ import {
   derivedCredits,
   earlierDays,
   findMonth,
+  goalPace,
   goalTerm,
   mainGoal,
   measureFor,
@@ -19,6 +20,7 @@ import {
   reviewOutcome,
   reviewScenario,
   reviewWork,
+  reviewWorkMonthly,
   spendCompare,
   usualMonths,
   whereRows,
@@ -119,50 +121,67 @@ describe('findMonth — о каком месяце находки', () => {
 })
 
 describe('reviewFindings — находки семьи', () => {
-  it('утечка из записей двух участников: среднее по месяцам с записью, цена в год, образ — доля главной мечты; 1 месяц из 3 — нет', () => {
+  it('утечка из записей двух участников: среднее по месяцам с записью — за месяц (без × 12), образ — доля месячного взноса в главную мечту; 1 месяц из 3 — нет', () => {
     const doc = family()
     const [leak, ...others] = of(findingsOf(doc), 'leak')
     expect(others).toEqual([])
     const main = mainGoal(doc.goals ?? [], doc.goalOrder, doc.moneySettings)!
-    // (10 500 + 12 000 + 9 000) / 2 месяца = 15 750; (7 + 8 + 6) / 2 = 10,5 → 11.
+    const pace = goalPace(main, KEY)
+    expect(pace).toBeGreaterThan(0)
+    // (10 500 + 12 000 + 9 000) / 2 месяца = 15 750; (7 + 8 + 6) / 2 = 10,5 → 11. Годовой цены у находки нет («Фидбек», Р-19).
     expect(leak).toEqual({
-      kind: 'leak', key: 'apteka', name: 'APTEKA', categoryId: 'sc_health', monthly: 15_750, count: 11, months: 2, yearly: 189_000,
-      image: { kind: 'dream', goalId: main.id, name: main.name, share: Math.round((189_000 * 100) / main.need) },
+      kind: 'leak', key: 'apteka', name: 'APTEKA', categoryId: 'sc_health', monthly: 15_750, count: 11, months: 2,
+      image: { kind: 'dream', goalId: main.id, name: main.name, share: Math.round((15_750 * 100) / pace) },
     })
+    expect(leak).not.toHaveProperty('yearly')
   })
 
-  it('без мечты — мерка справочника по цене в год', () => {
+  it('без мечты — мерка справочника по сумме в месяц', () => {
     const [leak] = of(findingsOf(family({ goals: [] })), 'leak')
-    const m = measureFor(189_000)
+    const m = measureFor(15_750)
     expect(leak.image).toEqual(m ? { kind: 'measure', name: m.name, price: m.price } : null)
   })
 
-  it('«раздуло» покупкой (35 000 ≥ ½ прироста 60 000) и частотой (14 операций против 10); без причины — строки нет; ₸ в год — прирост без × 12', () => {
+  it('мечта без темпа (ни плана взноса, ни взносов) — не доля мечты, а мерка по сумме в месяц', () => {
+    const base = family()
+    const main = mainGoal(base.goals ?? [], base.goalOrder, base.moneySettings)!
+    const doc = family({ goals: (base.goals ?? []).map((g) => (g.id === main.id ? { ...g, monthly: 0, movements: [] } : g)) })
+    expect(goalPace(mainGoal(doc.goals ?? [], doc.goalOrder, doc.moneySettings)!, KEY)).toBe(0)
+    const [leak] = of(findingsOf(doc), 'leak')
+    const m = measureFor(15_750)
+    expect(leak.image).toEqual(m ? { kind: 'measure', name: m.name, price: m.price } : null)
+  })
+
+  it('«раздуло» покупкой (35 000 ≥ ½ прироста 60 000) и частотой (14 операций против 10); без причины — строки нет; ₸ в месяц — прирост', () => {
     const grew = of(findingsOf(family()), 'grew')
     expect(grew.map((g) => g.categoryId)).toEqual(['sc_food', 'sc_cafe'])
-    // Цена в год у «раздуло» — прирост месяца, без × 12 (владелец 2026-10-18, Х-8): разовый рост не повторяется.
-    expect(grew[1]).toMatchObject({ amount: 150_000, usual: 90_000, growth: 60_000, yearly: 60_000, why: { kind: 'purchases', items: [{ name: 'Restoran X', amount: 35_000 }] } })
-    expect(grew[0]).toMatchObject({ amount: 450_000, usual: 380_000, growth: 70_000, yearly: 70_000, why: { kind: 'often', count: 14, usualCount: 10 } })
+    expect(grew[1]).toMatchObject({ amount: 150_000, usual: 90_000, growth: 60_000, monthly: 60_000, why: { kind: 'purchases', items: [{ name: 'Restoran X', amount: 35_000 }] } })
+    expect(grew[0]).toMatchObject({ amount: 450_000, usual: 380_000, growth: 70_000, monthly: 70_000, why: { kind: 'often', count: 14, usualCount: 10 } })
     // Развлечения выше обычного, но ни покупок, ни частоты — не находка (Р-1).
     expect(grew.some((g) => g.categoryId === 'sc_fun')).toBe(false)
   })
 
-  it('регулярное с обязательством того же имени — мимо; подорожание годового — разница, месячного — × 12; двойное — лишнее × 12', () => {
+  it('регулярное с обязательством того же имени — мимо; новое — сумма в месяц; подорожание — разница (годового — «раз в год»); двойное — лишнее в месяц', () => {
     const list = findingsOf(family())
-    expect(of(list, 'recurring')).toEqual([{ kind: 'recurring', key: 'fitness lab', name: 'FITNESS LAB', categoryId: 'sc_fun', amount: 15_000, count: 2, yearly: 180_000 }])
+    expect(of(list, 'recurring')).toEqual([{ kind: 'recurring', key: 'fitness lab', name: 'FITNESS LAB', categoryId: 'sc_fun', amount: 15_000, count: 2, monthly: 15_000 }])
     const pricier = of(list, 'pricier')
-    expect(pricier.find((p) => p.obligationId === 'ins')).toMatchObject({ name: 'Страховка', amount: 66_000, was: 60_000, yearly: 6_000 })
-    expect(pricier.find((p) => p.obligationId === 'kino')).toMatchObject({ name: 'Кинопоиск', amount: 2_990, was: 2_490, yearly: 6_000 })
+    expect(pricier.find((p) => p.obligationId === 'ins')).toEqual({ kind: 'pricier', key: 'insur', name: 'Страховка', obligationId: 'ins', amount: 66_000, was: 60_000, monthly: 500, every: 'year' })
+    expect(pricier.find((p) => p.obligationId === 'kino')).toEqual({ kind: 'pricier', key: 'kino', name: 'Кинопоиск', obligationId: 'kino', amount: 2_990, was: 2_490, monthly: 500 })
     // Платёж стал оценкой, а телефон записал подорожание раньше (несинхронный партнёр) — у семьи его нет.
     const estimated = family()
     estimated.obligations = estimated.obligations!.map((o) => (o.id === 'kino' ? { ...o, estimate: true } : o))
     expect(of(findingsOf(estimated), 'pricier').map((p) => p.obligationId)).toEqual(['ins'])
-    expect(of(list, 'double')).toEqual([{ kind: 'double', key: 'sport club', name: 'SPORT CLUB', categoryId: 'sc_fun', amount: 12_000, count: 2, yearly: 144_000 }])
+    expect(of(list, 'double')).toEqual([{ kind: 'double', key: 'sport club', name: 'SPORT CLUB', categoryId: 'sc_fun', amount: 12_000, count: 2, monthly: 12_000 }])
+    // Три списания одной суммой — лишних два.
+    const triple = family({ reviewFinds: [rf('b', KEY, 'double', 'sport club', { name: 'SPORT CLUB', count: 3, amount: 12_000 })] })
+    expect(of(findingsOf(triple), 'double')[0].monthly).toBe(24_000)
   })
 
-  it('порядок: «раздуло» по приросту, затем по цене в год; не больше 12; все числа целые', () => {
+  it('порядок: «раздуло» по приросту, затем по цене в месяц; не больше 12; все числа целые', () => {
     const list = findingsOf(family())
+    // Утечка 15 750, новое 15 000, двойное 12 000, подорожание 500 и 500 (годовая страховка +6 000 раз в год — 500 в месяц).
     expect(list.map((f) => f.kind)).toEqual(['grew', 'grew', 'leak', 'recurring', 'double', 'pricier', 'pricier'])
+    expect(list.slice(2).map((f) => f.monthly)).toEqual([15_750, 15_000, 12_000, 500, 500])
     expect(integers(list)).toEqual([])
     const many = Array.from({ length: 20 }, (_, i) => rf('a', KEY, 'double', `club ${'abcdefghijklmnopqrst'[i]}`, { count: 2, amount: 2_000 + i }))
     expect(findingsOf(family({ reviewFinds: [...FINDS, ...many] }))).toHaveLength(REVIEW_FINDINGS_MAX)
@@ -179,7 +198,7 @@ describe('reviewFindings — находки семьи', () => {
     const ctx = ctxOf(doc, [])
     expect(reviewFindings(stateOf(doc), ctx)).toEqual([])
     expect(reviewScenario(stateOf(doc), ctx, [])).toBeNull()
-    expect(reviewWork(stateOf(doc), ctx, [])).toEqual({ ops: 0, found: 0, yearly: 0 })
+    expect(reviewWork(stateOf(doc), ctx, [])).toEqual({ ops: 0, found: 0, monthly: 0 })
     expect(whereRows(stateOf(doc), ctx)).toEqual([])
     expect(reviewOutcome(stateOf(doc), ctx, null)).toBeNull()
   })
@@ -246,16 +265,26 @@ describe('reviewScenario — «если… — мечта раньше»', () =>
 })
 
 describe('reviewWork — счётчик', () => {
-  it('операций за текущий и до 3 месяцев «обычно» всех участников; находок — все; ₸ в год — только у советов', () => {
+  it('операций за текущий и до 3 месяцев «обычно» всех участников; находок — все; ₸ в месяц — только у советов', () => {
     const doc = family()
     const list = findingsOf(doc)
     const months = [KEY, ...usualMonths(doc.people ?? [], TOTALS, UPLOADS, KEY, 3)]
     expect(months).toEqual([KEY, '2026-09', '2026-08', '2026-07'])
     const ops = TOTALS.filter((t) => months.includes(t.period)).reduce((s, t) => s + t.ops, 0)
     const used = [list[0], of(list, 'leak')[0], of(list, 'leak')[0]]
-    // «Раздуло» «Продуктов» — прирост 70 000 как есть (не × 12), утечка — 15 750 × 12, каждая один раз.
+    // «Раздуло» «Продуктов» — прирост 70 000, утечка — 15 750 в месяц, каждая один раз.
     expect(list[0]).toMatchObject({ kind: 'grew', growth: 70_000 })
-    expect(reviewWork(stateOf(doc), ctxOf(doc), list, used)).toEqual({ ops, found: list.length, yearly: 70_000 + 189_000 })
+    expect(reviewWork(stateOf(doc), ctxOf(doc), list, used)).toEqual({ ops, found: list.length, monthly: 70_000 + 15_750 })
+    // Подорожание годовой страховки на 6 000 ₸ раз в год — в счётчик «в месяц» идёт 500, не 6 000 (критик FB-13).
+    const ins = of(list, 'pricier').find((p) => p.obligationId === 'ins')!
+    expect(reviewWork(stateOf(doc), ctxOf(doc), list, [ins]).monthly).toBe(500)
+  })
+
+  it('сохранённый разбор: новый — ₸ в месяц как есть; до «Фидбек» Р-19 — ₸ в год делится на 12 (не переписывается)', () => {
+    expect(reviewWorkMonthly({ monthly: 85_750 })).toBe(85_750)
+    expect(reviewWorkMonthly({ monthly: 0, yearly: 120_000 })).toBe(0)
+    expect(reviewWorkMonthly({ yearly: 259_000 })).toBe(21_583)
+    expect(reviewWorkMonthly({})).toBe(0)
   })
 })
 

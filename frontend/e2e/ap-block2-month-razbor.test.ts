@@ -37,7 +37,7 @@ const fund: Goal = { id: 'fund', name: 'Подушка безопасности'
 const advice: AiAdvice = { title: 'Подушка', text: 'Подушка тонкая.', figure: null, action: { kind: 'open', target: { kind: 'goal', id: 'fund', name: fund.name } } }
 const review: AiReview = {
   id: `r-${K}`, month: K, at: `${K}-01T04:00:00.000Z`, by: 'a', good: '', risk: '', steps: [], sent: null, updatedAt: T0,
-  v: 3, reason: 'month', reasonKey: `month:${K}`, where: 'Кафе выросло.', work: { ops: 120, found: 1, yearly: 0 }, advices: [advice],
+  v: 3, reason: 'month', reasonKey: `month:${K}`, where: 'Кафе выросло.', work: { ops: 120, found: 1, monthly: 0 }, advices: [advice],
 }
 
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore>; wallet: ReturnType<typeof vi.fn>; aiReview: ReturnType<typeof vi.fn> }
