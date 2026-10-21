@@ -50,7 +50,7 @@ const open = (title: string, target: Extract<AiAdvice['action'], { kind: 'open' 
 const doIt = (title: string, c: StepCandidate): AiAdvice => ({ title, text: `${title}.`, figure: null, action: { kind: 'do', candidate: c } })
 const review = (month: string, advices: AiAdvice[], extra: Partial<AiReview> = {}): AiReview => ({
   id: `r-${month}`, month, at: `${month}-01T04:00:00.000Z`, by: 'a', good: '', risk: '', steps: [], sent: null, updatedAt: T0,
-  v: 3, reason: 'month', reasonKey: `month:${month}`, where: 'Кафе выросло.', work: { ops: 120, found: 3, yearly: 0 }, advices, ...extra,
+  v: 3, reason: 'month', reasonKey: `month:${month}`, where: 'Кафе выросло.', work: { ops: 120, found: 3, monthly: 0 }, advices, ...extra,
 })
 
 const marks = (html: string) => [...html.matchAll(/data-advice-mark[^>]*data-advice-card="(\d)"/g)].map((m) => m[1])

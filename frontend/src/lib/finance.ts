@@ -5900,15 +5900,17 @@ const OFTEN_TENTHS = 13
  */
 const FIND_MONTH_MIN_DAY = 7
 
-/** Образ находки: доля главной мечты за год или мерка справочника (`measureFor`). */
+/** Образ находки: доля месячного взноса в главную мечту или мерка справочника (`measureFor`). */
 export type FindImage = { kind: 'dream'; goalId: string; name: string; share: number } | { kind: 'measure'; name: string; price: number }
 
 /**
- * Находка семьи (Р-5): всё в целых тенге; `yearly` — цена в год по формулам Р-19; у «раздуло» — прирост месяца без × 12
- * (разовый рост не повторяется каждый месяц; владелец 2026-10-18, `memory/decisions/rz-grew-yearly.md`).
+ * Находка семьи (Р-5): всё в целых тенге; `monthly` — цена в месяц (бэклог «Фидбек», Р-8, Р-19,
+ * `memory/decisions/fb-review-monthly.md`): утечка — среднее за месяц, «раздуло» — прирост месяца, новое списание —
+ * сумма, подорожание — разница (у годовой подписки — `every: 'year'`, разница раз в год — `amount − was`, а `monthly` —
+ * её двенадцатая часть), двойное — лишние списания.
  */
 export type ReviewFinding =
-  | { kind: 'leak'; key: string; name: string; categoryId: string | null; monthly: number; count: number; months: number; yearly: number; image: FindImage | null }
+  | { kind: 'leak'; key: string; name: string; categoryId: string | null; monthly: number; count: number; months: number; image: FindImage | null }
   | {
       kind: 'grew'
       categoryId: string
@@ -5916,12 +5918,12 @@ export type ReviewFinding =
       amount: number
       usual: number
       growth: number
-      yearly: number
+      monthly: number
       why: { kind: 'purchases'; items: { name: string; amount: number }[] } | { kind: 'often'; count: number; usualCount: number }
     }
-  | { kind: 'recurring'; key: string; name: string; categoryId: string | null; amount: number; count: number; yearly: number }
-  | { kind: 'pricier'; key: string; name: string; obligationId: string; amount: number; was: number; yearly: number }
-  | { kind: 'double'; key: string; name: string; categoryId: string | null; amount: number; count: number; yearly: number }
+  | { kind: 'recurring'; key: string; name: string; categoryId: string | null; amount: number; count: number; monthly: number }
+  | { kind: 'pricier'; key: string; name: string; obligationId: string; amount: number; was: number; monthly: number; every?: 'year' }
+  | { kind: 'double'; key: string; name: string; categoryId: string | null; amount: number; count: number; monthly: number }
 
 /** Ключ находки участника — продавец или раздел после `участник:месяц:вид:`. */
 export const findKey = (f: Pick<ReviewFind, 'id' | 'by' | 'period' | 'kind'>) => f.id.slice(f.by.length + f.period.length + f.kind.length + 3)
@@ -5954,14 +5956,16 @@ function bestBy<T>(list: T[], key: (x: T) => string, pick: (x: T) => number): T[
 /**
  * Находки семьи (Р-5, Р-14) по итогам участников в документе: утечки — по 3 закрытым месяцам до `ctx.key`; «что
  * раздуло», новые и подорожавшие списания, двойные — за месяц находок (`findMonth`). Все вместе — до 12: «раздуло» по
- * приросту, затем остальные по цене в год.
+ * приросту, затем остальные по цене в месяц.
  */
 export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): ReviewFinding[] {
   const finds = liveFinds(state)
   const people = (state.people ?? []).filter(alive)
   const named = liveSpendCategories(ctx.spendCategories)
   const main = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
-  const dream = main && main.need > 0 ? main : null
+  // Образ утечки — доля месячного взноса в главную мечту (темп `goalPace`); нет темпа — мерка по месячной сумме.
+  const pace = main && main.need > 0 ? goalPace(main, ctx.key) : 0
+  const dream = main && pace > 0 ? main : null
 
   // Утечки: продавец с записью в ≥ 2 из 3 закрытых месяцев; среднее по месяцам с записью.
   const closed = Array.from({ length: LEAK_MONTHS }, (_, i) => addMonths(ctx.key, -(i + 1)))
@@ -5977,17 +5981,16 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
     if (months < LEAK_MIN_MONTHS) continue
     const monthly = Math.round(list.reduce((s, f) => s + f.amount, 0) / months)
     const count = Math.round(list.reduce((s, f) => s + f.count, 0) / months)
-    const yearly = monthly * 12
     const last = list.reduce((a, b) => (b.period > a.period ? b : a))
-    const measure = dream ? null : measureFor(yearly)
+    const measure = dream ? null : measureFor(monthly)
     const image: FindImage | null = dream
-      ? { kind: 'dream', goalId: dream.id, name: dream.name, share: Math.round((yearly * 100) / dream.need) }
+      ? { kind: 'dream', goalId: dream.id, name: dream.name, share: Math.round((monthly * 100) / pace) }
       : measure
         ? { kind: 'measure', name: measure.name, price: measure.price }
         : null
-    leaks.push({ kind: 'leak', key, name: last.name, categoryId: last.categoryId, monthly, count, months, yearly, image })
+    leaks.push({ kind: 'leak', key, name: last.name, categoryId: last.categoryId, monthly, count, months, image })
   }
-  leaks.sort((a, b) => b.yearly - a.yearly)
+  leaks.sort((a, b) => b.monthly - a.monthly)
 
   // «Что раздуло»: раздел выше обычного и почему — 1–2 крупные покупки или частота; без причины — не находка (Р-1).
   const month = findMonth(ctx)
@@ -6013,7 +6016,7 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
       const usualCount = Math.round(usualOf.reduce((s, m) => s + opsOf(r.categoryId, m), 0) / usualOf.length)
       if (usualCount > 0 && count * 10 >= usualCount * OFTEN_TENTHS) why = { kind: 'often', count, usualCount }
     }
-    if (why) grew.push({ kind: 'grew', categoryId: r.categoryId, name: spendCategoryName(named, r.categoryId), amount: r.amount, usual: r.usual, growth, yearly: growth, why })
+    if (why) grew.push({ kind: 'grew', categoryId: r.categoryId, name: spendCategoryName(named, r.categoryId), amount: r.amount, usual: r.usual, growth, monthly: growth, why })
   }
   grew.sort((a, b) => b.growth - a.growth)
 
@@ -6030,20 +6033,24 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
   for (const f of ofMonth('recurring')) {
     const key = findKey(f)
     if (planned.has(key) || planned.has(normalizeMerchant(f.name))) continue
-    dues.push({ kind: 'recurring', key, name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, yearly: f.amount * 12 })
+    dues.push({ kind: 'recurring', key, name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, monthly: f.amount })
   }
   for (const f of ofMonth('pricier')) {
     const o = obligations.find((x) => x.id === f.targetId)
     // Оценка («сумма плавает») — не цена: и запись телефона, который ещё не знает, что платёж стал оценкой.
     if (!o || o.estimate || f.was === undefined || f.amount <= f.was) continue
-    dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, yearly: (f.amount - f.was) * (o.every === 'year' ? 1 : 12) })
+    // Годовая подписка: разница — раз в год (факт и подпись), в месяц — её двенадцатая часть (`yearShare`, как у
+    // `plannedChange`): иначе сортировка и счётчик «в месяц» брали бы годовую разницу за месячную (критик FB-13).
+    const diff = f.amount - f.was
+    const yearly = o.every === 'year'
+    dues.push({ kind: 'pricier', key: findKey(f), name: o.name, obligationId: o.id, amount: f.amount, was: f.was, monthly: yearly ? yearShare(diff) : diff, ...(yearly ? { every: 'year' as const } : {}) })
   }
   for (const f of ofMonth('double')) {
     if (f.count < 2) continue
-    dues.push({ kind: 'double', key: findKey(f), name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, yearly: f.amount * (f.count - 1) * 12 })
+    dues.push({ kind: 'double', key: findKey(f), name: f.name, categoryId: f.categoryId, amount: f.amount, count: f.count, monthly: f.amount * (f.count - 1) })
   }
 
-  const rest = [...leaks.slice(0, LEAKS_MAX), ...dues].sort((a, b) => b.yearly - a.yearly)
+  const rest = [...leaks.slice(0, LEAKS_MAX), ...dues].sort((a, b) => b.monthly - a.monthly)
   return [...grew, ...rest].slice(0, REVIEW_FINDINGS_MAX)
 }
 
@@ -6056,16 +6063,16 @@ export type ReviewScenario =
 const SCENARIO_NOT: readonly string[] = ['sc_credit', 'sc_rent', 'sc_utilities']
 
 /**
- * Сценарий по находке с наибольшей ценой в год среди утечек, новых и двойных списаний (кроме кредитов, аренды и
- * коммуналки): `monthly = yearly / 12` в главную мечту с темпом (`earlierDays`), иначе досрочкой в самый дорогой
+ * Сценарий по находке с наибольшей ценой в месяц среди утечек, новых и двойных списаний (кроме кредитов, аренды и
+ * коммуналки): её `monthly` в главную мечту с темпом (`earlierDays`), иначе досрочкой в самый дорогой
  * процентный долг (`prepayOutcome`); иначе null.
  */
 export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, findings: ReviewFinding[]): ReviewScenario | null {
   const finding = findings
     .filter((f) => (f.kind === 'leak' || f.kind === 'recurring' || f.kind === 'double') && !(f.categoryId && SCENARIO_NOT.includes(f.categoryId)))
-    .sort((a, b) => b.yearly - a.yearly)[0]
+    .sort((a, b) => b.monthly - a.monthly)[0]
   if (!finding) return null
-  const monthly = Math.round(finding.yearly / 12)
+  const monthly = finding.monthly
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
   const days = goal ? earlierDays(goal, ctx.key, monthly) : null
   if (goal && days && days > 0) return { finding, monthly, days, goalId: goal.id, goalName: goal.name }
@@ -6079,20 +6086,25 @@ export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, finding
 
 /**
  * Счётчик работы ИИ (Р-8, Р-19): `ops` — операций всех участников за `ctx.key` и до 3 месяцев «обычно»; `found` — находок
- * семьи; `yearly` — сумма цен в год у находок советов (`used`, каждая один раз).
+ * семьи; `monthly` — сумма цен в месяц у находок советов (`used`, каждая один раз; бэклог «Фидбек», Р-19).
  */
 export function reviewWork(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
   findings: ReviewFinding[],
   used: ReviewFinding[] = findings,
-): { ops: number; found: number; yearly: number } {
+): { ops: number; found: number; monthly: number } {
   const people = (state.people ?? []).filter(alive)
   const months = new Set([ctx.key, ...usualMonths(people, ctx.totals, ctx.uploads, ctx.key, 3)])
   const ops = ctx.totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && months.has(t.period) && people.some((p) => p.id === t.by))
     .reduce((s, t) => s + t.ops, 0)
-  return { ops, found: findings.length, yearly: [...new Set(used)].reduce((s, f) => s + f.yearly, 0) }
+  return { ops, found: findings.length, monthly: [...new Set(used)].reduce((s, f) => s + f.monthly, 0) }
+}
+
+/** ₸ в месяц счётчика сохранённого разбора: разборы до «Фидбек» Р-19 хранят ₸ в год (`yearly`) — не переписываются. */
+export function reviewWorkMonthly(work: { monthly?: number; yearly?: number }): number {
+  return work.monthly ?? Math.round((work.yearly ?? 0) / 12)
 }
 
 /**

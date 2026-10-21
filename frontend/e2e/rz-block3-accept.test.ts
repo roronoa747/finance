@@ -77,20 +77,20 @@ const figureLabels = (html: string) => [...html.matchAll(/data-review-figure-abo
 
 const act = (body: ReviewPayloadV3, re: RegExp) => body.actions.find((a) => re.test(a.about))!.id
 const fact = (body: ReviewPayloadV3, re: RegExp) => body.facts.find((f) => re.test(f.about))!.id
-/** Ответ модели старой сборки: «в подушку» (do), аптека (open продавца, крупная цифра — за год). */
+/** Ответ модели старой сборки: «в подушку» (do), аптека (open продавца, крупная цифра — сумма утечки). */
 const answerOld = (body: ReviewPayloadV3) => ({
   where: 'Кафе выросло из-за одного вечера.',
   advices: [
     { title: 'Отложим в подушку', text: 'Остаток месяца — в подушку.', figure: null, action: act(body, /в подушку/) },
-    { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — за год$/), action: act(body, /^открыть покупки у/) },
+    { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — в месяц$/), action: act(body, /^открыть покупки у/) },
   ],
 })
-/** Ответ «Обновить» новой сборкой: «Кафе» (open раздела), аптека (open продавца, крупная цифра — за год). */
+/** Ответ «Обновить» новой сборкой: «Кафе» (open раздела), аптека (open продавца, крупная цифра — в месяц). */
 const answerNew = (body: ReviewPayloadV3) => ({
   where: 'Кафе выросло из-за одного вечера.',
   advices: [
     { title: 'Вечер в кафе', text: 'Раздел раздул один ужин.', figure: null, action: act(body, /^открыть .*Кафе/) },
-    { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — за год$/), action: act(body, /^открыть покупки у/) },
+    { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — в месяц$/), action: act(body, /^открыть покупки у/) },
   ],
 })
 /** Разбор v3 так, как его сохранила старая сборка: подписи крупной цифры нет; у Блока 1 — ещё и имя продавца как у банка. */
@@ -236,12 +236,12 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     expect(fresh).toMatchObject({ v: 3, month: K, reason: 'refresh' })
     expect(fresh.id).not.toBe(old.id)
     const label = fresh.advices![1].figure!.label!
-    expect(label).toMatch(/^за год · /)
+    expect(label).toMatch(/^в месяц · /)
     expect(label).not.toContain('ALMATY')
     const want = { health: '2', cafe: '1', food: null, queue: null, goal: null, dreams: [], debts: [] }
     expect(await everywhere(phone)).toEqual(want)
     const html = await screen(phone.pinia, Month, '/month?review=1&card=2')
-    // Заголовок «Аптека у дома» не содержит имени из подписи — подпись целиком («за год · APTEKA PLUS»).
+    // Заголовок «Аптека у дома» не содержит имени из подписи — подпись целиком («в месяц · APTEKA PLUS»).
     expect(figureLabels(html)).toEqual([label])
     await sync(phone)
     const two = await as('member', 'b')

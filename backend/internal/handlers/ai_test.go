@@ -82,7 +82,7 @@ const reviewBody = `{"v":3,"reason":"month","facts":[` +
 	`{"id":"f4","about":"срок мечты «Море» за месяц отодвинулся (кафе выше плана) на","value":"2 недели","raw":15},` +
 	`{"id":"f5","about":"первым закрываем «Кредит» — самая высокая ставка","value":"16,5 %","raw":16.5},` +
 	`{"id":"f6","about":"во что складывается привычка «Такси»","value":"Такси за 4 года 10 месяцев — мечта «iPhone 17» без долга","raw":[58]},` +
-	`{"id":"f7","about":"частые траты у «Apteka 24» — за год","value":"144 000 ₸","raw":144000}` +
+	`{"id":"f7","about":"частые траты у «Apteka 24» — в месяц","value":"12 000 ₸","raw":12000}` +
 	`],"actions":[` +
 	`{"id":"a1","kind":"do","about":"из плана «Кафе» в мечту «Море»","value":"40 000 ₸","effect":"на 2 недели раньше"},` +
 	`{"id":"a2","kind":"open","about":"открыть покупки у «Apteka 24»","value":"","effect":""},` +
@@ -91,7 +91,7 @@ const reviewBody = `{"v":3,"reason":"month","facts":[` +
 
 var cleanAnswer = answer("На «Кафе» ушло {f2} — мечта отодвинулась на {f4}.",
 	adv{"Кафе в мечту", "Перенесём часть плана «Кафе» в «Море» — соберём {f3}.", "f3", "a1"},
-	adv{"Аптека у дома", "Частые траты у «Apteka 24» за год — {f7}.", "f7", "a2"},
+	adv{"Аптека у дома", "Частые траты у «Apteka 24» в месяц — {f7}.", "f7", "a2"},
 	// Three advices — the usual live answer (ревью backend Н-1: 17/17 live answers had three).
 	adv{"Мечта ближе", "Откроем мечту «Море».", nil, "a4"},
 )
@@ -187,12 +187,14 @@ func decodeReview(t *testing.T, rec *httptest.ResponseRecorder) ReviewAnswer {
 func TestReviewSystemV3(t *testing.T) {
 	for _, want := range []string{"наняли", "от одного до трёх советов", "Не пиши ни одной цифры", "{f3}", "«мы»", "Два совета не могут вести на одно действие",
 		"Число из figure приложение покажет крупно над текстом — в text его не повторяй.", // RZ-15
-		"Не сравнивай участников", "без причины и без действия — не совет", "чего не видно на экранах"} {
+		"Не сравнивай участников", "без причины и без действия — не совет", "чего не видно на экранах",
+		// Деньги — за месяц (бэклог «Фидбек», Р-8, Р-19): годовых сумм в фактах нет.
+		"самых ценных по деньгам в месяц", "сумма в месяц, доля взноса в мечту, срок", "с суммой в месяц", "«в месяц это {f5}»"} {
 		if !strings.Contains(reviewSystem, want) {
 			t.Errorf("reviewSystem has no %q", want)
 		}
 	}
-	for _, old := range []string{"step.candidate", "good —", "candidates"} {
+	for _, old := range []string{"step.candidate", "good —", "candidates", "в год", "за год"} {
 		if strings.Contains(reviewSystem, old) {
 			t.Errorf("reviewSystem still speaks of v2: %q", old)
 		}
@@ -271,7 +273,7 @@ func TestReviewSendsOnlyInstructionFactsAndActions(t *testing.T) {
 	if a.Title != "Кафе в мечту" || a.Text != "Перенесём часть плана «Кафе» в «Море» — соберём к июню 2028." || *a.Figure != "f3" || a.Action != "a1" {
 		t.Errorf("advice 1 = %+v", a)
 	}
-	if b.Text != "Частые траты у «Apteka 24» за год — 144 000 ₸." || b.Action != "a2" {
+	if b.Text != "Частые траты у «Apteka 24» в месяц — 12 000 ₸." || b.Action != "a2" {
 		t.Errorf("advice 2 = %+v", b)
 	}
 	if c.Title != "Мечта ближе" || c.Figure != nil || c.Action != "a4" {
@@ -307,8 +309,8 @@ func TestReviewDefectsRetry(t *testing.T) {
 		{"long text", answer("Хорошо.", adv{"Совет", strings.Repeat("слово ", 30), nil, "a1"}), "совет — одно короткое предложение"},
 		{"action not sent", answer("Хорошо.", adv{"Совет", "Текст.", nil, "a9"}), "действие a9 — такого нет"},
 		{"figure not sent", answer("Хорошо.", adv{"Совет", "Текст.", "f99", "a1"}), "figure f99 — такого факта нет"},
-		// Критик Блока 1: слова заголовка — как их увидят, после подстановки: «Аптека за год 144 000 ₸» — шесть.
-		{"title long after fill", answer("Хорошо.", adv{"Аптека за год {f7}", "Текст.", "f7", "a2"}), "заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке"},
+		// Критик Блока 1: слова заголовка — как их увидят, после подстановки: «Аптека в месяц 12 000 ₸» — шесть.
+		{"title long after fill", answer("Хорошо.", adv{"Аптека в месяц {f7}", "Текст.", "f7", "a2"}), "заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -348,7 +350,7 @@ func TestReviewTwoDefectsFail(t *testing.T) {
 // action come back as ids.
 func TestReviewFilled(t *testing.T) {
 	odd := answer("Такси копит на «iPhone 17»: {f6}.",
-		adv{"«Apteka 24» каждый день", "Ставка «Кредит» — {f5}, а аптека за год — {f7}.", nil, "a2"},
+		adv{"«Apteka 24» каждый день", "Ставка «Кредит» — {f5}, а аптека в месяц — {f7}.", nil, "a2"},
 		adv{"Мечта {f3}", "Перенесём из «Кафе».", "f4", "a4"},
 	)
 	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{odd}}, true)
@@ -360,7 +362,7 @@ func TestReviewFilled(t *testing.T) {
 		t.Errorf("where = %q", got.Where)
 	}
 	a, b := got.Advices[0], got.Advices[1]
-	if a.Title != "«Apteka 24» каждый день" || a.Text != "Ставка «Кредит» — 16,5 %, а аптека за год — 144 000 ₸." || a.Figure != nil || a.Action != "a2" {
+	if a.Title != "«Apteka 24» каждый день" || a.Text != "Ставка «Кредит» — 16,5 %, а аптека в месяц — 12 000 ₸." || a.Figure != nil || a.Action != "a2" {
 		t.Errorf("advice 1 = %+v", a)
 	}
 	if b.Title != "Мечта к июню 2028" || *b.Figure != "f4" || b.Action != "a4" {

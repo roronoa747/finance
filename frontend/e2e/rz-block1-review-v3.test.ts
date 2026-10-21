@@ -32,12 +32,12 @@ const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, 
 function answerFor(body: ReviewPayloadV3) {
   const cushion = body.actions.find((a) => a.kind === 'do' && a.about === 'из остатка месяца в подушку')!
   const apteka = body.actions.find((a) => a.kind === 'open' && a.about === 'открыть покупки у «APTEKA PLUS»')!
-  const yearly = body.facts.find((f) => f.about === 'частые траты у «APTEKA PLUS» — за год')!
+  const monthly = body.facts.find((f) => f.about === 'частые траты у «APTEKA PLUS» — в месяц')!
   return {
     where: 'Аптека у дома тянет больше, чем кажется.',
     advices: [
       { title: 'Отложим в подушку', text: 'Подушки почти нет — остаток месяца в неё.', figure: null, action: cushion.id },
-      { title: 'Аптека у дома', text: `За год у «APTEKA PLUS» уходит ${yearly.value}.`, figure: yearly.id, action: apteka.id },
+      { title: 'Аптека у дома', text: `В месяц у «APTEKA PLUS» уходит ${monthly.value}.`, figure: monthly.id, action: apteka.id },
     ],
   }
 }
@@ -108,9 +108,10 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     expect(r.advices!.map((a) => a.action.kind)).toEqual(['do', 'open'])
     // Подпись крупной цифры — коротко, кодом (RZ-15); в тело ручки не уходит.
     expect(JSON.stringify(aiReview.mock.calls[0][0])).not.toContain('label')
-    expect(r.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA PLUS» — за год', label: 'за год · APTEKA PLUS' }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka plus', categoryId: 'sc_health' } } })
-    // Счётчик: находок — сколько нашёл код; ₸ в год — утечка совета (11 000 в месяц × 12).
-    expect(r.work).toMatchObject({ found: 1, yearly: 132_000 })
+    expect(r.advices![1]).toMatchObject({ figure: { about: 'частые траты у «APTEKA PLUS» — в месяц', label: 'в месяц · APTEKA PLUS' }, action: { kind: 'open', target: { kind: 'seller', id: 'apteka plus', categoryId: 'sc_health' } } })
+    // Счётчик: находок — сколько нашёл код; ₸ в месяц — утечка совета (11 000), без годовых («Фидбек», Р-19).
+    expect(r.work).toMatchObject({ found: 1, monthly: 11_000 })
+    expect(JSON.stringify(aiReview.mock.calls[0][0])).not.toMatch(/за год|в год/)
     await sync(one)
 
     const two = await as('member', 'b')
@@ -122,8 +123,9 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     expect(html.match(/data-review-advice(?=[\s=>])/g)).toHaveLength(2)
     expect(html).toMatch(doBtn)
     expect(html).toContain('data-review-link')
-    // RZ-14: деньги находок в год — крупно, операции — строкой.
-    expect(visible(html)).toContain('в год уходит на найденное')
+    // RZ-14: деньги находок в месяц — крупно, операции — строкой.
+    expect(visible(html)).toContain('в месяц уходит на найденное')
+    expect(visible(html)).not.toMatch(/за год|в год/)
     expect(visible(html)).toMatch(/1 находка из [\d ]+ операц/)
   })
 
