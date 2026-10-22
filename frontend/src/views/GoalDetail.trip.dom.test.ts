@@ -183,4 +183,15 @@ describe('PN-31: экран цели-поездки', () => {
     expect(q('[data-trip-ops-toggle]')).toBeNull()
     expect(q('[data-trip-exclude]')).toBeNull()
   })
+
+  it('«Мне вернули» у траты поездки — строка за вычетом и «вернули N», итог сходится (критик «Фидбек» Блок 1)', async () => {
+    const finance = await open({ ops: MINE })
+    finance.setOpEdit('Hotel', { refund: { amount: 20_000 } })
+    useOperationsStore().writeTripTotals()
+    await nextTick()
+    expect(title()).toBe('62 000 из 150 000 ₸')
+    await click(q('[data-trip-ops-toggle]'))
+    expect(norm(q('[data-trip-op="Hotel"]')?.textContent)).toContain('вернули 20 000')
+    expect(norm(q('[data-trip-op="Hotel"] .money')?.textContent)).toBe('−50 000 ₸')
+  })
 })

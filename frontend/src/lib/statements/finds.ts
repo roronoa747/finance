@@ -144,7 +144,8 @@ const paymentOf = (op: Operation, rules: MerchantRule[]) => {
  */
 export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: DueCtx, at = new Date().toISOString()): ReviewFind[] {
   const from = addMonths(period, -DUE_MONTHS)
-  const window = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) <= period && sellerOk(op))
+  // Возврат на всю сумму (`spendOf` 0, FB-02) — не списание: двойное, которое банк вернул, — не находка (критик Блока 1).
+  const window = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) <= period && sellerOk(op) && spendOf(op) > 0)
   const out: ReviewFind[] = []
   const planned = new Set(
     [...ctx.obligations, ...ctx.credits].filter((x) => !x.deletedAt).map((x) => normalizeMerchant(x.name)),
@@ -175,7 +176,7 @@ export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: Du
     const o = ctx.obligations.find((x) => x.id === p.targetId && !x.deletedAt)
     if (!o || o.estimate) continue
     const was = amountAt(o, period, ctx.book)
-    const paid = -op.amount
+    const paid = spendOf(op)
     if (was <= 0 || paid * 100 < was * (100 + PRICIER_SHARE) || paid - was < PRICIER_MIN) continue
     const key = keyOf(op)
     const prev = pricier.get(key)

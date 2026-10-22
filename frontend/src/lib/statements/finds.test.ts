@@ -215,4 +215,14 @@ describe('«Мне вернули» в находках (FB-02, Р-12)', () => {
     expect(top).toMatchObject({ amount: 130_000, count: 2 })
     expect(top.top).toEqual([{ name: 'Leroy', amount: 80_000 }, { name: 'Divan Store', amount: 50_000 }])
   })
+
+  it('двойное, которое вернули целиком, — не находка; подорожание — по сумме за вычетом возврата (критик Блока 1)', () => {
+    const at = (d: number, extra: Partial<Operation> = {}) => op('SPORT CLUB', -12_000, 'sc_fun', day(SEP, d), extra)
+    expect(dueFinds([at(3), at(4)], 'a', SEP, NONE).map((f) => f.kind)).toEqual(['double'])
+    expect(dueFinds([at(3), at(4, { refund: { amount: 12_000 } })], 'a', SEP, NONE)).toEqual([])
+    // Кинопоиск 2 990 при плане 2 490, вернули 600 — заплачено 2 390: не дороже.
+    const ctx = { ...NONE, obligations: [obligation('o1', 'Кинопоиск', 2_490)], rules: [payRule('KINOPOISK', 'o1')] }
+    expect(dueFinds([op('KINOPOISK', -2_990, 'sc_subscriptions', day(SEP, 10))], 'a', SEP, ctx).map((f) => f.kind)).toEqual(['pricier'])
+    expect(dueFinds([op('KINOPOISK', -2_990, 'sc_subscriptions', day(SEP, 10), { refund: { amount: 600 } })], 'a', SEP, ctx)).toEqual([])
+  })
 })
