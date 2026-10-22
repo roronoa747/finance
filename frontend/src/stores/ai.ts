@@ -11,6 +11,7 @@ import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
+import { useOperationsStore } from './operations'
 import type { AiAdvice, AiConsent, AiReview, OpenTarget, Payment, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
@@ -194,12 +195,13 @@ export const useAiStore = defineStore('ai', () => {
 
   /**
    * Разбор по нажатию (✦ «Разобрать» — повод `month`, «Обновить» — `refresh`): согласие спрашивает вызывающий
-   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; прочее и сеть — «не вышло».
+   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; прочее и сеть — «не вышло». Операции и выписки
+   * ещё грузятся — «Думаю…» ждёт их (FB-HF1), не пришли — «не вышло» без запроса.
    */
   async function runReview(key: string, reason: ReviewReason = 'month', client: ApiClient = apiClient): Promise<AiReview | null> {
     if (reviewState.value === 'thinking' || !available.value) return null
     reviewState.value = 'thinking'
-    const r = await requestReview(key, reason, client)
+    const r = (await useOperationsStore().loaded(client)) ? await requestReview(key, reason, client) : 'network'
     if (typeof r === 'string') {
       reviewState.value = r === 'ai_limit' ? 'limit' : 'failed'
       return null
@@ -254,11 +256,13 @@ export const useAiStore = defineStore('ai', () => {
    * сутки (`ff_ai_auto`, попытка пишется до запроса, исход — после). Страница не дожила до ответа (перезагрузка,
    * закрытый PWA: ответ идёт 5–55 с; владелец 2026-10-18 — 33 открытия за 2 минуты, ответ 200 пришёл на мёртвую
    * страницу, RZ-HF2) — попытка без исхода: повод повторяется один раз, как только окно ответа вышло; второй обрыв
-   * подряд — сутки. Один запрос за раз.
+   * подряд — сутки. Один запрос за раз. Сначала — свои операции и выписки с сервера (`operations.loaded`, FB-HF1): без
+   * них разбор считал бы «0 операций»; не пришли — молча, попытка не пишется (повтор — следующим кругом).
    */
   async function autoReview(client: ApiClient = apiClient): Promise<AiReview | null> {
     if (!available.value || consent.value === 'off' || inflight) return null
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+    if (!(await useOperationsStore().loaded(client)) || inflight) return null
     const key = monthKey()
     const reason = autoReason(key)
     if (!reason) return null

@@ -3,7 +3,7 @@ import { setActivePinia, createPinia, type Pinia } from 'pinia'
 import type { Component, ComponentOptions } from 'vue'
 import { useFinanceStore } from '../../src/stores/finance'
 import { renderScreen, screenMixin } from '../../src/test/screenState'
-import { ApiClient, ApiError } from '../../src/api/client'
+import { ApiClient, ApiError, apiClient } from '../../src/api/client'
 import type { SyncDoc } from '../../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse, OperationWire, StatementUploadResponse } from '../../src/types/api'
 
@@ -18,6 +18,20 @@ export type FakeServer = { rev: number; data: SyncDoc }
 
 export function fakeServer(data: SyncDoc, rev = 1): FakeServer {
   return { rev, data }
+}
+
+/** Свои операции и выписки с сервера — пусто, но пришли: разбор ИИ ждёт их (FB-HF1). Для клиента разбора теста. */
+export function noStatements() {
+  return {
+    listOperations: vi.fn(async () => ({ operations: [], next: null })),
+    listStatementUploads: vi.fn(async () => ({ uploads: [] })),
+  }
+}
+
+/** То же на общем `apiClient` — экран зовёт разбор без своего клиента («Разобрать», «Обновить»). */
+export function apiNoStatements() {
+  vi.spyOn(apiClient, 'listOperations').mockResolvedValue({ operations: [], next: null })
+  vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] })
 }
 
 /** Клиент телефона: чужая ревизия — 409 с документом сервера, как у Go. */

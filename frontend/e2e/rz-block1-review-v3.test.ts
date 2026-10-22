@@ -9,7 +9,7 @@ import type { MeResponse } from '../src/types/api'
 import type { Goal, ReviewPayloadV3, SyncDoc } from '../src/types/finance'
 import type { ReviewFind } from '../src/lib/statements/types'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Блок 1 «Разбор» (RZ-05): разбор v3 на двух телефонах против фейкового сервера документа и фейковой ручки
@@ -83,7 +83,7 @@ describe('e2e / Разбор Блок 1 — разбор v3', () => {
     await useFinanceStore().pullPrivateDoc(priv as unknown as ApiClient)
     const ai = useAiStore()
     ai.sheetMounted = true
-    const aiClient = { ...priv, aiReview } as unknown as ApiClient
+    const aiClient = { ...priv, ...noStatements(), aiReview } as unknown as ApiClient
     return { ...p, ai, aiClient }
   }
   type Phone = Awaited<ReturnType<typeof as>>

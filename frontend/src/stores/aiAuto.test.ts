@@ -8,6 +8,7 @@ import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import type { AiReview, ReviewPayloadV3, SyncDoc } from '@/types/finance'
 import type { ReviewFind } from '@/lib/statements/types'
 import { money } from '@/lib/money'
+import type { UploadPeriod } from '@/lib/finance'
 
 /**
  * AU-13 (бэклог «ИИ-польза», Р-4, Р-20): разбор сам — повод `month` (первый вход в месяце) и `salary` (своя первая
@@ -17,15 +18,22 @@ import { money } from '@/lib/money'
 const NOW = '2026-09-12T07:00:00Z'
 const KEY = '2026-09'
 /** Ответ ручки v3 (RZ-05): совет на первое действие семьи — «досрочно» (`stepCandidates` `planFamilyDoc`). */
+/** Запрос разбора идёт после загрузки операций и выписок (FB-HF1) — несколько ожиданий, не одна микрозадача. */
+const tick = () => new Promise((r) => setTimeout(r, 0))
 const ANSWER = { where: 'Хорошо.', advices: [{ title: 'Шаг', text: 'Риск.', figure: null, action: 'a1' }] }
 
 function fakeClient(priv: Record<string, unknown> = {}) {
   const aiReview = vi.fn(async (_body: unknown) => ANSWER)
+  // Свои операции и выписки с сервера — пусто, но пришли (FB-HF1: разбор ждёт их).
+  const listOperations = vi.fn(async () => ({ operations: [], next: null }))
+  const listStatementUploads = vi.fn(async () => ({ uploads: [] as UploadPeriod[] }))
   const client = {
     aiReview,
     getPrivateDoc: vi.fn(async () => ({ rev: 1, data: priv })),
+    listOperations,
+    listStatementUploads,
   } as unknown as ApiClient
-  return { client, aiReview }
+  return { client, aiReview, listOperations, listStatementUploads }
 }
 
 function family(opts: { role?: 'member' | 'viewer'; doc?: SyncDoc; consent?: 'v2' | 'v1' | 'off' | 'none' } = {}) {
@@ -357,7 +365,7 @@ describe('autoReview — молча', () => {
     const { client, aiReview } = fakeClient()
     aiReview.mockImplementation(() => new Promise(() => {}))
     void family().ai.autoReview(client)
-    await Promise.resolve()
+    await tick()
     expect(aiReview).toHaveBeenCalledTimes(1)
     // Через 30 с: запрос, возможно, ещё идёт (вторая вкладка) — не дублируем.
     vi.setSystemTime(new Date('2026-09-12T07:00:30Z'))
@@ -366,7 +374,7 @@ describe('autoReview — молча', () => {
     // Через 4 минуты: ответ на мёртвую страницу потерян — повод повторяется сам (владелец 2026-10-18 ждал бы сутки).
     vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
     void restart().autoReview(client)
-    await Promise.resolve()
+    await tick()
     expect(aiReview).toHaveBeenCalledTimes(2)
     expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ retry: true })
     // Повтор тоже оборвался — больше не платим до суток.
@@ -414,12 +422,12 @@ describe('autoReview — молча', () => {
     let fail!: (e: unknown) => void
     aiReview.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
     const september = family().ai.autoReview(client)
-    await Promise.resolve()
+    await tick()
     // Полночь: вторая вкладка — повод октября; её запрос оборвали (страницу закрыли).
     vi.setSystemTime(new Date('2026-09-30T19:00:10Z'))
     aiReview.mockImplementation(() => new Promise(() => {}))
     void restart().autoReview(client)
-    await Promise.resolve()
+    await tick()
     expect(aiReview).toHaveBeenCalledTimes(2)
     // Сентябрьский ответ (502) дошёл после полуночи — пишет свой исход, октябрьскую попытку не трогает.
     fail(new ApiError('ai_failed', 502))
@@ -428,7 +436,7 @@ describe('autoReview — молча', () => {
     // Октябрь: один повтор оборванной после окна, дальше — сутки.
     vi.setSystemTime(new Date('2026-09-30T19:02:00Z'))
     void restart().autoReview(client)
-    await Promise.resolve()
+    await tick()
     vi.setSystemTime(new Date('2026-09-30T19:04:00Z'))
     expect(await restart().autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(3)
@@ -577,5 +585,77 @@ describe('requestReview v3 — сохранение', () => {
     expect(await ai.runReview(KEY, 'month', client)).toBeNull()
     expect(ai.reviewState).toBe('failed')
     expect(finance.householdDoc.aiReviews ?? []).toHaveLength(0)
+  })
+})
+
+// FB-HF1 (приёмка FB-13, хвост Х-1): разбор сам уходил сразу после документа, а выписки (`GET /api/statements`) шли
+// параллельно — запрос успевал раньше: «7 находок из 0 операций», «обычных» месяцев нет, неполный разбор оплачен.
+describe('разбор ждёт свои операции и выписки (FB-HF1)', () => {
+  const usual = ['2026-06', '2026-07', '2026-08']
+  const totals = usual.flatMap((period) =>
+    (['a', 'b'] as const).map((by) => ({ id: `${by}:month:${period}:sc_food`, by, kind: 'month' as const, period, categoryId: 'sc_food', amount: 100_000, ops: 50, updatedAt: T0 })),
+  )
+  const uploads = ['a', 'b'].map((slot) => ({ slot, period_from: '2026-06-01', period_to: '2026-08-31' }))
+
+  it('выписки пришли позже документа — запрос только после них; счётчик — операции трёх «обычных» месяцев', async () => {
+    const { ai } = family({ doc: planFamilyDoc({ spendTotals: totals }) })
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    let arrive!: () => void
+    listStatementUploads.mockImplementation(() => new Promise((r) => (arrive = () => r({ uploads }))))
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(listStatementUploads).toHaveBeenCalled())
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    const r = await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(300)
+  })
+
+  it('свои операции ещё идут (первый pull) — ждёт и их', async () => {
+    const { ai } = family({ doc: planFamilyDoc({ spendTotals: totals }) })
+    const { client, aiReview, listOperations, listStatementUploads } = fakeClient()
+    listStatementUploads.mockResolvedValue({ uploads })
+    let arrive!: () => void
+    listOperations.mockImplementation(() => new Promise((r) => (arrive = () => r({ operations: [], next: null }))))
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(listOperations).toHaveBeenCalled())
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('выписки не пришли (сеть) — запроса нет и попытка не записана; следующий круг — запрос', async () => {
+    const { ai } = family({ doc: planFamilyDoc({ spendTotals: totals }) })
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    listStatementUploads.mockRejectedValueOnce(new Error('сеть')).mockResolvedValue({ uploads })
+    expect(await ai.autoReview(client)).toBeNull()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(localStorage.getItem('ff_ai_auto')).toBeNull()
+    const r = await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(300)
+  })
+
+  it('«Разобрать» во время загрузки — «Думаю…» ждёт выписки, потом один запрос; не пришли — «не вышло» без запроса', async () => {
+    const { ai } = family({ doc: planFamilyDoc({ spendTotals: totals }) })
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    let arrive!: () => void
+    listStatementUploads.mockImplementationOnce(() => Promise.reject(new Error('сеть')))
+    expect(await ai.runReview(KEY, 'month', client)).toBeNull()
+    expect(ai.reviewState).toBe('failed')
+    expect(aiReview).not.toHaveBeenCalled()
+    listStatementUploads.mockImplementation(() => new Promise((r) => (arrive = () => r({ uploads }))))
+    const run = ai.runReview(KEY, 'month', client)
+    expect(ai.reviewState).toBe('thinking')
+    await vi.waitFor(() => expect(listStatementUploads).toHaveBeenCalledTimes(2))
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    const r = await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(300)
   })
 })

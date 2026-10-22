@@ -149,7 +149,7 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     await store.pullPrivateDoc(priv as unknown as ApiClient)
     const ai = useAiStore()
     ai.sheetMounted = true
-    return { pinia, store, client, ai, aiClient: { ...priv, aiReview } as unknown as ApiClient }
+    return { pinia, store, client, ai, aiClient: { ...client, ...priv, aiReview } as unknown as ApiClient }
   }
   type Phone = Awaited<ReturnType<typeof as>>
   const sync = (p: Phone) => {

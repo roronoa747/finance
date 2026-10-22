@@ -154,6 +154,9 @@ export const useOperationsStore = defineStore('operations', () => {
   let flushing: Promise<void> | null = null
   let pulling: Promise<unknown> = Promise.resolve()
   let lastPullAt = 0
+  /** В этом запуске пришли свои операции (удачный `pull`) и записи выписок (`loadUploads`) — вход разбора (FB-HF1). */
+  let pulledOk = false
+  let uploadsOk = false
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -279,6 +282,7 @@ export const useOperationsStore = defineStore('operations', () => {
     demoUploads.value = []
     declined.value = []
     serverUploads.value = []
+    pulledOk = uploadsOk = false
     dropHold()
     draft.value = null
     lastAutoMarked.value = 0
@@ -844,6 +848,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const stale = new Set(got.filter((id) => released.value.has(id)))
       if (stale.size) await settleReleased(stale, client)
       await settlePhone(phone, gone, client)
+      pulledOk = true
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
@@ -919,9 +924,26 @@ export const useOperationsStore = defineStore('operations', () => {
     if (demo.value) return
     try {
       serverUploads.value = (await client.listStatementUploads()).uploads
+      uploadsOk = true
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  /**
+   * Свои операции и записи выписок этого запуска пришли с сервера (FB-HF1): находки и разбор ИИ ждут их — иначе запрос
+   * к модели уходит раньше `GET /api/statements` («K находок из 0 операций», «обычных» месяцев нет — оплачен неполный
+   * разбор). Идущий `pull` дожидается, недостающее догружает; не вышло (сеть, очередь не ушла) — `false`, разбор не зовут
+   * (повтор — следующим кругом). Демо и viewer — `true`: операций с сервера у них нет.
+   */
+  async function loaded(client: ApiClient = apiClient): Promise<boolean> {
+    if (demo.value || !auth.isMember) return true
+    const ownOps = async () => {
+      await pulling
+      if (!pulledOk) await pull(client)
+    }
+    await Promise.all([pulledOk || ownOps(), uploadsOk || loadUploads(client)])
+    return pulledOk && uploadsOk
   }
 
   // Сразу при старте — и операции, отметку которых сняли до этой правки (или пока телефон спал).
@@ -1017,6 +1039,7 @@ export const useOperationsStore = defineStore('operations', () => {
     pull,
     pullOnReturn,
     loadUploads,
+    loaded,
     seedDemoUploads,
     seedDemoOperations,
     writeTripTotals,

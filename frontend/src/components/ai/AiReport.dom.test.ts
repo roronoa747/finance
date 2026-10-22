@@ -42,6 +42,10 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      // Свои операции и выписки — пусто (разбор ждёт их, FB-HF1).
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (String(url).endsWith('/statements')) return json({ uploads: [] })
+      if (String(url).includes('/operations?')) return json({ operations: [], next: null })
       if (!String(url).endsWith('/sync/private')) throw new Error('офлайн')
       if (init?.method === 'POST') priv = { rev: priv.rev + 1, data: (JSON.parse(String(init.body)) as { data: Record<string, unknown> }).data }
       return new Response(JSON.stringify(priv), { status: 200, headers: { 'Content-Type': 'application/json' } })

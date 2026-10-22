@@ -8,7 +8,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { Goal, SyncDoc } from '../src/types/finance'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Блок 3 «ИИ-польза» (AU-09…AU-14): разбор v2 приходит сам — на двух телефонах против фейкового сервера документа и
@@ -70,7 +70,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     const ai = useAiStore()
     ai.sheetMounted = true
     // Клиент ИИ и личного документа; `client` телефона — синк общего документа.
-    const aiClient = { ...priv, aiReview } as unknown as ApiClient
+    const aiClient = { ...priv, ...noStatements(), aiReview } as unknown as ApiClient
     return { ...p, ai, aiClient }
   }
   type Phone = Awaited<ReturnType<typeof as>>
@@ -105,8 +105,9 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
     // Телефоны в тесте делят одно хранилище; попытку повода телефон 1 пишет до запроса (возврат AU-33) — у телефона 2
-    // своё хранилище, где её нет.
+    // своё хранилище, где её нет. Попытка пишется после загрузки своих операций и выписок (FB-HF1) — дождаться её.
     const first = one.ai.autoReview(one.aiClient)
+    await vi.waitFor(() => expect(storage.has('ff_ai_auto')).toBe(true))
     storage.delete('ff_ai_auto')
     await Promise.all([first, two.ai.autoReview(two.aiClient)])
     // До синка каждый телефон не видит разбор другого — ровно 2 (редкий двойной, Р-4), не больше.
