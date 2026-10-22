@@ -173,3 +173,27 @@ describe('FB-04: лист операции (OpSheet)', () => {
     expect(input.getAttribute('aria-invalid')).toBeNull()
   })
 })
+
+describe('FB-08: «Разовая» в листе операции', () => {
+  it('тихий чип рядом с «Мне вернули» → правка oneOff, чип включён, итог месяца с разовой; ещё раз — снято', async () => {
+    const store = await mount()
+    const finance = useFinanceStore()
+    await open('p1')
+    const chip = () => dialog()!.querySelector<HTMLElement>('[data-op-extra] [data-op-oneoff]')
+    expect(chip()!.getAttribute('aria-pressed')).toBe('false')
+    expect(dialog()!.querySelector('[data-op-oneoff-note]')).toBeNull()
+    await press(chip())
+    expect(finance.opEdits.find((e) => e.id === 'p1')?.oneOff).toBe(true)
+    expect(store.all.find((o) => o.id === 'p1')?.oneOff).toBe(true)
+    expect(chip()!.getAttribute('aria-pressed')).toBe('true')
+    expect(txt(dialog()!.querySelector('[data-op-oneoff-note]'))).toBe('не входит в обычные траты')
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_food')).toMatchObject({ amount: 8_000, oneOff: 8_000 })
+    // На операцию в копии флаг не пишется — только в правки (Р-11).
+    expect(store.ops.p1.oneOff).toBeUndefined()
+
+    await press(chip())
+    expect(finance.opEdits.find((e) => e.id === 'p1')?.oneOff).toBeNull()
+    expect(chip()!.getAttribute('aria-pressed')).toBe('false')
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_food')?.oneOff).toBeUndefined()
+  })
+})

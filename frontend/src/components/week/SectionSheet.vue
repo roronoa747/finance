@@ -64,7 +64,7 @@ const detail = computed(() =>
             :data-section-op="o.hand ? undefined : o.id"
             @click="o.hand ? emit('edit', o.id) : emit('open', o.id)"
           >
-            <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
             <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
             <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
             <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />

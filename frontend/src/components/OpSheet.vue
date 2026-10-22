@@ -20,7 +20,7 @@ import Hint from '@/components/kit/Hint.vue'
  * чипы «куда отнести?» с «+ Раздел» (ответ — правило по продавцу задним числом, `recategorize`; текущий раздел выбран);
  * ниже тихий чип «Мне вернули»: приход ±14 дней (`refundsFor`) или «Наличными» с суммой. Главной кнопки нет — ответ
  * чипом (правило 12). Один лист на ленту «Недели», листы разделов «Недели» и «Месяца» и «Историю»; ручная трата сюда не
- * попадает (её лист — «Трата»). `z` — поверх другого листа. В Блоке 2 в ряд к «Мне вернули» встанут «Разовая» и
+ * попадает (её лист — «Трата»). `z` — поверх другого листа. В ряд к «Мне вернули» — тихие «Разовая» (FB-08) и
  * «В платежи».
  */
 const props = withDefaults(defineProps<{ opId: string | null; z?: number }>(), { z: 50 })
@@ -59,6 +59,12 @@ function choose(to: MerchantRule['to']) {
   saveMemo()
   if (o) void store.recategorize(ruleMatchOf(o), to)
   emit('close')
+}
+
+/* ---------- «Разовая» (FB-08, Р-16): факт месяца — да, раздел, «обычно» и находки — нет ---------- */
+function toggleOneOff() {
+  const o = op.value
+  if (o) store.editOp(o.id, { oneOff: o.oneOff ? null : true })
 }
 
 /* ---------- «Мне вернули» (Р-12) ---------- */
@@ -108,7 +114,9 @@ function saveCash() {
       </Field>
       <div v-if="spend" class="mt-3 flex flex-wrap gap-2 border-t border-line pt-3" data-op-extra>
         <Chip quiet :on="!!op.refund" data-op-refund @click="toggleRefund">Мне вернули</Chip>
+        <Chip quiet :on="!!op.oneOff" data-op-oneoff @click="toggleOneOff">Разовая</Chip>
       </div>
+      <p v-if="op.oneOff && spend" class="mt-1.5 type-meta" data-op-oneoff-note>не входит в обычные траты</p>
       <div v-if="refundMode === 'pick'" class="mt-2 flex flex-col gap-2" data-op-refund-pick>
         <Chip v-for="i in incomes" :key="i.id" class="justify-start" :data-op-income="i.id" @click="pickIncome(i)">{{ incomeLabel(i) }}</Chip>
         <div>

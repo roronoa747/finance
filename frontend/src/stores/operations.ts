@@ -774,12 +774,14 @@ export const useOperationsStore = defineStore('operations', () => {
    * Ручная трата (бэклог «Ручная трата», Р-1, Р-2): новая или правка своей ручной — в копию, итоги периодов (при смене
    * даты — и старого) в общий документ, на сервер — тем же батчем, что строки выписки. Партнёр видит только итог
    * раздела (`writeTotals` → `SpendTotal`). Разделов в документе ещё нет (выписок не было) — засеваются, как при
-   * первой загрузке. Строку выписки или с телефона этим не поправить.
+   * первой загрузке. Строку выписки или с телефона этим не поправить. «Разовая» формы (FB-08) — правка операции в личном
+   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней.
    */
-  async function saveHand(op: Operation, client: ApiClient = apiClient) {
+  async function saveHand(op: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
     const prev = ops.value[op.id]
     if (!isHand(op) || (prev && !isHand(prev))) return
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
+    if ('oneOff' in edit) finance.setOpEdit(op.id, { oneOff: edit.oneOff || null })
     remember([op])
     writeTotals(periodsOf(prev ? [prev, op] : [op]))
     if (!demo.value) pending.value.push({ key: newKey(), ops: [op] })
