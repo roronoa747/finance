@@ -98,11 +98,14 @@ const noTabs = computed(() => {
   return p.startsWith('/goals/') || p === '/wishes' || p.startsWith('/people/') || p.startsWith('/settings') || p === '/admin'
 })
 
-/** «Назад»: по истории, а открытый по ссылке экран — к своему корню. */
+/**
+ * «Назад»: по истории, а открытый по ссылке экран — к своему корню. К корню — `replace` (FB-22): `push` давал
+ * «Настройкам» `back` на открытые холодно «Цифры» / «Свой кружок», и «Назад» гонял их по кругу до перезагрузки.
+ */
 function goBack() {
   const p = route.path
   if (typeof window !== 'undefined' && window.history.state?.back) router.back()
-  else void router.push(p.startsWith('/week') ? '/week' : p === '/settings/me' || p === '/admin' ? '/settings' : '/')
+  else void router.replace(p.startsWith('/week') ? '/week' : p === '/settings/me' || p === '/admin' ? '/settings' : '/')
 }
 
 /** Заголовок и подпись шапки по маршруту (DESIGN.md §6 «Заголовки экранов»). */

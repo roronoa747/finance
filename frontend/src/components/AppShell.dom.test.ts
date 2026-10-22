@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { createRouter, createMemoryHistory, RouterView } from 'vue-router'
+import { createRouter, createMemoryHistory, createWebHistory, RouterView } from 'vue-router'
 import AppShell from './AppShell.vue'
 import HeaderActions from './kit/HeaderActions.vue'
 
@@ -394,4 +394,72 @@ it('выход и вход другим человеком — «Месяц» с
   } finally {
     me.mockRestore()
   }
+})
+
+/*
+ * FB-22: «Назад» по настоящей истории браузера (`history.state.back` пишет только web-история). Холодно открытые
+ * «Цифры» или «Свой кружок» (новая вкладка, PWA на последнем адресе) уходят к «Настройкам» без круга.
+ */
+async function shellAt(start: string) {
+  window.history.replaceState(null, '', start)
+  const router = createRouter({
+    history: createWebHistory(),
+    routes: [
+      {
+        path: '/',
+        component: AppShell,
+        children: [
+          { path: '', component: page('Мечты') },
+          { path: 'settings', component: page('Настройки') },
+          { path: 'settings/me', component: page('Свой кружок') },
+          { path: 'admin', component: page('Цифры') },
+        ],
+      },
+    ],
+  })
+  await router.push(start)
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp({ render: () => h(RouterView) })
+  app.use(createPinia())
+  app.use(router)
+  app.mount(root)
+  await nextTick()
+  return router
+}
+
+/** Нажимает «Назад» шапки, пока он есть (не больше `max` раз), и возвращает пройденные адреса. */
+async function backTrail(router: ReturnType<typeof createRouter>, max = 5) {
+  const trail = [router.currentRoute.value.path]
+  for (let i = 0; i < max; i++) {
+    const back = document.querySelector('header button[aria-label="Назад"]') as HTMLButtonElement | null
+    if (!back) break
+    const was = router.currentRoute.value.fullPath
+    back.click()
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).not.toBe(was))
+    await nextTick()
+    trail.push(router.currentRoute.value.path)
+  }
+  return trail
+}
+
+it('FB-22: «Цифры» холодно → «Назад» → «Настройки» → «Назад» → «Мечты», а не снова «Цифры»', async () => {
+  const router = await shellAt('/admin')
+  expect(await backTrail(router)).toEqual(['/admin', '/settings', '/'])
+})
+
+it('FB-22: «Свой кружок» холодно → «Назад» → «Настройки» → «Назад» → «Мечты»', async () => {
+  const router = await shellAt('/settings/me')
+  expect(await backTrail(router)).toEqual(['/settings/me', '/settings', '/'])
+})
+
+it('FB-22: обычный путь «Мечты → Настройки → Цифры» — «Назад» по истории, как был', async () => {
+  const router = await shellAt('/')
+  await router.push('/settings')
+  await router.push('/admin')
+  await nextTick()
+  expect(await backTrail(router)).toEqual(['/admin', '/settings', '/'])
+  // По истории, а не заменой: вперёд браузера снова «Настройки».
+  expect(window.history.state?.forward).toBe('/settings')
 })
