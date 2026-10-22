@@ -23,7 +23,8 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { declineKey, isDeclined, markedOps, matchCandidates, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { recurringOf, type RecurringPrefill } from '@/lib/statements/firstRun'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacementPairs } from '@/lib/statements/phone'
 import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
@@ -46,9 +47,14 @@ const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
  */
 export const UPLOAD_HOLD_MS = 6_000
 
-/** Итог тот же: сумма, строки и сумма без отметки — запись не нужна. */
+/** Итог тот же: сумма, строки, сумма без отметки и разовые — запись не нужна. */
 const sameTotal = (a: SpendTotal | undefined, b: SpendTotal) =>
-  !!a && !a.deletedAt && a.amount === b.amount && a.ops === b.ops && (a.unmarked ?? 0) === (b.unmarked ?? 0)
+  !!a &&
+  !a.deletedAt &&
+  a.amount === b.amount &&
+  a.ops === b.ops &&
+  (a.unmarked ?? 0) === (b.unmarked ?? 0) &&
+  (a.oneOff ?? 0) === (b.oneOff ?? 0)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
@@ -418,7 +424,9 @@ export const useOperationsStore = defineStore('operations', () => {
   /**
    * Итоги по разделам в общий документ (Р-21) — из **всех** своих операций периода, записи по
    * id заменяются целиком. Раздел, из которого ушли все траты, обнуляется, а не удаляется:
-   * надгробие навсегда закрыло бы этот id.
+   * надгробие навсегда закрыло бы этот id. `unmarked` и `oneOff` пишутся всегда, ноль — явно: слияние оставляет поля,
+   * которых победитель не знает (правило 3 `lib/merge.ts`), — без нуля снятая «Разовая» и отмеченная строка платежа
+   * вернулись бы с сервера прежней суммой (возврат приёмки Блока 2 «Фидбек»).
    */
   function writeTotals(periods: ReturnType<typeof periodsOf>) {
     if (!periods.length) return
@@ -431,13 +439,12 @@ export const useOperationsStore = defineStore('operations', () => {
       const next = spendTotals(all.value, by, kind, period, at, marks)
       const ids = new Set(next.map((t) => t.id))
       for (const t of byId.values()) {
-        if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops)) {
-          const { unmarked: _gone, ...rest } = t
-          writes.push({ ...rest, amount: 0, ops: 0, updatedAt: at })
+        if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops || t.unmarked || t.oneOff)) {
+          writes.push({ ...t, amount: 0, ops: 0, unmarked: 0, oneOff: 0, updatedAt: at })
         }
       }
       // Тот же итог второй раз не пишется: наблюдатель отметок будит пересчёт, а запись — синк.
-      for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push(t)
+      for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push({ ...t, unmarked: t.unmarked ?? 0, oneOff: t.oneOff ?? 0 })
     }
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
@@ -682,6 +689,33 @@ export const useOperationsStore = defineStore('operations', () => {
     return refundCandidates(op, all.value, linked)
   }
 
+  /**
+   * Повтор продавца для «В платежи» (FB-09, `recurringOf`): по своим операциям, правилам и отметкам семьи; viewer — нет.
+   * Строка уже отмечена или ждёт вопроса «это платёж по …?» к заведённому платежу (`markedOps`) — тоже нет: второй такой
+   * же платёж не заводим (`/ux` Блока 2).
+   */
+  const shownMarked = computed(() => totalMarks(shown.value).marked)
+  function recurringFor(op: Operation): RecurringPrefill | null {
+    if (auth.isViewer || shownMarked.value.has(op.id)) return null
+    return recurringOf(op, shown.value, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() })
+  }
+
+  /**
+   * «В платежи» сохранено (FB-09, Р-17; образец — `answerRecurring` первого запуска): месяц платежа отмечается этой
+   * строкой (ближайший к дате операции по дню платежа; уже отмечен — второй отметки нет), правило «это платёж по …» по
+   * продавцу — строка уходит из трат раздела, следующие выписки отмечаются сами (`autoMark`).
+   */
+  async function addToPayments(opId: string, obligationId: string, client: ApiClient = apiClient) {
+    const op = all.value.find((o) => o.id === opId)
+    const o = finance.obligations.find((x) => x.id === obligationId && !x.deletedAt)
+    if (!op || !o || auth.isViewer) return
+    const { period } = nearestPeriod(op.date, o.day)
+    const paid = finance.payments.some((p) => !p.deletedAt && p.kind === 'obligation' && p.targetId === o.id && p.period === period)
+    // Отметка — до пересчёта: итоги пишутся с ней, отмеченная строка не трата (хвосты 952/967).
+    if (!paid) finance.markPaid('obligation', o.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
+    await recategorize(ruleMatchOf(op), { payment: { kind: 'obligation', targetId: o.id, categoryId: matchCategory('obligation', o) } }, client)
+  }
+
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     return recategorizeAll([match], to, client)
@@ -769,12 +803,14 @@ export const useOperationsStore = defineStore('operations', () => {
    * Ручная трата (бэклог «Ручная трата», Р-1, Р-2): новая или правка своей ручной — в копию, итоги периодов (при смене
    * даты — и старого) в общий документ, на сервер — тем же батчем, что строки выписки. Партнёр видит только итог
    * раздела (`writeTotals` → `SpendTotal`). Разделов в документе ещё нет (выписок не было) — засеваются, как при
-   * первой загрузке. Строку выписки или с телефона этим не поправить.
+   * первой загрузке. Строку выписки или с телефона этим не поправить. «Разовая» формы (FB-08) — правка операции в личном
+   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней.
    */
-  async function saveHand(op: Operation, client: ApiClient = apiClient) {
+  async function saveHand(op: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
     const prev = ops.value[op.id]
     if (!isHand(op) || (prev && !isHand(prev))) return
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
+    if ('oneOff' in edit) finance.setOpEdit(op.id, { oneOff: edit.oneOff || null })
     remember([op])
     writeTotals(periodsOf(prev ? [prev, op] : [op]))
     if (!demo.value) pending.value.push({ key: newKey(), ops: [op] })
@@ -1066,6 +1102,8 @@ export const useOperationsStore = defineStore('operations', () => {
     recategorize,
     editOp,
     refundsFor,
+    recurringFor,
+    addToPayments,
     recategorizeAll,
     totalMarks,
     forgetRule,

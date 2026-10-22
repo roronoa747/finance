@@ -132,3 +132,42 @@ describe('PN-26: форма подписки — без разделов, «Чь
     expect(store.householdDoc.obligations.find((o) => o.name === 'Маме')).toMatchObject({ category: 'd4', people: true })
   })
 })
+
+describe('FB-09: заполнение из повтора продавца (prefill) и created(id)', () => {
+  function mountPrefilled(prefill: { name: string; amount: number; day: number; kind: 'subscription' } | null) {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const created = vi.fn()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(NewObligationSheet, { open: true, prefill, onCreated: created, onClose: () => {} }) })
+    app.use(pinia)
+    app.mount(root)
+    return { store, created }
+  }
+
+  it('поля заполнены, «Каждый месяц»; имя переписывается («Apple Music»); «Добавить» → created(id) с суммой и днём', async () => {
+    const { store, created } = mountPrefilled({ name: 'APPLE.COM BILL', amount: 4_990, day: 14, kind: 'subscription' })
+    await nextTick()
+    expect(field('Что оплачиваем').value).toBe('APPLE.COM BILL')
+    expect(field('Сумма в месяц').value.replace(/\s/g, '')).toBe('4990')
+    expect(field('День платежа').value).toBe('14')
+    expect(button('Каждый месяц').getAttribute('aria-pressed')).toBe('true')
+    await type('Что оплачиваем', 'Apple Music')
+    button('Добавить').click()
+    await nextTick()
+    const ob = store.householdDoc.obligations.find((o) => o.name === 'Apple Music')!
+    expect(ob).toMatchObject({ day: 14, category: 'd4' })
+    expect(ob.versions.at(-1)?.amount).toBe(4_990)
+    expect(created).toHaveBeenCalledWith(ob.id)
+  })
+
+  it('без prefill — пусто, как было', async () => {
+    mountPrefilled(null)
+    await nextTick()
+    expect(field('Что оплачиваем').value).toBe('')
+    expect(field('День платежа').value).toBe('10')
+  })
+})

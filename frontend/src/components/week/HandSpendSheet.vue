@@ -16,6 +16,8 @@ import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import NewCategoryChip from '@/components/NewCategoryChip.vue'
+import Toggle from '@/components/kit/Toggle.vue'
+import Hint from '@/components/kit/Hint.vue'
 
 /**
  * «Трата» руками (бэклог «Ручная трата», Р-1, Р-2): сумма и раздел — обязательны, заметка «что / где» и дата (сегодня)
@@ -38,6 +40,7 @@ const amount = ref('')
 const categoryId = ref<string | null>(null)
 const note = ref('')
 const date = ref(todayIso())
+const oneOff = ref(false)
 /**
  * Разделов до «Ещё N ▾» — шесть, как у ответов «Куда отнести?» (`CategoryChips`): все 18 сталкивали «Сохранить» за
  * край экрана. Выбранный раздел из хвоста (правка) виден и свёрнутым.
@@ -66,6 +69,8 @@ watch(
     categoryId.value = op?.categoryId ?? null
     note.value = op?.note ?? ''
     date.value = op?.date ?? todayIso()
+    // Отметка живёт в правках (`opEdits`), в копии её нет — берём наложенную (`store.all`).
+    oneOff.value = !!(op && store.all.find((o) => o.id === op.id)?.oneOff)
     more.value = false
     form.reset()
     // Новая трата — курсор сразу в сумме (Android откроет клавиатуру сам; iOS — по касанию поля).
@@ -79,7 +84,7 @@ function save() {
   if (!id) return
   const name = categories.value.find((c) => c.id === id)?.name ?? ''
   const op = handOperation({ id: editing.value?.id ?? handId(), amount: parseMoney(amount.value), categoryId: id, date: date.value, note: note.value }, name)
-  void store.saveHand(op)
+  void store.saveHand(op, { oneOff: oneOff.value })
   emit('saved', op.date)
   emit('close')
 }
@@ -109,6 +114,14 @@ function remove() {
       <Field label="Когда" name="date">
         <Input v-model="date" type="date" :max="todayIso()" data-hand-date />
       </Field>
+      <!-- «Разовая» (FB-08, Р-16): автошкола, диван — в факт месяца, не в «обычно» раздела -->
+      <div class="mb-3.5 flex items-center justify-between gap-3" data-hand-oneoff>
+        <span class="flex items-center gap-1 text-[13.5px] font-medium text-ink">
+          Разовая
+          <Hint label="Про разовую" data-hand-oneoff-hint>Включите для редкой покупки — автошкола, диван: она войдёт в траты месяца, но не в обычные траты раздела</Hint>
+        </span>
+        <Toggle v-model="oneOff" label="Разовая" tone="ok" />
+      </div>
       <Button size="lg" class="w-full" :class="editing && 'mb-3'" data-hand-save @click="form.submit(save)">Сохранить</Button>
       <DangerZone v-if="editing" label="Удалить трату" warning="Трата уйдёт из недели и итогов." @confirm="remove" />
     </div>

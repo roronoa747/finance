@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { PdfRow } from './pdf'
 import { parseStatement } from './parsers'
-import { assignIds } from './model'
-import type { Operation } from './types'
-import { QUESTION_LIMIT, beyondLimit, detectIncome, detectRecurring, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth } from './firstRun'
+import { assignIds, normalizeMerchant } from './model'
+import type { MerchantRule, Operation } from './types'
+import { QUESTION_LIMIT, recurringOf, beyondLimit, detectIncome, detectRecurring, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth } from './firstRun'
 
 /**
  * Первый запуск из выписки (B2C-19): доход по регулярности и размеру, повторы по продавцу и
@@ -158,5 +158,49 @@ describe('firstRun — вопросы', () => {
     expect(firstRunQuestions(noIncome).every((x) => x.type === 'recurring')).toBe(true)
     expect(firstRunQuestions(noIncome)).toHaveLength(7)
     expect(beyondLimit(noIncome)).toBe(2)
+  })
+})
+
+const T0 = '2026-10-01T00:00:00.000Z'
+
+describe('recurringOf — «В платежи» у повтора продавца (FB-09, Р-17)', () => {
+  const at = (id: string, date: string, amount: number, merchant: string, extra: Partial<Operation> = {}): Operation =>
+    ({ id, bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false, ...extra }) as Operation
+  const APPLE = [at('a1', '2026-08-14', -4_990, 'APPLE.COM BILL'), at('a2', '2026-09-15', -4_990, 'APPLE.COM BILL'), at('a3', '2026-10-13', -4_990, 'APPLE.COM BILL')]
+  const NONE = { rules: [], payments: [], today: '2026-10-20' }
+
+  it('три строки ±3 дня — кандидат: имя коротко, сумма и день — медианы', () => {
+    expect(recurringOf(APPLE[2], APPLE, NONE)).toEqual({ name: 'APPLE.COM BILL', amount: 4_990, day: 14, kind: 'subscription' })
+  })
+  // Возврат приёмки Блока 2: у продавца несколько подписок разной цены каждый месяц — форма той, у которой нажали.
+  it('несколько подписок одного продавца — сумма и день строк в допуске суммы нажатой, не медиана всех', () => {
+    const ops = ['08', '09', '10'].flatMap((m) => [
+      at(`x${m}`, `2026-${m}-03`, -990, 'APPLE.COM BILL'),
+      at(`y${m}`, `2026-${m}-11`, -2_490, 'APPLE.COM BILL'),
+      at(`z${m}`, `2026-${m}-20`, -5_500, 'APPLE.COM BILL'),
+    ])
+    expect(recurringOf(ops.find((o) => o.id === 'z10')!, ops, NONE)).toMatchObject({ amount: 5_500, day: 20 })
+    expect(recurringOf(ops.find((o) => o.id === 'x09')!, ops, NONE)).toMatchObject({ amount: 990, day: 3 })
+  })
+  it('одна строка словарного вида (свой раздел «Подписки») — кандидат; одна обычная — нет', () => {
+    const one = at('k1', '2026-10-05', -2_990, 'KINOPOISK', { categoryId: 'sc_subscriptions' })
+    expect(recurringOf(one, [one], NONE)).toMatchObject({ amount: 2_990, day: 5, kind: 'subscription' })
+    const shop = at('m1', '2026-10-05', -8_000, 'MAGNUM ALMATY', { categoryId: 'sc_food' })
+    expect(recurringOf(shop, [shop], NONE)).toBeNull()
+  })
+  it('не словарный продавец: две строки — повтор (вид «obligation»), старше 3 месяцев — нет', () => {
+    const gym = (id: string, date: string) => at(id, date, -15_000, 'SPORT CLUB')
+    expect(recurringOf(gym('g3', '2026-10-05'), [gym('g2', '2026-09-06'), gym('g3', '2026-10-05')], NONE)).toMatchObject({ day: 5, kind: 'obligation' })
+    expect(recurringOf(gym('g3', '2026-10-05'), [gym('g1', '2026-05-05'), gym('g2', '2026-06-05'), gym('g3', '2026-10-05')], NONE)).toBeNull()
+  })
+  it('у продавца уже правило платежа — null; строка уже отметка платежа — null', () => {
+    const rules = [{ id: 'r1', match: { merchant: normalizeMerchant('APPLE.COM BILL') }, to: { payment: { kind: 'obligation', targetId: 'o1', categoryId: 'sc_subscriptions' } }, updatedAt: T0 }] as MerchantRule[]
+    expect(recurringOf(APPLE[2], APPLE, { ...NONE, rules })).toBeNull()
+    expect(recurringOf(APPLE[2], APPLE, { ...NONE, payments: [{ opId: 'a3' }] })).toBeNull()
+    expect(recurringOf(APPLE[2], APPLE, { ...NONE, payments: [{ opId: 'a3', deletedAt: T0 }] })).not.toBeNull()
+  })
+  it('приход, перевод человеку и внутренний — null', () => {
+    expect(recurringOf(at('i1', '2026-10-10', 5_000, 'APPLE.COM BILL'), APPLE, NONE)).toBeNull()
+    expect(recurringOf(at('p1', '2026-10-10', -5_000, 'Дана К.', { counterparty: 'Дана К.', kind: 'transfer-out' }), APPLE, NONE)).toBeNull()
   })
 })

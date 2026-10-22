@@ -226,3 +226,17 @@ describe('«Мне вернули» в находках (FB-02, Р-12)', () => {
     expect(dueFinds([op('KINOPOISK', -2_990, 'sc_subscriptions', day(SEP, 10), { refund: { amount: 600 } })], 'a', SEP, ctx)).toEqual([])
   })
 })
+
+describe('«Разовая» в находках (FB-07, Р-16)', () => {
+  it('разовая — не продавец находки: не утечка, не покупка верхушки и не в её сумме', () => {
+    expect(sellerOk(op('Avtoshkola', -300_000, 'sc_education', day(SEP, 3), { oneOff: true }))).toBe(false)
+    const list = times(7, 'Apteka Plus', -1_500, 'sc_health', SEP)
+    expect(leakFinds(list, 'a', SEP)).toHaveLength(1)
+    expect(leakFinds(list.map((o) => ({ ...o, oneOff: true })), 'a', SEP)).toEqual([])
+    const ops = [op('Divan Store', -200_000, 'sc_home', day(SEP, 3), { oneOff: true }), op('Leroy', -80_000, 'sc_home', day(SEP, 4))]
+    const top = topFinds(ops, 'a', SEP)[0]
+    expect(top).toMatchObject({ amount: 80_000, count: 1 })
+    expect(top.top).toEqual([{ name: 'Leroy', amount: 80_000 }])
+    expect(topFinds([ops[0]], 'a', SEP)).toEqual([])
+  })
+})

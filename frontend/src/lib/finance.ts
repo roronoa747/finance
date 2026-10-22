@@ -2,6 +2,7 @@ import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Pa
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
+import type { RecurringPrefill } from '@/lib/statements/firstRun'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -1344,10 +1345,18 @@ export function moneySettingsOf(doc: { moneySettings?: MoneySettings | null }): 
 /**
  * Итог раздела в тратах — одно правило «Свободно», «Месяца», «Истории» и «Недели» (хвосты 952/967): раздел платежей
  * (`plannedElsewhere`) — только строки без отметки (`unmarked`: незаведённая рассрочка, вторая строка продавца),
- * отмеченные уже в платежах месяца; остальные разделы и «не разобрано» — весь итог.
+ * отмеченные уже в платежах месяца; остальные разделы и «не разобрано» — весь итог без разовых (FB-07, Р-16: разовая
+ * не раздувает раздел и «обычно»; в факт месяца её возвращает `factOf`).
  */
 export const spentOf = (t: SpendTotal, live: SpendCategory[]) =>
-  t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live) ? t.amount : (t.unmarked ?? 0)
+  t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live) ? t.amount - (t.oneOff ?? 0) : (t.unmarked ?? 0)
+
+/** Разовые итога (FB-07): в разделе платежей разовая — как обычная строка (`unmarked`), здесь 0. */
+export const oneOffOf = (t: SpendTotal, live: SpendCategory[]) =>
+  t.categoryId === UNKNOWN_CATEGORY || !plannedElsewhere(t.categoryId, live) ? (t.oneOff ?? 0) : 0
+
+/** Итог в факте месяца и недели («потрачено», Р-5): траты раздела и разовые. */
+export const factOf = (t: SpendTotal, live: SpendCategory[]) => spentOf(t, live) + oneOffOf(t, live)
 
 /** Строка трат плана месяца (Р-81): живая, с суммой, раздел не учтён платежами (`plannedElsewhere`). */
 export const planSpendOn = (x: SpendPlan, live: SpendCategory[]) => !x.deletedAt && x.amount > 0 && !plannedElsewhere(x.categoryId, live)
@@ -3459,17 +3468,18 @@ export function monthPlan(state: MonthPlanState, ctx: MonthPlanCtx): MonthPlan {
     .map((p): PlanSpend => {
       const has = uploadedBy(p.id, key, ctx.uploads)
       const mine = ctx.totals.filter((t) => !t.deletedAt && t.by === p.id && t.kind === 'month' && t.period === key && t.amount > 0)
-      const factOf = (categoryId: string) => (has ? mine.filter((t) => t.categoryId === categoryId).reduce((s, t) => s + t.amount, 0) : null)
+      // Строка раздела — без разовых, как строка «Трат»; факт участника — с ними (FB-07, Р-5).
+      const rowFact = (categoryId: string) => (has ? mine.filter((t) => t.categoryId === categoryId).reduce((s, t) => s + spentOf(t, live), 0) : null)
       const rows = (state.spendPlans ?? [])
         .filter((x) => x.by === p.id && planSpendOn(x, live))
         .map((x) => ({
           categoryId: x.categoryId,
           name: spendCategoryName(named, x.categoryId),
           plan: cutOf(p.id, x.categoryId, x.amount),
-          fact: factOf(x.categoryId),
+          fact: rowFact(x.categoryId),
         }))
       const fact = has
-        ? mine.reduce((s, t) => s + spentOf(t, live), 0)
+        ? mine.reduce((s, t) => s + factOf(t, live), 0)
         : null
       return { by: p.id, plan: rows.reduce((s, r) => s + r.plan, 0), fact, rows }
     })
@@ -3987,7 +3997,8 @@ export function spendFact(spend: PlanSpend[]): number | null {
 /**
  * «Потрачено» месяца по разделам (сводка ИИ, Р-3; критик Блока 2 «ИИ») — та же правда, что `spendFact` у `monthPlan`:
  * итоги участников, чьи выписки покрывают месяц (`uploadedBy`), раздел, учтённый платежами, — неотмеченной частью
- * (`spentOf`). Сумма строк и `unknown` («не разобрано») = `spendFact`; выписок нет — пусто. По убыванию суммы.
+ * (`spentOf`), разовые — отдельно (`oneOff`, FB-07). Сумма строк, `unknown` («не разобрано») и `oneOff` = `spendFact`;
+ * выписок нет — пусто. По убыванию суммы.
  */
 export function monthSpendByCategory(
   people: Person[],
@@ -3995,15 +4006,17 @@ export function monthSpendByCategory(
   categories: SpendCategory[],
   key: string,
   uploads: UploadPeriod[],
-): { rows: { categoryId: string; name: string; amount: number }[]; unknown: number } {
+): { rows: { categoryId: string; name: string; amount: number }[]; unknown: number; oneOff: number } {
   const live = categories.filter(alive)
   const named = liveSpendCategories(categories)
   const sums = new Map<string, number>()
+  let oneOff = 0
   for (const p of people.filter(alive)) {
     if (!uploadedBy(p.id, key, uploads)) continue
     for (const t of totals) {
       if (t.deletedAt || t.by !== p.id || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
       sums.set(t.categoryId, (sums.get(t.categoryId) ?? 0) + spentOf(t, live))
+      oneOff += oneOffOf(t, live)
     }
   }
   const unknown = sums.get(UNKNOWN_CATEGORY) ?? 0
@@ -4012,7 +4025,7 @@ export function monthSpendByCategory(
     .filter(([, amount]) => amount > 0)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([categoryId, amount]) => ({ categoryId, name: spendCategoryName(named, categoryId), amount }))
-  return { rows, unknown }
+  return { rows, unknown, oneOff }
 }
 
 /* ---------------- траты в сравнении (Р-5, AU-01) ---------------- */
@@ -4120,7 +4133,7 @@ export type SpendCompareRow = {
 export function spendCompare(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
-): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number } {
+): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number; oneOff: number } {
   const { key } = ctx
   const people = (state.people ?? []).filter(alive)
   const live = ctx.spendCategories.filter(alive)
@@ -4166,25 +4179,35 @@ export function spendCompare(
         (b.amount ?? b.plan ?? 0) - (a.amount ?? a.plan ?? 0) ||
         a.categoryId.localeCompare(b.categoryId),
     )
-  // «Не разобрано» (Х-1): тихая строка внизу «Трат», чтобы строки сходились с «потрачено» заголовка; выписок нет — 0.
-  return { income, usualFrom: usual?.months ?? [], rows, unknown: hasFact ? byCategory.unknown : 0 }
+  // «Не разобрано» (Х-1) и «Разовые» (FB-07): тихие строки внизу «Трат», чтобы строки сходились с «потрачено» заголовка;
+  // выписок нет — 0.
+  return {
+    income,
+    usualFrom: usual?.months ?? [],
+    rows,
+    unknown: hasFact ? byCategory.unknown : 0,
+    oneOff: hasFact ? byCategory.oneOff : 0,
+  }
 }
 
 /**
  * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца
  * по разделам с группой — и разделам платежей с группой целиком (коммуналка, аренда, связь). Знаменатель — те же
  * разделы с группой (потребительские траты, как три группы статистики — 97,2 % денежных расходов): кредиты, переводы
- * людям, наличные и «не разобрано» долю не размывают. Целые %; выписок или трат с группой нет — null.
+ * людям, наличные и «не разобрано» долю не размывают; разовые (FB-07) — тоже. Целые %; выписок или трат с группой нет —
+ * null.
  */
 export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup): number | null {
   const people = (state.people ?? []).filter(alive).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
   const ids = new Set(people.map((p) => p.id))
+  const live = ctx.spendCategories.filter(alive)
   const mine = ctx.totals.filter(
     (t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0 && RK_GROUP_BY_CATEGORY[t.categoryId],
   )
-  const total = mine.reduce((s, t) => s + t.amount, 0)
+  const amountOf = (t: SpendTotal) => t.amount - oneOffOf(t, live)
+  const total = mine.reduce((s, t) => s + amountOf(t), 0)
   if (total <= 0) return null
-  const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + t.amount, 0)
+  const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + amountOf(t), 0)
   return Math.round((part * 100) / total)
 }
 
@@ -4919,7 +4942,7 @@ export function monthPlanPast(
   const saved = amountTotal(goals)
   const prepaid = amountTotal(counted.filter((p) => p.kind === 'prepay'))
   const spent = totals.length
-    ? totals.reduce((s, t) => s + spentOf(t, live), 0)
+    ? totals.reduce((s, t) => s + factOf(t, live), 0)
     : null
   return {
     key,
@@ -5095,7 +5118,7 @@ function mySpendOf(totals: SpendTotal[], live: SpendCategory[], by: PersonId, we
   const out = new Map<string, number>()
   for (const t of totals) {
     if (t.deletedAt || t.by !== by || t.kind !== 'week' || t.period !== week || t.amount <= 0) continue
-    const spent = spentOf(t, live)
+    const spent = factOf(t, live)
     if (spent > 0) out.set(t.categoryId, (out.get(t.categoryId) ?? 0) + spent)
   }
   return out
@@ -5196,9 +5219,9 @@ export type SectionWeek = {
   tops: { name: string; count: number; amount: number }[]
   /**
    * Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата»,
-   * Р-2); `amount` — `spendOf`, `refund` — сколько вернули (FB-04, Р-12).
+   * Р-2); `amount` — `spendOf`, `refund` — сколько вернули (FB-04, Р-12), `oneOff` — «Разовая» (FB-08, метка).
    */
-  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number }[] }[]
+  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number; oneOff?: true; recurring?: RecurringPrefill }[] }[]
   /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
   more: { count: number; amount: number } | null
 }
@@ -5214,11 +5237,11 @@ export const SECTION_OPS = 5
  */
 export function sectionWeek(
   ops: Operation[],
-  where: { week: string; categoryId: string; limit?: number; tops?: number },
+  where: { week: string; categoryId: string; limit?: number; tops?: number; recurring?: (op: Operation) => RecurringPrefill | null },
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5234,7 +5257,7 @@ export function sectionWeek(
   const days: SectionWeek['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}), ...(op.recurring ? { recurring: op.recurring } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }
@@ -5255,28 +5278,43 @@ export type SectionMonth = Omit<SectionWeek, 'tops'>
  * Свои операции раздела за месяц `YYYY-MM` (FB-05, Р-4, Р-14) — для листа раздела «Месяца»: отбор — как у факта
  * раздела (`isSpend`; у разделов платежей — только строки без отметки `marked`, как `weekFeed` и итоги `unmarked`),
  * сумма строки — `spendOf` (с «вернули»), дни свежими сверху, первые `limit` и «Ещё N · сумма». Сумма всех строк —
- * своя часть факта раздела. Топа продавцов нет: в месяце он у находок.
+ * своя часть факта раздела: разовые (FB-07) — не в разделе, а в листе «Разовые» (`oneOff: true` — все свои разовые
+ * месяца, `categoryId` не смотрится; в разделах платежей разовая — обычная строка, как в `oneOffOf`). Топа продавцов
+ * нет: в месяце он у находок.
  */
 export function sectionMonth(
   ops: Operation[],
-  where: { month: string; categoryId: string; limit?: number; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+  where: {
+    month: string
+    /** Раздел; не нужен при `oneOff`. */
+    categoryId?: string
+    oneOff?: boolean
+    limit?: number
+    marked?: ReadonlySet<string>
+    categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]
+  },
 ): SectionMonth {
-  const planned = plannedElsewhere(where.categoryId, where.categories ?? [])
+  const categories = where.categories ?? []
+  const isOneOff = (op: Operation) => !!op.oneOff && !(op.categoryId && plannedElsewhere(op.categoryId, categories))
+  const planned = !!where.categoryId && plannedElsewhere(where.categoryId, categories)
   const list = ops
     .filter(
       (op) =>
         isSpend(op) &&
-        (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
         op.date.slice(0, 7) === where.month &&
-        (!planned || (!!where.marked && !where.marked.has(op.id))),
+        (where.oneOff
+          ? isOneOff(op)
+          : (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
+            !isOneOff(op) &&
+            (!planned || (!!where.marked && !where.marked.has(op.id)))),
     )
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
   const shown = list.slice(0, where.limit ?? SECTION_OPS)
   const days: SectionMonth['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }
@@ -5299,6 +5337,8 @@ export type WeekFeedOp = {
   hand: boolean
   /** «Мне вернули» (FB-04, Р-12): сколько вернули; `amount` — уже за вычетом (`spendOf`). */
   refund?: number
+  /** «Разовая» (FB-08, Р-16): в ленте — метка «разовая»; в неделю входит. */
+  oneOff?: true
 }
 
 /**
@@ -5331,6 +5371,7 @@ export function weekFeed(
       phone: !!op.source,
       hand: isHand(op),
       ...(op.refund ? { refund: op.refund.amount } : {}),
+      ...(op.oneOff ? { oneOff: true as const } : {}),
     }
     const last = days.at(-1)
     if (last?.date === op.date) last.ops.push(item)
@@ -5530,7 +5571,7 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
   const live = spendCategories.filter(alive)
   return totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === key && t.amount > 0)
-    .reduce((a, t) => a + spentOf(t, live), 0)
+    .reduce((a, t) => a + factOf(t, live), 0)
 }
 
 export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'

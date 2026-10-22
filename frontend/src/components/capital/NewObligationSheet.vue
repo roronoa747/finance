@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { money, parseMoney } from '@/lib/money'
+import { money, parseMoney, plain } from '@/lib/money'
+import type { RecurringPrefill } from '@/lib/statements/firstRun'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import { yearShare } from '@/lib/finance'
 import { CURRENCY_SIGN } from '@/lib/fx'
@@ -28,8 +29,20 @@ import { useNbRate } from '@/components/kit/useNbRate'
  * в «Долгах»; `people` — открыть с включённым (из «+ Людям»). Раздела бюджета в форме нет (Р-7 «понятность»):
  * подписка и услуга — всегда быт `d4`, `housing` — «Аренда и коммуналка» в жильё `d1`, сумма плавает по умолчанию.
  */
-const props = defineProps<{ open: boolean; people?: boolean; housing?: boolean }>()
-const emit = defineEmits<{ (e: 'close'): void }>()
+const props = defineProps<{
+  open: boolean
+  people?: boolean
+  housing?: boolean
+  /** «В платежи» из траты (FB-09, Р-17): имя, сумма в тенге и день заполнены, «Каждый месяц»; имя можно переписать. */
+  prefill?: RecurringPrefill | null
+  /** Поверх другого листа (`Sheet` `z`). */
+  z?: number
+}>()
+const emit = defineEmits<{
+  (e: 'close'): void
+  /** Платёж заведён — id перед `close` (FB-09: отметка месяца и правило по продавцу). */
+  (e: 'created', id: string): void
+}>()
 
 const financeStore = useFinanceStore()
 const people = computed(() => financeStore.people)
@@ -42,6 +55,7 @@ const obMonth = ref(String(parseMonthKey(monthKey()).month + 1))
 const obDay = ref('10')
 const obWho = ref<'all' | PersonId>('all')
 const obEstimate = ref(false)
+const obCurrency = ref<Currency>('KZT')
 // Открытие (и смена вида формы) — заново: «Людям» из пропа, у жилья сумма плавает по умолчанию, «Чья» — «Общая».
 watch(
   () => props.open && (props.housing ? 'housing' : 'payment'),
@@ -50,10 +64,17 @@ watch(
     obPeople.value = !!props.people && !props.housing
     obWho.value = 'all'
     obEstimate.value = !!props.housing
+    const p = props.prefill
+    if (p) {
+      obName.value = p.name
+      obAmount.value = plain(p.amount)
+      obDay.value = String(p.day)
+      obEvery.value = 'month'
+      obCurrency.value = 'KZT'
+    }
   },
   { immediate: true },
 )
-const obCurrency = ref<Currency>('KZT')
 const nb = useNbRate(obCurrency, () => props.open)
 /** Сумма в тенге по курсу (тенговая — как введена). */
 const obTenge = computed(() => nb.tenge(parseMoney(obAmount.value)))
@@ -64,7 +85,7 @@ const form = useFormCheck(() => [
 ])
 
 function createObligation() {
-  financeStore.addObligation({
+  const id = financeStore.addObligation({
     name: obName.value.trim(),
     note: obEvery.value === 'year' ? 'раз в год' : 'ежемесячно',
     day: Math.min(28, Math.max(1, parseMoney(obDay.value) || 1)),
@@ -82,12 +103,13 @@ function createObligation() {
   obEstimate.value = false
   obCurrency.value = 'KZT'
   nb.manual.value = ''
+  emit('created', id)
   emit('close')
 }
 </script>
 
 <template>
-  <Sheet :open="open" :title="housing ? 'Аренда и коммуналка' : 'Регулярный платёж'" @close="emit('close')">
+  <Sheet :open="open" :z="z" :title="housing ? 'Аренда и коммуналка' : 'Регулярный платёж'" @close="emit('close')">
     <div v-if="!housing" class="mb-3.5 flex items-center justify-between gap-3">
       <span class="flex items-center gap-1 text-[13.5px] font-medium text-ink">
         Людям

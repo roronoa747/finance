@@ -249,3 +249,70 @@ describe('FB-03: «+ Раздел» в форме «Трата»', () => {
     expect(txt(q(`[data-row="${id}"]`))).toContain('Подарки')
   })
 })
+
+describe('FB-08: «Разовая» в форме «Трата» и метка в строках', () => {
+  it('переключатель → правка oneOff и итог с разовыми; метка «разовая» в ленте и листе раздела; правка показывает включённым; снятие', async () => {
+    const { finance, store } = await openWeek('/week?spend=1')
+    const toggle = () => q<HTMLButtonElement>('[data-hand-oneoff] [role="switch"]')
+    expect(toggle()!.getAttribute('aria-checked')).toBe('false')
+    expect(q('[data-hand-oneoff] [data-hand-oneoff-hint]'), '«?» у «Разовая» (/ux)').toBeTruthy()
+    await type(q<HTMLInputElement>('input[data-hand-amount]'), '250000')
+    await press(q('[data-hand-category="sc_food"]'))
+    await type(q<HTMLInputElement>('[data-hand-note]'), 'Диван')
+    await press(toggle())
+    await press(q('[data-hand-save]'))
+    const [own] = hands(store)
+    expect(finance.opEdits.find((e) => e.id === own.id)?.oneOff).toBe(true)
+    // «Неделя» — с разовой (Р-16): 4 000 + 250 000; в итоге месяца — отдельно.
+    expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 254_000, oneOff: 250_000 })
+    expect(amountOf('sc_food')).toBe(norm(plain(254_000)))
+
+    await press(q('[data-week-feed]'))
+    expect(txt(q(`[data-feed-op="${own.id}"] [data-oneoff]`))).toBe('разовая')
+    expect(q(`[data-feed-op="${LINE.id}"] [data-oneoff]`)).toBeNull()
+    await press(q(`[data-feed-op="${own.id}"]`))
+    expect(toggle()!.getAttribute('aria-checked')).toBe('true')
+    await press(toggle())
+    await press(q('[data-hand-save]'))
+    expect(finance.opEdits.find((e) => e.id === own.id)?.oneOff).toBeNull()
+    expect(total(finance, 'a:week:2026-W43:sc_food')?.oneOff).toBe(0)
+
+    await press(q('[data-row="sc_food"] button.row-open'))
+    expect(q(`[data-hand-op="${own.id}"] [data-oneoff]`)).toBeNull()
+    await press(q(`[data-hand-op="${own.id}"]`))
+    await press(toggle())
+    await press(q('[data-hand-save]'))
+    await press(q('[data-row="sc_food"] button.row-open'))
+    expect(txt(q(`[data-hand-op="${own.id}"] [data-oneoff]`))).toBe('разовая')
+  })
+})
+
+describe('FB-09: «В платежи» в листе раздела «Подписки» на «Неделе»', () => {
+  const APPLE: Operation = { id: 'aaaa0000bbbb1111', bank: 'kaspi', date: '2026-10-19', amount: -4_990, kind: 'purchase', merchant: 'APPLE.COM BILL', categoryId: 'sc_subscriptions', internal: false }
+
+  it('кнопка у строки → форма заполнена → имя «Apple Music» → «Добавить»: платёж есть, строки в разделе недели нет', async () => {
+    const { finance, store } = await openWeek('/week')
+    store.ops[APPLE.id] = APPLE
+    const marks = { marked: new Set<string>(), categories: [] }
+    finance.householdDoc.spendTotals = periodsOf([LINE, APPLE]).flatMap(({ kind, period }) => spendTotals([LINE, APPLE], 'a', kind, period, '', marks))
+    await flush()
+    const before = finance.obligations.length
+    await press(q('[data-row="sc_subscriptions"] button.row-open'))
+    expect(q(`[data-section-pay="${APPLE.id}"]`), 'кнопка у строки').toBeTruthy()
+    await press(q(`[data-section-pay="${APPLE.id}"]`))
+    const dialogs = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')]
+    const form = dialogs.at(-1)!
+    expect(txt(form)).toContain('Регулярный платёж')
+    const name = [...form.querySelectorAll('label')].find((l) => l.textContent?.includes('Что оплачиваем'))!.querySelector('input')!
+    expect(name.value).toBe('APPLE.COM BILL')
+    await type(name, 'Apple Music')
+    await press([...form.querySelectorAll<HTMLElement>('button')].find((b) => txt(b) === 'Добавить'))
+    await flush()
+    const ob = finance.obligations.find((o) => o.name === 'Apple Music')!
+    expect(finance.obligations).toHaveLength(before + 1)
+    expect(finance.payments.find((p) => !p.deletedAt && p.targetId === ob.id)).toMatchObject({ period: '2026-10', opId: APPLE.id })
+    expect(txt(document.body)).toContain('Добавлено в платежи')
+    expect(total(finance, 'a:week:2026-W43:sc_subscriptions')?.unmarked ?? 0).toBe(0)
+    expect(q('[data-row="sc_subscriptions"]')).toBeNull()
+  })
+})

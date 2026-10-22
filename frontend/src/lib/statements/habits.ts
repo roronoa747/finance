@@ -69,8 +69,8 @@ export function habitTotals(ops: Operation[], by: PersonId, period: string, at =
   for (const op of ops) {
     if (op.date.slice(0, 7) !== period) continue
     const habit = habitOf(op)
-    // Возврат на всю сумму (`spendOf` 0, FB-02) — не привычка.
-    if (!habit || !spendOf(op)) continue
+    // Возврат на всю сумму (`spendOf` 0, FB-02) и разовая (FB-07) — не привычка.
+    if (!habit || !spendOf(op) || op.oneOff) continue
     const t = out.get(habit) ?? { id: `${by}:${period}:${habit}`, by, period, habit, count: 0, amount: 0, updatedAt: at }
     t.count += 1
     t.amount += spendOf(op)

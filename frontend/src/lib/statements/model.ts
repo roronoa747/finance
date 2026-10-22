@@ -452,6 +452,7 @@ export function spendTotals(
     if (marks && !marks.marked.has(op.id) && op.categoryId && plannedElsewhere(op.categoryId, marks.categories)) {
       total.unmarked = (total.unmarked ?? 0) + spendOf(op)
     }
+    if (op.oneOff && spendOf(op)) total.oneOff = (total.oneOff ?? 0) + spendOf(op)
     out.set(id, total)
   }
   return [...out.values()].sort((a, b) => a.categoryId.localeCompare(b.categoryId))

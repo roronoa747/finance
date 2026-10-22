@@ -59,10 +59,11 @@ const inMonth = (op: Operation, period: string) => op.date.slice(0, 7) === perio
 /**
  * Продавец, которого можно назвать в документе и модели: трата, не перевод человеку (ни `counterparty`, ни раздел
  * «Переводы людям» / «Наличные» — `SPEND_LAST`: семья сама отнесла строку к людям), не внутренний, без 6+ цифр, не
- * «ИП + фамилия»; `categories` — ещё и раздел не из плана (кредиты, аренда, подписки — для утечек и верхушек).
+ * «ИП + фамилия», не разовая (FB-07, Р-16: автошкола — не находка); `categories` — ещё и раздел не из плана (кредиты,
+ * аренда, подписки — для утечек и верхушек).
  */
 export function sellerOk(op: Operation, categories?: Categories): boolean {
-  if (!isSpend(op) || op.counterparty || op.internal) return false
+  if (!isSpend(op) || op.counterparty || op.internal || op.oneOff) return false
   if (op.categoryId && SPEND_LAST.includes(op.categoryId)) return false
   const name = op.merchant.trim()
   if (!name || /\d{6,}/.test(name) || entrepreneurName(name)) return false
@@ -110,7 +111,8 @@ export function leakFinds(ops: Operation[], by: PersonId, period: string, catego
 export function topFinds(ops: Operation[], by: PersonId, period: string, categories: Categories = [], at = new Date().toISOString()): ReviewFind[] {
   const groups = new Map<string, Operation[]>()
   for (const op of ops) {
-    if (!inMonth(op, period) || !isSpend(op) || !op.categoryId || !spendOf(op)) continue
+    // Разовая (FB-07) — не в сумме раздела: верхушка сходится со строкой «Трат» без разовых.
+    if (!inMonth(op, period) || !isSpend(op) || !op.categoryId || !spendOf(op) || op.oneOff) continue
     const c = op.categoryId
     if (c === UNKNOWN_CATEGORY || SPEND_LAST.includes(c) || plannedElsewhere(c, categories)) continue
     const list = groups.get(c)

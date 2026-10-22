@@ -1,5 +1,7 @@
-import type { Operation } from './types'
-import { categorize, dayNumber, normalizeCounterparty, normalizeMerchant } from './model'
+import type { MerchantRule, Operation } from './types'
+import type { Payment } from '@/types/finance'
+import { categorize, dayNumber, normalizeCounterparty, normalizeMerchant, ruleFor, shortMerchant } from './model'
+import { addMonths } from '@/lib/dates'
 import { isoWeekday } from '@/lib/finance'
 import { AMOUNT_TOLERANCE, SALARY_TOLERANCE } from './matching'
 
@@ -216,4 +218,37 @@ export function firstRunQuestions(ops: Operation[], limit = QUESTION_LIMIT): Fir
 export function beyondLimit(ops: Operation[], limit = QUESTION_LIMIT): number {
   const total = (detectIncome(ops).length ? 1 : 0) + detectRecurring(ops).length
   return Math.max(0, total - limit)
+}
+
+/** Сколько месяцев назад от сегодня смотреть повтор продавца для «В платежи» (FB-09). */
+const RECURRING_OF_MONTHS = 3
+
+/** Заполнение формы «Регулярный платёж» из повтора продавца (FB-09, Р-17): имя меняется в форме. */
+export type RecurringPrefill = { name: string; amount: number; day: number; kind: RecurringKind }
+
+/**
+ * «В платежи» у своей траты (FB-09, Р-6, Р-17): повтор продавца — кандидат `detectRecurring` по своим операциям за 3
+ * месяца, в чью группу (`groupKey`) входит `op`; или `op` — списание словарного вида (подписки, связь, коммуналка, кредит,
+ * аренда — с одного; по своему разделу операции тоже). null — продавец уже платёж (правило `payment`) или эта строка уже
+ * отметка платежа (`payments.opId`). Сумма и день — медианы строк группы в допуске суммы `op` (±5 %, как повтор): у
+ * продавца с несколькими подписками разной цены форма — той, у которой нажали (возврат приёмки Блока 2), целые.
+ */
+export function recurringOf(
+  op: Operation,
+  ops: Operation[],
+  ctx: { rules: MerchantRule[]; payments: Pick<Payment, 'opId' | 'deletedAt'>[]; today: string },
+): RecurringPrefill | null {
+  if (op.amount >= 0 || op.internal || op.counterparty) return null
+  const to = ruleFor(op, ctx.rules)?.to
+  if (to && 'payment' in to) return null
+  if (ctx.payments.some((p) => !p.deletedAt && p.opId === op.id)) return null
+  const from = `${addMonths(ctx.today.slice(0, 7), -RECURRING_OF_MONTHS)}-01`
+  const key = groupKey(op)
+  const spent = -op.amount
+  const mine = ops.filter((o) => o.date >= from && groupKey(o) === key && Math.abs(-o.amount - spent) <= spent * RECURRING_TOLERANCE)
+  const found = detectRecurring(mine.some((o) => o.id === op.id) ? mine : [...mine, op]).find((c) => c.opIds.includes(op.id))
+  const name = shortMerchant(op.merchant)
+  if (found) return { name, amount: found.amount, day: found.day, kind: found.kind }
+  const kind = op.categoryId ? KIND_BY_CATEGORY[op.categoryId] : undefined
+  return kind ? { name, amount: spent, day: Number(op.date.slice(8, 10)) || 1, kind } : null
 }

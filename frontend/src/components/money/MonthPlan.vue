@@ -70,6 +70,7 @@ import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
@@ -421,8 +422,22 @@ const catOp = ref<string | null>(null)
 const catHand = ref<string | null>(null)
 function openCatHand(id: string) {
   closeCat()
+  closeOneOff()
   catHand.value = id
 }
+/**
+ * «Разовые» (FB-07, Р-16): тихая строка под разделами — сумма разовых семьи (`spendCompare.oneOff`); лист — свои
+ * разовые месяца (`sectionMonth` с `oneOff`), строка — лист операции, где «Разовую» можно снять. Viewer — без листа.
+ */
+const { open: oneOffOpen, close: closeOneOff } = useQuerySheet('oneoff')
+const oneOffAll = ref(false)
+watch(oneOffOpen, () => (oneOffAll.value = false))
+const oneOffOps = computed(() => {
+  if (!oneOffOpen.value || !canEdit.value) return null
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  const list = sectionMonth(ops.shown, { month: props.monthKey, oneOff: true, marked, categories, ...(oneOffAll.value ? { limit: Infinity } : {}) })
+  return list.count ? list : null
+})
 const moveAction = ref<Extract<ImageAction, { kind: 'move' }> | null>(null)
 /** Действие образа: мечта — сразу на её экран; желание — тост; «Перенести в мечту» — лист с цифрами. */
 function imageAct(a: ImageAction) {
@@ -759,6 +774,19 @@ function addFund(kind: 'reserve' | 'cushion') {
               <span>Не разобрано</span>
               <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
             </div>
+            <!-- «Разовые» (FB-07): так же тихо, но с листом своих разовых; viewer — строка без листа -->
+            <component
+              :is="canEdit ? 'button' : 'div'"
+              v-if="compare.oneOff > 0"
+              :type="canEdit ? 'button' : undefined"
+              class="flex w-full items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[15px] text-ink-2 first:border-t-0"
+              :class="{ 'press cursor-pointer': canEdit }"
+              data-spend-oneoff
+              @click="canEdit && (oneOffOpen = true)"
+            >
+              <span>Разовые</span>
+              <span class="whitespace-nowrap num">{{ plain(compare.oneOff) }}</span>
+            </component>
             <button
               v-if="canEdit"
               type="button"
@@ -958,6 +986,11 @@ function addFund(kind: 'reserve' | 'cushion') {
       @open="(id) => (catOp = id)"
       @hand="openCatHand"
     />
+    <Sheet :open="oneOffOpen && canEdit" title="Разовые" @close="closeOneOff">
+      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-oneoff-amount>{{ money(compare.oneOff) }}</p>
+      <p class="mt-1 text-[14px] text-ink-2">не входят в обычные траты</p>
+      <SectionOpsList v-if="oneOffOps" :ops="oneOffOps" @more="oneOffAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
+    </Sheet>
     <OpSheet :op-id="catOp" :z="60" @close="catOp = null" />
     <HandSpendSheet v-if="canEdit" :open="catHand !== null" :op-id="catHand" @close="catHand = null" />
     <ImageMoveSheet :action="moveAction" @close="moveAction = null" />

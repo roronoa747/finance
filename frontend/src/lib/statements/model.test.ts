@@ -487,3 +487,19 @@ describe('правки операций: withEdits, spendOf, refundCandidates (F
     expect(refundCandidates(spend, ops, new Set(['i6'])).map((o) => o.id)).toEqual(['i1', 'i4'])
   })
 })
+
+describe('spendTotals — разовые (FB-07, Р-16)', () => {
+  it('разовая — в сумме раздела и отдельно в oneOff; с возвратом — по spendOf; без разовых поля нет', () => {
+    const ops = [
+      op({ date: '2026-09-21', amount: -300_000, categoryId: 'sc_education', oneOff: true }),
+      op({ date: '2026-09-22', amount: -40_000, categoryId: 'sc_education' }),
+      op({ date: '2026-09-23', amount: -200_000, categoryId: 'sc_home', oneOff: true, refund: { amount: 50_000 } }),
+      op({ date: '2026-09-24', amount: -10_000, categoryId: 'sc_food' }),
+    ]
+    const totals = spendTotals(ops, 'a', 'month', '2026-09', T)
+    const of = (id: string) => totals.find((t) => t.categoryId === id)!
+    expect(of('sc_education')).toMatchObject({ amount: 340_000, ops: 2, oneOff: 300_000 })
+    expect(of('sc_home')).toMatchObject({ amount: 150_000, oneOff: 150_000 })
+    expect(of('sc_food')).not.toHaveProperty('oneOff')
+  })
+})

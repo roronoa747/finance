@@ -22,8 +22,10 @@ withDefaults(
     phone?: boolean
     /** «Мне вернули» (FB-04): сколько вернули — мелко в строке раздела; `amount` — уже за вычетом. */
     refund?: number | null
+    /** «Разовая» (FB-08) — тихая метка после продавца. */
+    oneOff?: boolean
   }>(),
-  { category: null, date: '', letter: '', clickable: false, muted: false, phone: false, refund: null },
+  { category: null, date: '', letter: '', clickable: false, muted: false, phone: false, refund: null, oneOff: false },
 )
 
 const emit = defineEmits<{ (e: 'click'): void }>()
@@ -48,6 +50,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
       <span class="flex items-center gap-1 font-medium text-ink">
         <span class="truncate">{{ merchant }}</span>
         <PhDeviceMobile v-if="phone" :size="13" class="shrink-0 text-ink-2" aria-label="с телефона" data-phone />
+        <span v-if="oneOff" class="shrink-0 type-meta" data-oneoff>разовая</span>
       </span>
       <span class="flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: category?.color ?? 'var(--s-unknown)' }" aria-hidden="true" />

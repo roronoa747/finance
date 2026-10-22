@@ -100,3 +100,12 @@ describe('«Мне вернули» в привычках (FB-02, Р-12)', () =>
     expect(habitTotals(full, 'a', '2026-09', 'T').find((t) => t.habit === 'taxi')).toMatchObject({ count: base.count - 1, amount: base.amount - 2_000 })
   })
 })
+
+describe('«Разовая» в привычках (FB-07, Р-16)', () => {
+  it('разовая — не привычка', () => {
+    const rides = times(12, (i) => op('YANDEX GO', -2_000, 'sc_transport', `2026-09-${String(i + 1).padStart(2, '0')}`))
+    const base = habitTotals(rides, 'a', '2026-09', 'T').find((t) => t.habit === 'taxi')!
+    const marked = rides.map((o, i) => (i === 0 ? { ...o, oneOff: true } : o))
+    expect(habitTotals(marked, 'a', '2026-09', 'T').find((t) => t.habit === 'taxi')).toMatchObject({ count: base.count - 1, amount: base.amount - 2_000 })
+  })
+})

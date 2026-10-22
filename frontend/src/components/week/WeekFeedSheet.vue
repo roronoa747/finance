@@ -49,6 +49,7 @@ const meta = computed(() => `${weekRangeLabel(weekRange(props.week))} · ${props
             :amount="-o.amount"
             :phone="o.phone"
             :refund="o.refund"
+            :one-off="o.oneOff"
             clickable
             :data-feed-op="o.id"
             @click="tap(o)"

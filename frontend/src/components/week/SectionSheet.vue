@@ -7,6 +7,10 @@ import { dayWeekdayLabel, weekRange, weekRangeLabel } from '@/lib/dates'
 import { sectionWeek, type MyWeekRow } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import Sheet from '@/components/kit/Sheet.vue'
+import Button from '@/components/ui/Button.vue'
+import AddPaymentSheet from '@/components/AddPaymentSheet.vue'
+import { useFinanceStore } from '@/stores/finance'
+import { plannedElsewhere } from '@/lib/statements/dictionary'
 
 /**
  * Лист раздела «Недели» (Р-101; макет week-month.html «Нажал „Такси“»): сумма за неделю, к прошлой, остаток на
@@ -25,9 +29,20 @@ watch(
   () => props.row?.categoryId,
   () => (all.value = false),
 )
+const finance = useFinanceStore()
+/** Раздел платежей (Подписки, Связь…): у строки с повтором продавца — «В платежи» (FB-09, Р-17). */
+const planned = computed(() => !!props.row && plannedElsewhere(props.row.categoryId, (finance.householdDoc.spendCategories ?? []).filter((c) => !c.deletedAt)))
 const detail = computed(() =>
-  props.row ? sectionWeek(store.shown, { week: props.week, categoryId: props.row.categoryId, ...(all.value ? { limit: Infinity } : {}) }) : null,
+  props.row
+    ? sectionWeek(store.shown, {
+        week: props.week,
+        categoryId: props.row.categoryId,
+        ...(all.value ? { limit: Infinity } : {}),
+        ...(planned.value ? { recurring: store.recurringFor } : {}),
+      })
+    : null,
 )
+const payFor = ref<string | null>(null)
 </script>
 
 <template>
@@ -53,23 +68,25 @@ const detail = computed(() =>
       <div class="flex flex-col" data-section-ops>
         <template v-for="d in detail.days" :key="d.date">
           <p class="pb-1 pt-2.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ dayWeekdayLabel(d.date) }}</p>
-          <!-- Строка — кнопка: ручная (карандаш) — лист «Трата», выписка и телефон (шеврон) — лист операции (FB-04). -->
-          <button
-            v-for="o in d.ops"
-            :key="o.id"
-            type="button"
-            class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-[7px] text-left text-[14.5px] text-ink"
-            :aria-label="o.hand ? `Поправить: ${o.name}` : o.name"
-            :data-hand-op="o.hand ? o.id : undefined"
-            :data-section-op="o.hand ? undefined : o.id"
-            @click="o.hand ? emit('edit', o.id) : emit('open', o.id)"
-          >
-            <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
-            <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
-            <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
-            <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
-            <PhCaretRight v-else :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
-          </button>
+          <!-- Строка — кнопка: ручная (карандаш) — лист «Трата», выписка и телефон (шеврон) — лист операции (FB-04);
+               повтор продавца в разделе платежей — небольшая «В платежи» у суммы (FB-09, правило 12). -->
+          <div v-for="o in d.ops" :key="o.id" class="flex items-center gap-2 border-t border-line">
+            <button
+              type="button"
+              class="press flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-[7px] text-left text-[14.5px] text-ink"
+              :aria-label="o.hand ? `Поправить: ${o.name}` : o.name"
+              :data-hand-op="o.hand ? o.id : undefined"
+              :data-section-op="o.hand ? undefined : o.id"
+              @click="o.hand ? emit('edit', o.id) : emit('open', o.id)"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
+              <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
+              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+              <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+              <PhCaretRight v-else-if="!o.recurring" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+            </button>
+            <Button v-if="o.recurring" variant="secondary" size="sm" class="shrink-0" :data-section-pay="o.id" @click="payFor = o.id">В платежи</Button>
+          </div>
         </template>
       </div>
       <button
@@ -85,4 +102,5 @@ const detail = computed(() =>
       <p v-if="!detail.count" class="py-2 type-meta">За эту неделю трат нет</p>
     </template>
   </Sheet>
+  <AddPaymentSheet :op-id="payFor" @close="payFor = null" />
 </template>
