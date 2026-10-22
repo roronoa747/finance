@@ -206,9 +206,9 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     expect(about).toMatch(block === 1 ? /APTEKA PLUS ALMATY KZ/ : /APTEKA PLUS(?! ALMATY)/)
     expect(figureLabels(html)).toEqual([about])
     expect(html).toContain('href="/money/history?cat=sc_health"')
-    // Партнёр и viewer — те же ✦, без запроса.
-    expect(await everywhere(await as('member', 'b'))).toEqual(want)
-    expect(await everywhere(await as('viewer', 'b'))).toEqual(want)
+    // Партнёр и viewer — те же ✦, без запроса; кроме раздела Ильяса: у них его на экране нет (FB-12, Р-18).
+    expect(await everywhere(await as('member', 'b'))).toEqual({ ...want, health: null })
+    expect(await everywhere(await as('viewer', 'b'))).toEqual({ ...want, health: null })
     expect(aiReview).not.toHaveBeenCalled()
   })
 
@@ -245,7 +245,8 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     expect(figureLabels(html)).toEqual([label])
     await sync(phone)
     const two = await as('member', 'b')
-    expect(await everywhere(two)).toEqual(want)
+    // Разделы Ильяса (аптека, кафе) у партнёра не показываются — и ✦ у них нет (FB-12, Р-18).
+    expect(await everywhere(two)).toEqual({ ...want, health: null, cafe: null })
     expect(figureLabels(await screen(two.pinia, Month, '/month?review=1&card=2'))).toEqual([label])
     expect(aiReview).toHaveBeenCalledTimes(1)
   })

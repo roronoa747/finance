@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OVER_MIN, earlierLabel, monthCovered, monthPlan, rkShare, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
+import { OVER_MIN, earlierLabel, monthCovered, monthPlan, participantLines, rkShare, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
 import { RK_GROUP_BY_CATEGORY, RK_SPEND_GROUPS } from './statements/dictionary'
 import type { SpendTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
@@ -292,5 +292,81 @@ describe('spendCompare — разовые (FB-07)', () => {
     const steps = stepCandidates(family(), ctxOf())
     expect(steps.some((s) => s.kind === 'move')).toBe(true)
     expect(stepCandidates(family(), ctxOf({ totals: WITH }))).toEqual(steps)
+  })
+})
+
+/**
+ * FB-11 (Р-7, Р-18): расчёты «Трат» по одному участнику.
+ * Октябрь, кроме TOTALS: у b выписка 1–10 октября — продукты 40 000, «не разобрано» 7 000, «Образование» 50 000 целиком
+ * разовая. Июнь: у b полная выписка и продукты 70 000, у a в июне ничего нет.
+ *   a: продукты 100 000 (план 90 000, обычно (80 + 100 + 90) / 3 = 90 000), кафе 60 000 (план 20 000, обычно
+ *      (40 + 50 + 0) / 3 = 30 000); «не разобрано» 5 000, разовых 0; транспорта (план b) нет.
+ *   b: продукты 40 000 (план 60 000, обычно (40 + 50 + 60) / 3 = 50 000), транспорт 0 (план 25 000); «не разобрано»
+ *      7 000, «Разовые» 50 000; кафе a нет.
+ *   Семья: продукты 140 000, «не разобрано» 12 000, «Разовые» 50 000.
+ *   РК, продукты: a 100 / 185 = 54; b 40 / 40 = 100 (разовая долю не размывает); семья 140 / 225 = 62,2 → 62.
+ */
+describe('spendCompare по участнику (FB-11)', () => {
+  const BOTH: SpendTotal[] = [
+    ...TOTALS,
+    total('b', KEY, 'sc_food', 40_000), total('b', KEY, '_unknown', 7_000),
+    { ...total('b', KEY, 'sc_education', 50_000), oneOff: 50_000 },
+    total('b', '2026-06', 'sc_food', 70_000),
+  ]
+  const UP: UploadPeriod[] = [...UPLOADS, { slot: 'b', period_from: '2026-10-01', period_to: '2026-10-10' }, { slot: 'b', period_from: '2026-06-01', period_to: '2026-06-30' }]
+  const ctx = ctxOf({ totals: BOTH, uploads: UP })
+  const people = planFamilyDoc().people
+
+  it('usualMonths: месяц, полный только у партнёра, не в счёт', () => {
+    expect(usualMonths(people, BOTH, UP, KEY, 4)).toEqual(['2026-09', '2026-08', '2026-07', '2026-06'])
+    expect(usualMonths(people, BOTH, UP, KEY, 4, 'a')).toEqual(['2026-09', '2026-08', '2026-07'])
+    expect(usualMonths(people, BOTH, UP, KEY, 4, 'b')).toEqual(['2026-09', '2026-08', '2026-07', '2026-06'])
+    // Выписка a с 20 июля: у семьи июль неполный, у b — полный.
+    const late = [{ slot: 'a', period_from: '2026-07-20', period_to: '2026-09-30' }, ...UPLOADS.filter((u) => u.slot === 'b')]
+    expect(usualMonths(people, TOTALS, late, KEY)).toEqual(['2026-09', '2026-08'])
+    expect(usualMonths(people, TOTALS, late, KEY, 3, 'b')).toEqual(['2026-09', '2026-08', '2026-07'])
+  })
+  it('a: только свои разделы, свой план, своё «обычно», свои «не разобрано» и разовые', () => {
+    const r = spendCompare(family(), ctx, 'a')
+    expect(r.rows.map((x) => [x.categoryId, x.amount, x.plan, x.usual])).toEqual([
+      ['sc_food', 100_000, 90_000, 90_000],
+      ['sc_cafe', 60_000, 20_000, 30_000],
+    ])
+    expect([r.unknown, r.oneOff]).toEqual([5_000, 0])
+    expect(r.income).toBe(1_200_000)
+  })
+  it('b: только свои разделы — кафе a нет', () => {
+    const r = spendCompare(family(), ctx, 'b')
+    expect(r.rows.map((x) => [x.categoryId, x.amount, x.plan, x.usual])).toEqual([
+      ['sc_food', 40_000, 60_000, 50_000],
+      ['sc_transport', 0, 25_000, 0],
+    ])
+    expect([r.unknown, r.oneOff]).toEqual([7_000, 50_000])
+  })
+  it('без `by` — семья, как было', () => {
+    const r = spendCompare(family(), ctx)
+    expect(row(r, 'sc_food')?.amount).toBe(140_000)
+    expect(row(r, 'sc_food')?.plan).toBe(150_000)
+    expect([r.unknown, r.oneOff]).toEqual([12_000, 50_000])
+  })
+  it('строки + «не разобрано» + «Разовые» участника = его факт', () => {
+    const plan = monthPlan(family(), ctx)
+    for (const by of ['a', 'b'] as const) {
+      const r = spendCompare(family(), ctx, by)
+      expect(r.rows.reduce((s, x) => s + (x.amount ?? 0), 0) + r.unknown + r.oneOff).toBe(plan.spend.find((s) => s.by === by)!.fact)
+    }
+    // Критик Блока 3: «потрачено» семьи в заголовке = Σ фактов строк участников.
+    const lines = participantLines(plan, family().people!, 'a')
+    expect(lines.map((l) => l.by)).toEqual(['a', 'b'])
+    expect(lines.reduce((s, l) => s + (l.fact ?? 0), 0)).toBe(spendFact(plan.spend))
+  })
+  it('участник без выписки месяца — факта нет', () => {
+    const r = spendCompare(family(), ctxOf(), 'b')
+    expect(r.rows.map((x) => [x.categoryId, x.amount, x.plan])).toEqual([['sc_food', null, 60_000], ['sc_transport', null, 25_000]])
+  })
+  it('rkShare с `by`', () => {
+    expect(rkShare(family(), ctx, 'food', 'a')).toBe(54)
+    expect(rkShare(family(), ctx, 'food', 'b')).toBe(100)
+    expect(rkShare(family(), ctx, 'food')).toBe(62)
   })
 })

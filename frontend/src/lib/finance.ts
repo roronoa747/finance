@@ -3407,6 +3407,9 @@ const monthUploaded = (key: string, uploads: UploadPeriod[]) => {
 const uploadedBy = (by: PersonId, key: string, uploads: UploadPeriod[]) =>
   monthUploaded(key, uploads.filter((u) => u.slot === by))
 
+/** Живые участники; с `by` — только он (расчёты «Трат» по одному участнику, FB-11). */
+const peopleOf = (people: Person[], by?: PersonId) => people.filter(alive).filter((p) => !by || p.id === by)
+
 /**
  * План месяца (Р-78, Р-79): доход обоих → платежи месяца → траты каждого → цели, фонды и карточка долга по
  * очереди (Р-84) из остатка → что осталось. Каждая часть — целые тенге; доход = платежи + траты + очередь +
@@ -3995,10 +3998,26 @@ export function spendFact(spend: PlanSpend[]): number | null {
 }
 
 /**
+ * Строки участников «Трат» (Р-7, FB-11): у каждого одна строка «факт / план» из `monthPlan().spend` — участник без строк
+ * плана и факта туда не попадает. `me` — первой, остальные в порядке `people`. Факт — с разовыми (Р-5); выписок нет — null.
+ */
+export function participantLines(
+  plan: MonthPlan,
+  people: Person[],
+  me?: PersonId | null,
+): { by: PersonId; name: string; plan: number; fact: number | null }[] {
+  return plan.spend
+    .map((s) => ({ s, i: people.findIndex((p) => p.id === s.by) }))
+    .filter((x) => x.i >= 0)
+    .sort((a, b) => Number(b.s.by === me) - Number(a.s.by === me) || a.i - b.i)
+    .map(({ s, i }) => ({ by: s.by, name: people[i].name, plan: s.plan, fact: s.fact }))
+}
+
+/**
  * «Потрачено» месяца по разделам (сводка ИИ, Р-3; критик Блока 2 «ИИ») — та же правда, что `spendFact` у `monthPlan`:
  * итоги участников, чьи выписки покрывают месяц (`uploadedBy`), раздел, учтённый платежами, — неотмеченной частью
  * (`spentOf`), разовые — отдельно (`oneOff`, FB-07). Сумма строк, `unknown` («не разобрано») и `oneOff` = `spendFact`;
- * выписок нет — пусто. По убыванию суммы.
+ * выписок нет — пусто. По убыванию суммы. С `by` — только итоги этого участника (FB-11); без `by` — семья (сводка ИИ).
  */
 export function monthSpendByCategory(
   people: Person[],
@@ -4006,12 +4025,13 @@ export function monthSpendByCategory(
   categories: SpendCategory[],
   key: string,
   uploads: UploadPeriod[],
+  by?: PersonId,
 ): { rows: { categoryId: string; name: string; amount: number }[]; unknown: number; oneOff: number } {
   const live = categories.filter(alive)
   const named = liveSpendCategories(categories)
   const sums = new Map<string, number>()
   let oneOff = 0
-  for (const p of people.filter(alive)) {
+  for (const p of peopleOf(people, by)) {
     if (!uploadedBy(p.id, key, uploads)) continue
     for (const t of totals) {
       if (t.deletedAt || t.by !== p.id || t.kind !== 'month' || t.period !== key || t.amount <= 0) continue
@@ -4057,9 +4077,10 @@ export function monthCovered(key: string, uploads: UploadPeriod[], by: PersonId)
 /**
  * Месяцы для «обычно у вас» (Р-5): до `n` последних месяцев строго до `key` (не дальше 6 назад), где итоги месяца есть
  * хотя бы у одного живого участника и у каждого такого выписки покрывают месяц целиком (`monthCovered`). Новые первыми.
+ * С `by` — полные месяцы только этого участника: месяц, полный у партнёра, не в счёт (FB-11).
  */
-export function usualMonths(people: Person[], totals: SpendTotal[], uploads: UploadPeriod[], key: string, n = 3): string[] {
-  const live = people.filter(alive)
+export function usualMonths(people: Person[], totals: SpendTotal[], uploads: UploadPeriod[], key: string, n = 3, by?: PersonId): string[] {
+  const live = peopleOf(people, by)
   const out: string[] = []
   for (let i = 1; i <= USUAL_LOOKBACK && out.length < n; i++) {
     const m = addMonths(key, -i)
@@ -4072,6 +4093,7 @@ export function usualMonths(people: Person[], totals: SpendTotal[], uploads: Upl
 /**
  * «Обычно у вас» по разделам (Р-5): среднее трат семьи за `usualMonths` — та же правда месяца, что `monthSpendByCategory`;
  * раздел без трат в месяце — 0 в этом месяце; целые тенге. Меньше 2 полных месяцев — null («обычно» нет, только план).
+ * С `by` — «обычно» одного участника по его полным месяцам (FB-11).
  */
 export function usualSpend(
   people: Person[],
@@ -4079,12 +4101,13 @@ export function usualSpend(
   categories: SpendCategory[],
   uploads: UploadPeriod[],
   key: string,
+  by?: PersonId,
 ): { months: string[]; amounts: Map<string, number> } | null {
-  const months = usualMonths(people, totals, uploads, key)
+  const months = usualMonths(people, totals, uploads, key, 3, by)
   if (months.length < 2) return null
   const sums = new Map<string, number>()
   for (const m of months) {
-    for (const r of monthSpendByCategory(people, totals, categories, m, uploads).rows) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.amount)
+    for (const r of monthSpendByCategory(people, totals, categories, m, uploads, by).rows) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.amount)
   }
   return { months, amounts: new Map([...sums].map(([id, sum]) => [id, Math.round(sum / months.length)])) }
 }
@@ -4129,13 +4152,18 @@ export type SpendCompareRow = {
  * (`plannedElsewhere`) и «не разобрано»; по убыванию `amount ?? plan`. Участников не сравниваем: план — сумма планов
  * участников. Рекомендация — когда обычно тратите больше плана: разница — в первую мечту очереди; `days` — насколько
  * раньше её соберём при темпе +N в месяц (`(остаток / темп − остаток / (темп + N)) × 30,4`).
+ *
+ * С `by` (FB-11, Р-18) — разделы одного участника: его факт, его строки плана, его «обычно», «не разобрано» и разовые;
+ * доход — семьи. Экраны зовут с `by` (свои разделы); семейные вызовы без `by` — только отчёт ИИ, `whereRows` и шаги
+ * плана (`spendSlack`).
  */
 export function spendCompare(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
+  by?: PersonId,
 ): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number; oneOff: number } {
   const { key } = ctx
-  const people = (state.people ?? []).filter(alive)
+  const people = peopleOf(state.people ?? [], by)
   const live = ctx.spendCategories.filter(alive)
   const named = liveSpendCategories(ctx.spendCategories)
   const month = monthPlan(state, ctx)
@@ -4146,7 +4174,7 @@ export function spendCompare(
   // План раздела — строки плана месяца (с урезкой сдвигами `planShifts`, AU-05): строка раздела, «План каждого» и
   // итог «Трат» говорят одно и то же.
   const plans = new Map<string, number>()
-  for (const s of month.spend) for (const r of s.rows) plans.set(r.categoryId, (plans.get(r.categoryId) ?? 0) + r.plan)
+  for (const s of month.spend) if (!by || s.by === by) for (const r of s.rows) plans.set(r.categoryId, (plans.get(r.categoryId) ?? 0) + r.plan)
   const usual = usualSpend(people, ctx.totals, ctx.spendCategories, ctx.uploads, key)
   const goal = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
   const adviceOf = (plan: number | null, usualAmount: number | null): SpendAdvice | null => {
@@ -4195,10 +4223,10 @@ export function spendCompare(
  * по разделам с группой — и разделам платежей с группой целиком (коммуналка, аренда, связь). Знаменатель — те же
  * разделы с группой (потребительские траты, как три группы статистики — 97,2 % денежных расходов): кредиты, переводы
  * людям, наличные и «не разобрано» долю не размывают; разовые (FB-07) — тоже. Целые %; выписок или трат с группой нет —
- * null.
+ * null. С `by` — доля в тратах одного участника (лист своего раздела, FB-11).
  */
-export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup): number | null {
-  const people = (state.people ?? []).filter(alive).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
+export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup, by?: PersonId): number | null {
+  const people = peopleOf(state.people ?? [], by).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
   const ids = new Set(people.map((p) => p.id))
   const live = ctx.spendCategories.filter(alive)
   const mine = ctx.totals.filter(

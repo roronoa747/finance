@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { allInDebt, budgetAmounts, monthSalaries, untilPayday, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, subscriptionsByWho, type MonthPlanCtx, type MonthPlanState } from './finance'
+import { allInDebt, budgetAmounts, monthSalaries, untilPayday, creditOutlook, goalDoneMonth, goalMonths, goalTerm, monthPlan, monthSubscriptions, livingPlan, monthPlanPast, monthsBetween, participantLines, pendingPuts, planExtras, putsLeft, queueStatus, spendFact, planFromSource, planPutSaves, planPuts, planSave, planSpendTotal, subscriptionGroup, subscriptionsByWho, type MonthPlanCtx, type MonthPlanState } from './finance'
 import { addMonths } from './dates'
 import type { Allocation, Goal, PersonId, SpendPlan } from '@/types/finance'
 
@@ -334,6 +334,27 @@ describe('planFromSource — прочие источники (Р-86)', () => {
       record: { source: 'freed', sourceId: 'gym', period: '2026-12' },
     })
     expect(planFromSource(family(), ctx, { from: 'freed' })).toBeNull()
+  })
+})
+
+describe('participantLines — строки участников «Трат» (FB-11, Р-7)', () => {
+  it('свой первым, факт null без выписки', () => {
+    // Аруна: план 150 000 + 40 000, выписок нет; Ильяс: план 80 000 + 60 000, факт 52 000 + 31 400 + 5 000 не разобрано.
+    const lines = participantLines(monthPlan(family(), ctx), family().people!, 'b')
+    expect(lines).toEqual([
+      { by: 'b', name: 'Аруна', plan: 190_000, fact: null },
+      { by: 'a', name: 'Ильяс', plan: 140_000, fact: 88_400 },
+    ])
+    expect(participantLines(monthPlan(family(), ctx), family().people!, 'a').map((l) => l.by)).toEqual(['a', 'b'])
+  })
+  it('факт — с разовыми', () => {
+    const totals = [...ctx.totals, { id: 'a:month:2026-10:sc_education', by: 'a' as const, kind: 'month' as const, period: KEY, categoryId: 'sc_education', amount: 50_000, oneOff: 50_000, ops: 1, updatedAt: T0 }]
+    // 88 400 + разовая 50 000.
+    expect(participantLines(monthPlan(family(), { ...ctx, totals }), family().people!, 'a')[0].fact).toBe(138_400)
+  })
+  it('участник без плана и факта — не показывается', () => {
+    const doc = family({ spendPlans: family().spendPlans!.filter((x) => x.by === 'a') })
+    expect(participantLines(monthPlan(doc, ctx), doc.people!, 'b').map((l) => l.by)).toEqual(['a'])
   })
 })
 

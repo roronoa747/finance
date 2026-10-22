@@ -12,15 +12,15 @@ import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
 
 /**
- * Лист раздела трат на «Месяце» (Р-5, AU-02): крупно — факт месяца семьи, под ним коротко — % дохода, «обычно у вас»,
- * план, «до плана» в мечту, справка РК мелко с `Hint`; план по участникам — строками с тихим «Изменить» (member).
+ * Лист раздела трат на «Месяце» (Р-5, AU-02): крупно — свой факт месяца (FB-12, Р-18), под ним коротко — % дохода,
+ * «обычно у вас», план, «до плана» в мечту, справка РК мелко с `Hint`; свой план — строкой с тихим «Изменить» (member).
  * Брендовой кнопки нет (правило 12: действия плана — тихие). Под цифрами — свои операции раздела за месяц (FB-05, Р-14):
  * первые пять по дням и тихое «Ещё N · сумма»; строка выписки — лист операции (`open`), ручная — «Трата» (`hand`); своих
  * операций нет (партнёр, viewer) — блока нет. Все числа — из `spendCompare` / `rkShare` / `sectionMonth`, лист не считает.
  */
 const props = defineProps<{
   row: SpendCompareRow | null
-  /** Доля группы раздела в тратах семьи за месяц (`rkShare`); нет группы или выписок — null. */
+  /** Доля группы раздела в моих тратах за месяц (`rkShare` с `by`); нет группы или выписок — null. */
   rk: number | null
   /** План участников по разделу (траты плана месяца, `PlanSpend.rows`); без плана — 0. */
   plans: { by: PersonId; name: string; amount: number }[]
@@ -31,6 +31,11 @@ const props = defineProps<{
   month?: string
   /** Свои операции раздела за месяц (`sectionMonth`, FB-05); нет или пусто — блока нет. */
   ops?: SectionMonth | null
+  /**
+   * Имя раздела, в котором у меня нет ни трат, ни плана (адрес `?cat=` из семейного отчёта ИИ, FB-12): лист «—» и одна
+   * строка, без цифр партнёра. Работает, когда `row` нет.
+   */
+  none?: string | null
 }>()
 /** «сентябрь»; другого года — с годом; текущий месяц не называется — он и так на экране (`/ux` «Разбор» 3). */
 const monthName = computed(() => {
@@ -68,7 +73,11 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
 </script>
 
 <template>
-  <Sheet :open="!!row" :title="row?.name ?? ''" @close="$emit('close')">
+  <Sheet :open="!!row || !!none" :title="row?.name ?? none ?? ''" @close="$emit('close')">
+    <template v-if="!row && none">
+      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-cat-amount>—</p>
+      <p class="mt-1 text-[14px] text-ink-2" data-cat-none>У вас трат в этом разделе нет</p>
+    </template>
     <template v-if="row">
       <p v-if="monthName" class="type-meta" data-cat-month>{{ monthName }}</p>
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-cat-amount>
@@ -94,7 +103,7 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
         {{ RK_SPEND_GROUPS[row.group].name }}: у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %
         <Hint label="Справка">Доля {{ RK_SPEND_GROUPS[row.group].label }} в тратах семей Алматы, {{ RK_SPEND_GROUPS[row.group].source }}, {{ RK_SPEND_GROUPS[row.group].period }}</Hint>
       </p>
-      <p v-if="plans.length" class="mt-4 text-[13px] font-semibold text-ink-2" data-cat-plans-title>План каждого</p>
+      <p v-if="plans.length" class="mt-4 text-[13px] font-semibold text-ink-2" data-cat-plans-title>{{ plans.length > 1 ? 'План каждого' : 'План' }}</p>
       <div class="mt-1.5 flex flex-col border-t border-line">
         <div v-for="p in plans" :key="p.by" class="flex items-center gap-2 border-b border-line py-2" :data-cat-person="p.by">
           <span class="min-w-0 flex-1 truncate text-[15px] text-ink">{{ p.name }}</span>

@@ -17,12 +17,14 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
  * Блок 1 «ИИ-польза» (AU-01…AU-03, Р-5): траты в сравнении на «Месяце» — два телефона и viewer, понедельник
  * 12 октября 2026. Выписки: июль–сентябрь — у обоих целиком; октябрь — у Ильяса с 1-го по 12-е.
  *
- * Ручной расчёт:
+ * Ручной расчёт (с FB-12 разделы — свои, Р-18; семейный расчёт — в `compareOf(…, family)` для разбора ИИ):
  *   Кафе (Ильяс)     июль–сентябрь по 30 000 → обычно 30 000; октябрь 48 000 → точка (выше на 18 000 и на 60 %);
  *                    план 20 000 → «до плана: +10 000» в «Подушку»; % дохода 48 000 / 1 200 000 = 4.
- *   Продукты (оба)   июль 80 000 + 40 000, август 90 000 + 45 000, сентябрь 85 000 + 50 000 → обычно
- *                    (120 000 + 135 000 + 135 000) / 3 = 130 000; октябрь 50 000 — без точки; план 90 000 + 60 000 =
- *                    150 000 ≥ обычно — рекомендации нет.
+ *   Продукты Ильяса  июль 80 000, август 90 000, сентябрь 85 000 → обычно 85 000; октябрь 50 000 — без точки; план
+ *                    90 000 ≥ обычно — рекомендации нет; % дохода 50 000 / 1 200 000 = 4,2 → 4.
+ *   Продукты Аруны   июль 40 000, август 45 000, сентябрь 50 000 → обычно 45 000; октябрьской выписки нет — план 60 000.
+ *   Семья (разбор)   продукты (120 000 + 135 000 + 135 000) / 3 = 130 000, план 150 000.
+ *   Строки участников: Ильяс 48 000 + 50 000 = 98 000 / 110 000; Аруна — план 60 000.
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
 
@@ -89,12 +91,13 @@ const upload = (slot: 'a' | 'b', from: string, to: string) => ({
 /** «Месяц» с раскрытой «Тратами» и (если задан) листом раздела. */
 const month = (p: Phone, catFor?: string, act?: (s: Record<string, unknown>) => void) =>
   screen(p.pinia, Month, '/month', undefined, [screenMixin({ opened: 'spend', ...(catFor ? { catFor } : {}) }, act)])
-const compareOf = (p: Phone) => {
+const compareOf = (p: Phone, by?: PersonId) => {
   setActivePinia(p.pinia)
   const { state, ctx } = p.store.planInput(K)
-  return spendCompare(state, ctx)
+  return spendCompare(state, ctx, by)
 }
 const rowsOf = (html: string) => [...html.matchAll(/data-spend-row="([^"]+)"/g)].map((m) => m[1])
+const peopleOf = (html: string) => [...html.matchAll(/data-spend-person="([^"]+)"/g)].map((m) => m[1])
 const dotsOf = (html: string) => [...html.matchAll(/data-spend-row="([^"]+)"[^>]*data-over/g)].map((m) => m[1])
 
 describe('e2e / ИИ-польза Блок 1 — траты в сравнении на «Месяце»', () => {
@@ -122,16 +125,21 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     vi.unstubAllGlobals()
   })
 
-  it('member: разделы семьи, точка у кафе и у «Траты», лист с обычно, планом, % дохода и «до плана»; партнёр видит те же строки; viewer — без правок', async () => {
+  it('member: свои разделы, точка у кафе и у «Траты», лист с обычно, планом, % дохода и «до плана»; партнёр — свои разделы и строка Ильяса; viewer — только строки', async () => {
     const A = await phone(server, st, 'a')
-    const r = compareOf(A)
+    const r = compareOf(A, 'a')
     expect(r.rows.map((x) => [x.categoryId, x.amount, x.usual, x.plan, x.share, x.over])).toEqual([
-      ['sc_food', 50_000, 130_000, 150_000, 4, false],
+      ['sc_food', 50_000, 85_000, 90_000, 4, false],
       ['sc_cafe', 48_000, 30_000, 20_000, 4, true],
     ])
     expect(r.rows[1].advice).toEqual({ amount: 10_000, goalId: 'cushion', goalName: 'Подушка', days: 659 })
+    // Семейный расчёт (разбор ИИ, `whereRows`) — как был.
+    expect(compareOf(A).rows.find((x) => x.categoryId === 'sc_food')).toMatchObject({ usual: 130_000, plan: 150_000 })
 
     const html = await month(A)
+    expect(peopleOf(html)).toEqual(['a', 'b'])
+    expect(part(html, 'data-spend-person="a"')).toBe(sp(`Ильяс ${plain(98_000)} / ${plain(110_000)}`))
+    expect(part(html, 'data-spend-person="b"')).toBe(sp(`Аруна план ${plain(60_000)}`))
     expect(rowsOf(html)).toEqual(['sc_food', 'sc_cafe'])
     expect(dotsOf(html)).toEqual(['sc_cafe'])
     expect(part(html, 'data-section="spend"')).toContain('Траты')
@@ -146,38 +154,50 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     expect(part(sheet, 'data-cat-advice')).toBe(sp(`до плана: +${plain(10_000)} в мечту «Подушка» · на 22 месяца раньше`))
     expect(sheet).toContain('data-cat-edit')
 
-    // Партнёр после синка — те же строки и точки (одна правда документа и записей загрузок).
+    // Партнёр после синка — своя строка первой, свои «Продукты» (план, выписки за октябрь нет), кафе Ильяса нет.
     const B = await phone(server, st, 'b')
     await sync(A, B)
     const htmlB = await month(B)
-    expect(rowsOf(htmlB)).toEqual(['sc_food', 'sc_cafe'])
-    expect(dotsOf(htmlB)).toEqual(['sc_cafe'])
+    expect(peopleOf(htmlB)).toEqual(['b', 'a'])
+    expect(part(htmlB, 'data-spend-person="a"')).toBe(sp(`Ильяс ${plain(98_000)} / ${plain(110_000)}`))
+    expect(rowsOf(htmlB)).toEqual(['sc_food'])
+    expect(dotsOf(htmlB)).toEqual([])
+    const sheetB = await month(B, 'sc_food')
+    expect(part(sheetB, 'data-cat-usual')).toBe(sp(`обычно у вас ${plain(45_000)}`))
+    expect(sheetB).toContain('data-cat-person="b"')
+    expect(sheetB).not.toContain('data-cat-person="a"')
+    // Кафе Ильяса по адресу — «нет трат», без его цифр.
+    const cafeB = await month(B, 'sc_cafe')
+    expect(part(cafeB, 'data-cat-none')).toBe('У вас трат в этом разделе нет')
+    expect(cafeB).not.toContain(plain(48_000))
 
-    // Viewer — видит строки и лист, «Изменить» и «+ Раздел» нет.
+    // Viewer — строки участников; разделов, листа и «+ Раздел» нет.
     const V = await phone(server, st, 'a', 'viewer')
     const htmlV = await month(V)
-    expect(rowsOf(htmlV)).toEqual(['sc_food', 'sc_cafe'])
+    expect(peopleOf(htmlV)).toEqual(['a', 'b'])
+    expect(rowsOf(htmlV)).toEqual([])
     expect(htmlV).not.toContain('data-spend-add')
-    const sheetV = await month(V, 'sc_food')
-    expect(part(sheetV, 'data-cat-usual')).toBe(sp(`обычно у вас ${plain(130_000)}`))
-    expect(sheetV).toContain('data-cat-person="b"')
-    expect(sheetV).not.toContain('data-cat-edit')
+    expect(await month(V, 'sc_food')).not.toContain('data-cat-amount')
   })
 
-  it('меньше 2 полных месяцев — «обычно» нет, точек нет', async () => {
-    // Июль и август у Аруны не загружены — полный месяц у обоих только сентябрь.
+  it('меньше 2 полных месяцев — «обычно» нет, точек нет; полные месяцы — свои (FB-11)', async () => {
+    // Июль и август у Аруны не загружены — у неё полный месяц один (сентябрь); у Ильяса — три.
     st.uploads.splice(1, 1)
-    const A = await phone(server, st, 'a')
-    const r = compareOf(A)
+    const B = await phone(server, st, 'b')
+    const r = compareOf(B, 'b')
     expect(r.usualFrom).toEqual([]) // полный месяц один — «обычно» не считается
     expect(r.rows.every((x) => x.usual === null && !x.over && !x.advice)).toBe(true)
-    const html = await month(A)
+    const html = await month(B)
     expect(dotsOf(html)).toEqual([])
     expect(html).not.toMatch(/data-section="spend"[\s\S]*?data-section-dot[\s\S]*?data-section="queue"/)
-    expect(part(await month(A, 'sc_cafe'), 'data-cat-usual')).toBe('обычно — когда будет 2 месяца выписок')
+    expect(part(await month(B, 'sc_food'), 'data-cat-usual')).toBe('обычно — когда будет 2 месяца выписок')
+    // Ильяса неполные выписки Аруны не трогают: «обычно» и точка кафе — на месте.
+    const A = await phone(server, st, 'a')
+    expect(compareOf(A, 'a').usualFrom).toEqual(['2026-09', '2026-08', '2026-07'])
+    expect(dotsOf(await month(A))).toEqual(['sc_cafe'])
   })
 
-  it('план через лист раздела: «Изменить» → «Сколько в месяц» → партнёр видит новый план; рекомендации больше нет', async () => {
+  it('план через лист раздела: «Изменить» → «Сколько в месяц» → рекомендации больше нет; партнёр видит новый план в строке Ильяса', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     await month(A, 'sc_cafe', (s) => {
@@ -187,11 +207,15 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     })
     setActivePinia(A.pinia)
     expect(A.store.householdDoc.spendPlans?.find((x) => x.id === 'a:sc_cafe')?.amount).toBe(35_000)
-    await sync(A, B)
-    const sheetB = await month(B, 'sc_cafe')
-    expect(part(sheetB, 'data-cat-plan')).toBe(sp(`план ${plain(35_000)}`))
+    const sheetA = await month(A, 'sc_cafe')
+    expect(part(sheetA, 'data-cat-plan')).toBe(sp(`план ${plain(35_000)}`))
     // Обычно 30 000 ≤ плана 35 000 — «до плана» нет; точка остаётся (факт 48 000 выше обычного).
-    expect(sheetB).not.toContain('data-cat-advice')
-    expect(dotsOf(await month(B))).toEqual(['sc_cafe'])
+    expect(sheetA).not.toContain('data-cat-advice')
+    expect(dotsOf(await month(A))).toEqual(['sc_cafe'])
+    // Партнёр: план Ильяса 35 000 + 90 000 = 125 000 — в его строке; раздела кафе у партнёра нет.
+    await sync(A, B)
+    const htmlB = await month(B)
+    expect(part(htmlB, 'data-spend-person="a"')).toBe(sp(`Ильяс ${plain(98_000)} / ${plain(125_000)}`))
+    expect(rowsOf(htmlB)).not.toContain('sc_cafe')
   })
 })

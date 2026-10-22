@@ -33,6 +33,7 @@ import {
   rkShare,
   spendCompare,
   spendFact,
+  participantLines,
   spendPlansBy,
   sectionMonth,
   untilPayday,
@@ -83,7 +84,7 @@ import { attachTemplate } from '@/lib/photos/goalPhoto'
  * строки, один за раз, по умолчанию всё свёрнуто. Месяц — список дел одним языком (правило 12 «Смысловой флоу»):
  * платёж — «Оплатил» ✓ (Р-94), цель — «Отложил» ✓, зарплата — «Пришла» ✓ (Р-97); действие — нажатием своей строки,
  * лист с одной кнопкой. Подписки — одной строкой (Р-93), цели — короткими строками без фото (Р-92). Управление
- * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮; траты — разделы всей семьи, план каждого — в листе раздела (Р-5). Всё считает `finance.ts`; здесь — показ и правки
+ * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮; траты — строки «факт / план» участников и свои разделы, свой план — в листе раздела (FB-12). Всё считает `finance.ts`; здесь — показ и правки
  * документа через стор. Viewer — тот же план без переключателей, плательщиков, листов и кнопок.
  */
 const props = defineProps<{ monthKey: string }>()
@@ -159,8 +160,23 @@ const freedMeta = computed(() => {
 })
 
 const spentFact = computed(() => spendFact(plan.value.spend))
-/** Траты в сравнении (Р-5, AU-01): разделы всей семьи; точка — у раздела выше обычного и у заголовка «Траты». */
-const compare = computed(() => spendCompare(state.value, ctx.value))
+/**
+ * Траты в сравнении (Р-5, AU-01) — только свои разделы (FB-12, Р-18): факт, план, «обычно», «Не разобрано» и «Разовые» —
+ * мои; точка — у раздела выше обычного и у заголовка «Траты». Семейное «потрачено» в заголовке — как было. Viewer
+ * разделов не видит (матрица §3); его слот может совпасть со слотом участника — поэтому пусто по `canEdit`, не по `me`.
+ */
+const compare = computed(() => {
+  const c = spendCompare(state.value, ctx.value, me.value)
+  return canEdit.value ? c : { ...c, rows: [], unknown: 0, oneOff: 0 }
+})
+/**
+ * Строки участников (Р-7): у каждого «факт / план» одной строкой, свой первым. В семье из одного своя строка повторила
+ * бы заголовок — строк нет; viewer видит строки всегда (разделов у него нет).
+ */
+const lines = computed(() => {
+  const list = participantLines(plan.value, people.value, canEdit.value ? me.value : null)
+  return list.length > 1 || !canEdit.value ? list : []
+})
 const sections = computed(() => [
   {
     key: 'dues' as const,
@@ -391,7 +407,7 @@ function editDue(d: PlanDue) {
 const dueNote = (d: PlanDue) => (d.kind === 'obligation' && d.obligation.estimate ? 'примерно' : '')
 const askPayer = (d: PlanDue) => (payerFor.value = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer })
 
-/* ---------- траты: разделы семьи (Р-5), план каждого — в листе раздела (Р-81) ---------- */
+/* ---------- траты: строки участников и свои разделы (FB-12), свой план — в листе раздела ---------- */
 const categories = computed(() => {
   const all = finance.householdDoc.spendCategories ?? []
   return liveSpendCategories(all).filter((c) => !plannedElsewhere(c.id, all))
@@ -401,9 +417,11 @@ const spendShare = (fact: number | null, planned: number | null) =>
 /** Лист раздела: нажатие строки или адрес `?cat=<id>` («Открыть» совета и строка «Куда ушло» отчёта, Р-18, RZ-08); закрыли — параметр снят. */
 const { value: catFor, close: closeCat } = useQueryValue('cat')
 const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
-const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group) : null))
-/** План раздела по участникам — строки `monthPlan().spend`; у кого плана нет — 0. */
-const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value, catFor.value) : []))
+/** Раздел семьи, где у меня нет ни трат, ни плана (`?cat=` из отчёта): лист «нет трат», цифр партнёра нет (FB-12). */
+const catNone = computed(() => (canEdit.value && catFor.value && !catRow.value ? (categories.value.find((c) => c.id === catFor.value)?.name ?? null) : null))
+const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group, me.value) : null))
+/** Свой план раздела — строка `monthPlan().spend`; плана нет — 0. План партнёра — его раздел (Р-18). */
+const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value.filter((p) => p.id === me.value), catFor.value) : []))
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
 const images = computed(() => habitImages(state.value, props.monthKey))
 const catImage = computed(() => images.value.find((i) => i.categoryId === catFor.value) ?? null)
@@ -426,7 +444,7 @@ function openCatHand(id: string) {
   catHand.value = id
 }
 /**
- * «Разовые» (FB-07, Р-16): тихая строка под разделами — сумма разовых семьи (`spendCompare.oneOff`); лист — свои
+ * «Разовые» (FB-07, Р-16): тихая строка под разделами — сумма своих разовых (`spendCompare.oneOff` с `by`); лист — свои
  * разовые месяца (`sectionMonth` с `oneOff`), строка — лист операции, где «Разовую» можно снять. Viewer — без листа.
  */
 const { open: oneOffOpen, close: closeOneOff } = useQuerySheet('oneoff')
@@ -735,10 +753,24 @@ function addFund(kind: 'reserve' | 'cushion') {
           </div>
 
           <!--
-            Траты — разделы всей семьи (Р-5): одна цифра у строки (факт; выписок нет — план), полоса факт/план, точка —
-            трат больше обычного; нажатие — лист раздела (обычно, план каждого, справка). Участников не сравниваем.
+            Траты (FB-12, Р-7, Р-18): сверху у каждого участника одна строка «факт / план» без нажатия; ниже — «Мои разделы»:
+            одна цифра у строки (факт; выписок нет — план), полоса факт/план, точка — трат больше обычного; нажатие — лист
+            раздела (обычно, свой план, справка). Разделов партнёра нет; viewer — только строки участников.
           -->
           <div v-if="opened === 'spend' && s.key === 'spend'" class="pb-1" data-spends>
+            <div v-for="l in lines" :key="l.by" class="flex flex-col gap-1 border-t border-line py-2.5 first:border-t-0" :data-spend-person="l.by">
+              <span class="flex w-full items-center justify-between gap-2 text-[15px]">
+                <span class="min-w-0 truncate text-ink">{{ l.name }}</span>
+                <span class="whitespace-nowrap num" data-person-amount>
+                  <template v-if="l.fact !== null"><b class="font-semibold text-ink">{{ plain(l.fact) }}</b><span v-if="l.plan" class="text-ink-2"> / {{ plain(l.plan) }}</span></template>
+                  <span v-else class="text-ink-2">план {{ plain(l.plan) }}</span>
+                </span>
+              </span>
+              <span v-if="l.plan" class="block h-[3px] w-full overflow-hidden rounded-pill bg-track">
+                <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(l.fact, l.plan)}%` }" />
+              </span>
+            </div>
+            <p v-if="lines.length && canEdit" class="pb-1.5 pt-4 type-section" data-spend-mine>Мои разделы</p>
             <!-- Кнопка строки — название, растянутое на строку (`row-open`); ✦ совета ИИ — рядом своей кнопкой (RZ-10). -->
             <div
               v-for="r in compare.rows"
@@ -774,19 +806,17 @@ function addFund(kind: 'reserve' | 'cushion') {
               <span>Не разобрано</span>
               <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
             </div>
-            <!-- «Разовые» (FB-07): так же тихо, но с листом своих разовых; viewer — строка без листа -->
-            <component
-              :is="canEdit ? 'button' : 'div'"
+            <!-- «Разовые» (FB-07): так же тихо, но с листом своих разовых -->
+            <button
               v-if="compare.oneOff > 0"
-              :type="canEdit ? 'button' : undefined"
-              class="flex w-full items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[15px] text-ink-2 first:border-t-0"
-              :class="{ 'press cursor-pointer': canEdit }"
+              type="button"
+              class="press flex w-full cursor-pointer items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[15px] text-ink-2 first:border-t-0"
               data-spend-oneoff
-              @click="canEdit && (oneOffOpen = true)"
+              @click="oneOffOpen = true"
             >
               <span>Разовые</span>
               <span class="whitespace-nowrap num">{{ plain(compare.oneOff) }}</span>
-            </component>
+            </button>
             <button
               v-if="canEdit"
               type="button"
@@ -796,7 +826,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             >
               + Раздел
             </button>
-            <p v-if="!compare.rows.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
+            <p v-if="!lines.length && !canEdit" class="py-3 type-meta">Плана трат нет</p>
           </div>
 
           <!-- Цели и фонды по очереди: короткие строки; ⋮⋮ — выше раньше получает деньги; нажатие — «Отложил» -->
@@ -979,6 +1009,7 @@ function addFund(kind: 'reserve' | 'cushion') {
       :image="catImage"
       :month="monthKey"
       :ops="catOps"
+      :none="catNone"
       @close="closeCat"
       @edit="editCatPlan"
       @image="imageAct"
