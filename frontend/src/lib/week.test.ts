@@ -215,7 +215,8 @@ describe('sectionWeek — раздел за неделю (Р-101)', () => {
   })
 
   it('не разобранное — раздел `_unknown`; переводы между своими и доходы не входят', () => {
-    expect(sectionWeek(OPS, { week: '2026-W42', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 12_400, count: 1, tops: [{ name: 'ИП Ахметова', count: 1, amount: 12_400 }] })
+    // Имя — продавец коротко, как в ленте и в заголовке листа операции (/ux Фидбек 1).
+    expect(sectionWeek(OPS, { week: '2026-W42', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 12_400, count: 1, tops: [{ name: 'Ахметова', count: 1, amount: 12_400 }] })
     expect(sectionWeek(OPS, { week: '2026-W41', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 0, count: 0, tops: [], days: [], more: null })
   })
 

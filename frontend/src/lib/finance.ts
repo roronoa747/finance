@@ -5209,7 +5209,8 @@ export const SECTION_OPS = 5
 
 /**
  * Лист раздела (Р-101): свои траты раздела за неделю — топ продавцов и операции по дням. Отбор — тот же, что у
- * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное.
+ * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное. Имя —
+ * продавец коротко (`shortMerchant`) или получатель, как в ленте и листе операции.
  */
 export function sectionWeek(
   ops: Operation[],
@@ -5217,7 +5218,7 @@ export function sectionWeek(
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
