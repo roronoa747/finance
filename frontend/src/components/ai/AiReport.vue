@@ -8,14 +8,17 @@ import { useFinanceStore } from '@/stores/finance'
 import type { AiAdvice, AiReview, ReviewPayload, ReviewPayloadV3, ReviewPayloadV4, ReviewReason } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
 import { factsLines, openPath } from '@/lib/aiFacts'
-import { findMonth, reviewCardOrder, reviewOutcome, reviewWorkMonthly, shiftMade, stepCandidates, whereRows, whereSplit, type ReviewCard, type StepCandidate } from '@/lib/finance'
+import { findMonth, reviewCardOrder, reviewOutcome, reviewWorkMonthly, shiftMade, spendCategoryName, stepCandidates, whereRows, whereSplit, type ReviewCard, type StepCandidate } from '@/lib/finance'
 import { weekendShare } from '@/lib/statements/finds'
+import { shortMerchant } from '@/lib/statements/model'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
 import { addMonths, dayLabel, monthBy, monthIn, monthTitle, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import { holdTips } from '@/components/kit/tips'
 import { isTopSheet, popSheet, pushSheet } from '@/components/kit/sheetStack'
+import Toast from '@/components/kit/Toast.vue'
+import { useFlash } from '@/components/kit/useFlash'
 import Button from '@/components/ui/Button.vue'
 import DoSheet from '@/components/plan/DoSheet.vue'
 import WhereBars from './WhereBars.vue'
@@ -137,13 +140,51 @@ function isDone(c: ReviewCard): boolean {
   if (LIST_CARDS.includes(c.kind)) return !now
   return !now || JSON.stringify(now) !== JSON.stringify(c)
 }
+/**
+ * «Отметить разовой» («Похоже на разовую», «Дорогая неделя») — одним нажатием, без листа: раздел траты не меняется
+ * (владелец 2026-10-22, Х-16); строка карточки — «<продавец> · <раздел> · разовая», её нажатие — лист операции; тост с
+ * «Отменить».
+ */
+const ONE_OFF_CARDS: ReviewCard['kind'][] = ['oneoff', 'week']
+const ops = useOperationsStore()
+const { note: oneOffNote, flash: oneOffFlash, clear: oneOffClear } = useFlash(6000)
+const undoOp = ref<string | null>(null)
+function markOneOff(opId: string) {
+  ops.editOp(opId, { oneOff: true })
+  undoOp.value = opId
+  oneOffFlash('Отметили разовой')
+}
+function undoOneOff() {
+  if (undoOp.value) ops.editOp(undoOp.value, { oneOff: null })
+  undoOp.value = null
+  oneOffClear()
+}
+/** Строка отмеченной разовой: продавец, раздел (как был), «разовая». */
+function oneOffLine(c: ReviewCard): string | null {
+  if (!ONE_OFF_CARDS.includes(c.kind) || c.target.kind !== 'op' || !isDone(c)) return null
+  const op = ops.all.find((o) => o.id === (c.target as { opId: string }).opId)
+  if (!op?.oneOff) return null
+  return [shortMerchant(op.merchant), op.categoryId ? spendCategoryName(input.value.ctx.spendCategories, op.categoryId) : null, 'разовая'].filter(Boolean).join(' · ')
+}
 function press(c: ReviewCard) {
   acted.value = new Set([...acted.value, c.id])
   if (c.target.kind === 'do') doCandidate.value = c.target.candidate
+  else if (ONE_OFF_CARDS.includes(c.kind) && c.target.kind === 'op') markOneOff(c.target.opId)
   else if (c.target.kind !== 'obligation') emit('act', c)
 }
 // «Дорогая неделя» — на сколько дороже обычной: «+45 %», а не «45 %» неизвестно чего (`/ux` 4б).
 const figureOf = (c: ReviewCard) => (c.figure.unit === 'pct' ? `${c.kind === 'week' ? '+' : ''}${c.figure.value} %` : money(c.figure.value))
+/**
+ * Крупная цифра мысли — нет, если ту же цифру показывает карточка `next` следом: два экрана подряд одно число
+ * (владелец 2026-10-22, Х-15); текст мысли остаётся.
+ */
+const flat = (s: string) => s.replace(/\s/g, '')
+const leadFigure = computed(() => {
+  const f = mine.value?.lead?.figure
+  if (!f) return null
+  const next = frozen.value.find((c) => c.id === mine.value?.next)
+  return next && flat(figureOf(next)) === flat(f.value) ? null : f
+})
 const by = computed(() => auth.slot ?? 'a')
 /** Месяц карточек v4 — по своим выпискам (`findMonth(…, by)`, как `reviewCards`); в первые дни — прошлый. */
 const cardMonth = computed(() => findMonth(input.value.ctx, by.value))
@@ -267,6 +308,7 @@ type Card =
   | { kind: 'lead' }
   | { kind: 'code'; card: ReviewCard; n: number }
   | { kind: 'where4' }
+  | { kind: 'empty' }
 const cards = computed<Card[]>(() => {
   if (v4.value) {
     const out: Card[] = []
@@ -276,7 +318,8 @@ const cards = computed<Card[]>(() => {
     else if (!mine.value && ai.reviewState !== 'idle') out.push({ kind: 'state' })
     out.push(...frozen.value.map((card, i) => ({ kind: 'code' as const, card, n: i + 1 })))
     if (split.value?.total) out.push({ kind: 'where4' }) // трат месяца нет — пустой полосы нет (критик 4б)
-    return out.length ? out : [{ kind: 'state' }]
+    // Своих трат нет — первый шаг: «Нужна выписка» с одной кнопкой (владелец 2026-10-22, Х-11).
+    return out.length ? out : [{ kind: 'empty' }]
   }
   if (!props.review) return [{ kind: 'state' }]
   if (!v3.value) return [{ kind: 'old' }]
@@ -604,9 +647,9 @@ onUnmounted(() => {
               <article class="flex flex-col" data-review-lead>
                 <p class="flex items-center gap-1.5 type-section"><PhSparkle :size="14" class="text-brand" aria-hidden="true" />Главное</p>
                 <h2 class="mt-2 type-h2-lg text-ink" data-review-lead-title>{{ mine.lead.title }}</h2>
-                <template v-if="mine.lead.figure">
-                  <p class="mt-6 type-big num text-ink" data-review-figure>{{ mine.lead.figure.value }}</p>
-                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ mine.lead.figure.label ?? mine.lead.figure.about }}</p>
+                <template v-if="leadFigure">
+                  <p class="mt-6 type-big num text-ink" data-review-figure>{{ leadFigure.value }}</p>
+                  <p class="mt-1.5 text-[14px] leading-snug text-ink-2" data-review-figure-about>{{ leadFigure.label ?? leadFigure.about }}</p>
                 </template>
                 <p class="mt-5 text-[17px] leading-snug text-ink num" data-review-lead-text>{{ keep(mine.lead.text) }}</p>
               </article>
@@ -619,7 +662,18 @@ onUnmounted(() => {
                 <p class="mt-6 flex items-center gap-2 type-big num text-ink" data-review-figure>
                   {{ figureOf(c.card) }}<PhCheck v-if="isDone(c.card)" :size="26" weight="bold" class="shrink-0 text-ok" aria-label="Сделано" data-review-card-done />
                 </p>
-                <p class="mt-2 text-[15px] leading-snug text-ink-2" data-review-card-line>{{ c.card.line }}</p>
+                <!-- Отмеченная разовая: продавец · раздел · разовая; нажатие — лист операции (сменить раздел, Х-16). -->
+                <button
+                  v-if="oneOffLine(c.card)"
+                  type="button"
+                  class="press mt-2 flex cursor-pointer items-center gap-1 text-left text-[15px] leading-snug text-ink-2"
+                  data-review-card-line
+                  data-review-card-op
+                  @click="emit('act', c.card)"
+                >
+                  <span class="min-w-0">{{ oneOffLine(c.card) }}</span><PhCaretRight :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+                </button>
+                <p v-else class="mt-2 text-[15px] leading-snug text-ink-2" data-review-card-line>{{ c.card.line }}</p>
                 <div v-if="!isDone(c.card) && !auth.isViewer" class="mt-6">
                   <Button v-if="c.card.target.kind === 'obligation'" size="md" as-child>
                     <RouterLink :to="openPath({ kind: 'obligation', id: c.card.target.obligationId, name: c.card.subject ?? '' })" data-review-card-button @click="press(c.card)">{{ c.card.button }}</RouterLink>
@@ -707,6 +761,17 @@ onUnmounted(() => {
               </div>
             </template>
 
+            <!-- v4 без своих трат — пустой экран, первый шаг: одна кнопка во всю ширину (правило 12, Х-11) -->
+            <template v-else-if="c.kind === 'empty'">
+              <div class="my-auto flex flex-col py-6" data-review-empty>
+                <h2 class="type-h2-lg text-ink">Нужна выписка</h2>
+                <p class="mt-1.5 text-[15px] leading-snug text-ink-2">Разбор считается по вашим тратам</p>
+                <Button size="lg" class="mt-6 w-full" as-child>
+                  <RouterLink to="/week?upload=1" data-review-upload>Загрузить выписку</RouterLink>
+                </Button>
+              </div>
+            </template>
+
             <!-- Разбора нет: запрос идёт или чем кончился — одна карточка; ответ идёт 5–55 с — крутилка -->
             <template v-else-if="c.kind === 'state'">
               <p class="my-auto flex items-center justify-center gap-2 py-6 text-[16px]" :class="ai.reviewState === 'thinking' ? 'text-ink-2' : 'text-ink'" :data-review-state="ai.reviewState">
@@ -743,4 +808,5 @@ onUnmounted(() => {
   </Teleport>
   <!-- Лист «Сделать» поверх отчёта (z 60); отчёт под ним остаётся, тост — поверх обоих (`sheetStack`). -->
   <DoSheet :candidate="open ? doCandidate : null" :z="60" @close="doCandidate = null" />
+  <Toast v-if="open && oneOffNote" action="Отменить" @action="undoOneOff"><span data-review-oneoff-toast>{{ oneOffNote }}</span></Toast>
 </template>

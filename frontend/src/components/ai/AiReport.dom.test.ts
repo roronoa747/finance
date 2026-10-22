@@ -12,7 +12,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import type { AiReview, Goal, ReviewPayloadV4, SyncDoc } from '@/types/finance'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
-import { stepCandidates, type StepCandidate } from '@/lib/finance'
+import { spendCategoryName, stepCandidates, type StepCandidate } from '@/lib/finance'
 import { money } from '@/lib/money'
 import { startDemo } from '@/lib/demo'
 import { leadFor, seedOwnMonth } from '@/test/reviewV4'
@@ -974,7 +974,9 @@ describe('FB-17: отчёт разбора v4', () => {
     expect(codeKinds()[0]).toBe('people')
     expect(new Set(codeKinds())).toEqual(new Set(['people', 'plan', 'unknown', 'oneoff']))
     expect(txt(q('[data-review-lead-title]'))).toBe('Люди и мечта')
-    expect(txt(q('[data-review-lead] [data-review-figure]'))).toBe(money(60_000).replace(/\s/g, ' '))
+    // Ту же цифру (60 000 людям) показывает карточка `next` следом — у мысли крупной цифры нет, текст есть (Х-15).
+    expect(q('[data-review-lead] [data-review-figure]')).toBeNull()
+    expect(txt(q('[data-review-lead-text]'))).toBe('Главное — переводы людям.')
     for (const card of document.querySelectorAll('[data-review-card]')) {
       expect(card.querySelectorAll('[data-review-figure]')).toHaveLength(1)
       expect(card.querySelectorAll('[data-review-card-button]')).toHaveLength(1)
@@ -985,6 +987,36 @@ describe('FB-17: отчёт разбора v4', () => {
     expect([...document.querySelectorAll('[data-split-part]')].map((el) => el.getAttribute('data-split-part'))).toEqual(['sellers', 'people'])
     expect(txt(q('[data-split-label="people"]'))).toContain('30')
     expect(q('[data-review-where]')).toBeNull()
+  })
+
+  it('цифра мысли — своя, если `next` показывает другую или `next` нет (Х-15)', async () => {
+    const finance = await open()
+    await seedRich()
+    const lead = { title: 'Мечта ближе', text: 'Главное — мечта.', figure: { about: 'не разобрано', value: '15 %', label: 'не разобрано' } }
+    finance.mutatePrivateDoc((d) => void (d.aiReviews = [mineV4({ lead, next: 'people' })]))
+    useAiStore().setConsent(true)
+    await flush()
+    await press(q('[data-review-open]'))
+    expect(txt(q('[data-review-lead] [data-review-figure]'))).toBe('15 %')
+    // `next` — «Не разобрано» с теми же 15 % — цифры нет.
+    finance.mutatePrivateDoc((d) => void (d.aiReviews = [mineV4({ id: 'mine2', lead, next: 'unknown' })]))
+    await flush()
+    expect(codeKinds()[0]).toBe('unknown')
+    expect(txt(q('[data-review-card="unknown"] [data-review-figure]'))).toBe('15 %')
+    expect(q('[data-review-lead] [data-review-figure]')).toBeNull()
+  })
+
+  it('без своих трат — «Нужна выписка» и одна кнопка «Загрузить выписку» во всю ширину (Х-11)', async () => {
+    await open({ ai: false })
+    await press(q('[data-review-open]'))
+    expect(kinds()).toEqual(['empty'])
+    expect(txt(q('[data-review-empty] h2'))).toBe('Нужна выписка')
+    expect(txt(q('[data-review-empty] p'))).toBe('Разбор считается по вашим тратам')
+    const link = q('[data-review-upload]') as HTMLAnchorElement
+    expect(txt(link)).toBe('Загрузить выписку')
+    expect(link.getAttribute('href')).toBe('/week?upload=1')
+    expect(link.className).toContain('w-full')
+    expect(document.querySelectorAll('[data-report] button:not([data-report-close]), [data-report] a')).toHaveLength(1)
   })
 
   it('без ИИ — без мысли и «Работы ИИ»: карточки кода и «Куда ушло»; запроса нет', async () => {
@@ -1010,6 +1042,12 @@ describe('FB-17: отчёт разбора v4', () => {
     await press(q('[data-review-open]'))
     expect(codeKinds()).toContain('week')
     expect(txt(q('[data-review-card="week"] [data-review-figure]'))).toMatch(/^\+\d+ %$/)
+    // «Отметить разовой» недели — тоже одним нажатием: самая крупная трата недели — разовая, раздел тот же (Х-16).
+    const before = sheetTitles().length
+    await press(cardButton('week'))
+    expect(sheetTitles()).toHaveLength(before)
+    expect(useOperationsStore().all.find((o) => o.id === 'aa0000d8')).toMatchObject({ oneOff: true, categoryId: 'sc_food' })
+    expect(txt(q('[data-review-card="week"] [data-review-card-op]'))).toMatch(/^SMALL · .+ · разовая$/)
   })
 
   it('кнопки открывают свои листы поверх отчёта; закрыли — отчёт на месте', async () => {
@@ -1029,13 +1067,33 @@ describe('FB-17: отчёт разбора v4', () => {
       expect(sheetTitles(), kind).not.toContain(title)
       expect(dialog(), kind).not.toBeNull()
     }
-    // «Отметить разовой» — лист операции: «Разовая» → закрыли → у карточки ✓, кнопки нет.
+  })
+
+  it('«Отметить разовой» — одним нажатием, раздел остаётся; ✓, строка «продавец · раздел · разовая», тост «Отменить» (Х-16)', async () => {
+    await open({ ai: false })
+    await seedRich()
+    await press(q('[data-review-open]'))
+    const all = () => useOperationsStore().all.find((o) => o.id === 'aa0000b4')!
+    const before = sheetTitles().length
     await press(cardButton('oneoff'))
-    await press(q('[data-op-oneoff]'))
-    await closeTopSheet()
+    // Листа нет — отмечено сразу; раздел траты не тронут.
+    expect(sheetTitles()).toHaveLength(before)
+    expect(all()).toMatchObject({ oneOff: true, categoryId: 'sc_education' })
     expect(q('[data-review-card="oneoff"] [data-review-card-done]')).not.toBeNull()
     expect(cardButton('oneoff')).toBeNull()
-    expect(useOperationsStore().all.find((o) => o.id === 'aa0000b4')!.oneOff).toBe(true)
+    const line = q('[data-review-card="oneoff"] [data-review-card-op]')
+    const cat = spendCategoryName(useFinanceStore().householdDoc.spendCategories ?? [], 'sc_education')
+    expect(txt(line)).toBe(`AVTOSHKOLA · ${cat} · разовая`)
+    expect(txt(q('[data-review-oneoff-toast]'))).toBe('Отметили разовой')
+    // Строка — лист операции (сменить раздел).
+    await press(line)
+    expect(sheetTitles().some((t) => t.includes('AVTOSHKOLA'))).toBe(true)
+    await closeTopSheet()
+    // «Отменить» в тосте — разовой больше нет, кнопка вернулась.
+    await press(q('[data-toast-action]'))
+    expect(all().oneOff).toBeFalsy()
+    expect(cardButton('oneoff')).not.toBeNull()
+    expect(q('[data-review-oneoff-toast]')).toBeNull()
   })
 
   it('лист «Не разобрано» — свои траты без раздела; строка — лист операции', async () => {

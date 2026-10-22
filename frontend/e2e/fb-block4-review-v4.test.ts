@@ -214,7 +214,11 @@ describe('e2e / Фидбек Блок 4б — разбор v4 свой у каж
     expect(oneoff.target).toMatchObject({ kind: 'op' })
     const { state, ctx } = a.finance.planInput(K)
     const usual = usualSpend(state.people ?? [], ctx.totals, ctx.spendCategories, ctx.uploads, K, 'a')
-    a.ops.editOp((oneoff.target as { opId: string }).opId, { oneOff: true })
+    // Кнопка отмечает одним нажатием (Х-16) — та же правка; раздел траты остаётся.
+    const oneoffId = (oneoff.target as { opId: string }).opId
+    const cat = a.ops.all.find((o) => o.id === oneoffId)!.categoryId
+    a.ops.editOp(oneoffId, { oneOff: true })
+    expect(a.ops.all.find((o) => o.id === oneoffId)).toMatchObject({ oneOff: true, categoryId: cat })
     expect(cardsOf(A).find((c) => c.kind === 'oneoff')).toBeUndefined()
     expect(codeKinds(await report(A))).not.toContain('oneoff')
     const after = a.finance.planInput(K)
