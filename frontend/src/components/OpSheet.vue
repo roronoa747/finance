@@ -11,6 +11,8 @@ import NumField from '@/components/kit/NumField.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import CategoryChips from '@/components/CategoryChips.vue'
+import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 
 /**
  * Лист своей операции (FB-04, Р-10, Р-12): заголовок — продавец коротко или получатель; строкой — день и сумма (с
@@ -97,7 +99,13 @@ function saveCash() {
         {{ dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7)) }} · {{ money(Math.abs(op.amount)) }}<template v-if="op.refund"> · вернули {{ plain(op.refund.amount) }}</template>
       </p>
       <Input v-model="memo" placeholder="Что это было" maxlength="60" autocapitalize="sentences" class="mb-3 w-full" data-op-memo @blur="saveMemo" />
-      <CategoryChips :counterparty="!!op.counterparty" :current="op.internal ? null : op.categoryId" @choose="choose" />
+      <!-- Подпись «Раздел» — как в форме «Трата»: без неё чипы читались как теги; что ответ уводит все траты продавца — в «?». -->
+      <Field label="Раздел" group class="!mb-0">
+        <template #hint>
+          <Hint label="Про раздел" data-op-category-hint>Нажмите на раздел, чтобы перенести туда все прошлые и будущие траты у этого продавца</Hint>
+        </template>
+        <CategoryChips :counterparty="!!op.counterparty" :current="op.internal ? null : op.categoryId" @choose="choose" />
+      </Field>
       <div v-if="spend" class="mt-3 flex flex-wrap gap-2 border-t border-line pt-3" data-op-extra>
         <Chip quiet :on="!!op.refund" data-op-refund @click="toggleRefund">Мне вернули</Chip>
       </div>
@@ -107,7 +115,7 @@ function saveCash() {
           <Chip quiet data-op-cash @click="startCash">Наличными</Chip>
         </div>
       </div>
-      <div v-else-if="refundMode === 'cash'" class="mt-2 flex gap-2" data-op-cash-row>
+      <div v-else-if="refundMode === 'cash'" class="mt-2 flex items-center gap-2" data-op-cash-row>
         <NumField v-model="cash" class="min-w-0 flex-1" aria-label="Сколько вернули" />
         <Button size="sm" data-op-cash-done @click="saveCash">Готово</Button>
       </div>

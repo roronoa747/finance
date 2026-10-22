@@ -9,7 +9,7 @@ import Input from '@/components/ui/Input.vue'
 /**
  * «+ Раздел» (FB-03, Р-3, Р-13): тихий чип в ряду разделов — нажатие открывает строку «имя · Готово» на всю ширину ряда
  * (ряд — `flex-wrap`). «Готово» заводит раздел в общем документе (`addSpendCategory`: дубль по имени — тот же раздел) и
- * отдаёт его id — родитель делает с ним то же, что с нажатием чипа. Пустое имя — ничего. Viewer чипа не видит.
+ * отдаёт его id — родитель делает с ним то же, что с нажатием чипа. Пустое имя — поле подсвечено. Viewer чипа не видит.
  */
 const emit = defineEmits<{ (e: 'created', id: string): void }>()
 
@@ -19,15 +19,23 @@ const open = ref(false)
 const name = ref('')
 const row = ref<HTMLElement | null>(null)
 
+const empty = ref(false)
+const focus = () => void nextTick(() => row.value?.querySelector('input')?.focus())
+
 function start() {
   open.value = true
   name.value = ''
-  void nextTick(() => row.value?.querySelector('input')?.focus())
+  empty.value = false
+  focus()
 }
 
 function done() {
   const id = finance.addSpendCategory(name.value)
-  if (!id) return
+  if (!id) {
+    empty.value = true
+    focus()
+    return
+  }
   open.value = false
   emit('created', id)
 }
@@ -36,8 +44,17 @@ function done() {
 <template>
   <template v-if="!auth.isViewer">
     <Chip quiet data-new-category @click="start">+ Раздел</Chip>
-    <div v-if="open" ref="row" class="flex w-full gap-2" data-new-category-row>
-      <Input v-model="name" placeholder="Подарки" maxlength="24" autocapitalize="sentences" class="min-w-0 flex-1" @keydown.enter.prevent="done" />
+    <div v-if="open" ref="row" class="flex w-full items-center gap-2" data-new-category-row>
+      <Input
+        v-model="name"
+        placeholder="Подарки"
+        maxlength="24"
+        autocapitalize="sentences"
+        class="min-w-0 flex-1"
+        :aria-invalid="empty || undefined"
+        @input="empty = false"
+        @keydown.enter.prevent="done"
+      />
       <Button size="sm" data-new-category-done @click="done">Готово</Button>
     </div>
   </template>

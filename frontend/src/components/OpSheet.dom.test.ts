@@ -148,4 +148,28 @@ describe('FB-04: лист операции (OpSheet)', () => {
     expect(spy).toHaveBeenCalledWith(ruleMatchOf(SHOP), { categoryId: 'sc_cafe' })
     expect(dialog()).toBeNull()
   })
+
+  it('ux: над чипами — подпись «Раздел» с «?»: ответ уводит все траты продавца', async () => {
+    await mount()
+    await open('p1')
+    const group = dialog()!.querySelector('[role="group"][aria-label="Раздел"]')
+    expect(group?.textContent).toContain('Продукты')
+    await press(dialog()!.querySelector<HTMLElement>('button[aria-label="Про раздел"]'))
+    expect(txt(document.body)).toContain('Нажмите на раздел, чтобы перенести туда все прошлые и будущие траты у этого продавца')
+  })
+
+  it('ux: «+ Раздел» с пустым именем — поле подсвечено, раздела нет; ввод снимает подсветку', async () => {
+    await mount()
+    await open('p1')
+    const before = useFinanceStore().householdDoc.spendCategories?.length ?? 0
+    await press(button('+ Раздел'))
+    await press(dialog()!.querySelector<HTMLElement>('[data-new-category-done]'))
+    const input = dialog()!.querySelector<HTMLInputElement>('[data-new-category-row] input')!
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(useFinanceStore().householdDoc.spendCategories?.length ?? 0).toBe(before)
+    input.value = 'Подарки'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flush()
+    expect(input.getAttribute('aria-invalid')).toBeNull()
+  })
 })

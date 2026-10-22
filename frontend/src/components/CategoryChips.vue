@@ -55,7 +55,7 @@ function savePerson() {
       <Chip quiet @click="choose({ internal: true })">Между своими</Chip>
       <Chip v-if="forgot" quiet @click="choose({ categoryId: OTHER_CATEGORY })">Не помню</Chip>
     </div>
-    <div v-if="personOpen" class="flex gap-2">
+    <div v-if="personOpen" class="flex items-center gap-2">
       <Input v-model="personText" placeholder="например, няня" class="min-w-0 flex-1" />
       <Button size="sm" @click="savePerson">Запомнить</Button>
     </div>
