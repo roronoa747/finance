@@ -70,7 +70,7 @@ describe('oneOffLike — похоже на разовую', () => {
 
   it('порог: 20 000 и 5 % факта — да; на шаг ниже — нет', () => {
     const at = op('AVTOSHKOLA', -ONE_OFF_MIN, 'sc_edu', '2026-09-12')
-    expect(oneOffLike([...before, at], SEP, fact)).toEqual([{ opId: at.id, name: 'AVTOSHKOLA', amount: 20_000 }])
+    expect(oneOffLike([...before, at], SEP, fact)).toEqual([{ opId: at.id, name: 'AVTOSHKOLA', amount: 20_000, categoryId: 'sc_edu' }])
     expect(oneOffLike([...before, op('AVTOSHKOLA', -(ONE_OFF_MIN - 1), 'sc_edu', '2026-09-12')], SEP, fact)).toEqual([])
     // Доля: 20 000 при факте 400 001 — ниже 5 %.
     expect(oneOffLike([...before, at], SEP, fact + 1)).toEqual([])

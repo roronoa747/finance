@@ -969,7 +969,8 @@ describe('FB-17: отчёт разбора v4', () => {
     useAiStore().setConsent(true)
     await flush()
     await press(q('[data-review-open]'))
-    expect(kinds()).toEqual(['work', 'lead', 'code', 'code', 'code', 'code', 'code', 'where4'])
+    // Автошкола — одна карточка «Похоже на разовую», без «Поставить план» образования (Х-13).
+    expect(kinds()).toEqual(['work', 'lead', 'code', 'code', 'code', 'code', 'where4'])
     expect(codeKinds()[0]).toBe('people')
     expect(new Set(codeKinds())).toEqual(new Set(['people', 'plan', 'unknown', 'oneoff']))
     expect(txt(q('[data-review-lead-title]'))).toBe('Люди и мечта')

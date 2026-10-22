@@ -6385,7 +6385,10 @@ export function reviewCards(
       line: `${cash.bare} ${plural(cash.bare, 'снятие', 'снятия', 'снятий')} без заметки`, button: 'На что?', target: { kind: 'cat', categoryId: 'sc_cash' }, monthly: cash.amount,
     })
   }
+  // Покупки «Похоже на разовую» по разделам — «Поставить план» их не считает (одна покупка — одна карточка, Х-13).
+  const likeOneOff = new Map<string, number>()
   for (const o of oneOffLike(ops, month, fact, cats)) {
+    likeOneOff.set(o.categoryId, (likeOneOff.get(o.categoryId) ?? 0) + o.amount)
     card({
       kind: 'oneoff', key: o.opId, title: 'Похоже на разовую', figure: { value: o.amount, unit: 'money' },
       line: `${o.name} — впервые за 3 месяца`, button: 'Отметить разовой', target: { kind: 'op', opId: o.opId }, monthly: o.amount, subject: o.name,
@@ -6448,7 +6451,8 @@ export function reviewCards(
   const prev = new Map(spendCompare(state, { ...ctx, key: addMonths(month, -1) }, by).rows.map((r) => [r.categoryId, r]))
   const grew = new Set(findings.flatMap((f) => (f.kind === 'grew' ? [f.categoryId] : [])))
   const plans = spendCompare(state, mctx, by)
-    .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
+    .rows.map((r) => (r.amount === null ? r : { ...r, amount: r.amount - (likeOneOff.get(r.categoryId) ?? 0) }))
+    .filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
     .filter((r) => {
       const over = (x?: SpendCompareRow) => !!x && x.plan !== null && x.plan > 0 && x.amount !== null && x.amount > x.plan
       if (!r.plan) return share(r.amount!, PLAN_CARD_SHARE)

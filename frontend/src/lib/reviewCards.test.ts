@@ -164,6 +164,20 @@ describe('reviewCards — виды таблицы Р-24', () => {
     expect(kind(cardsOf(family({ ops: once, plans: [plan('a', 'sc_food', 200_000), plan('a', 'sc_cafe', 10_000)] })), 'plan')).toEqual([])
   })
 
+  it('поставить план без покупки «Похоже на разовую»: одна покупка — одна карточка, счётчик без двойного счёта (Х-13)', () => {
+    // Раздел «Образование» держится на одной новой покупке 120 000 — только «Похоже на разовую», плана нет.
+    const school = op('AVTOSHKOLA', -120_000, 'sc_edu', '2026-10-02')
+    const one = cardsOf(family({ ops: [school] }))
+    expect(kind(one, 'oneoff').map((c) => c.figure.value)).toEqual([120_000])
+    expect(kind(one, 'plan').filter((c) => c.target.kind === 'plan' && c.target.categoryId === 'sc_edu')).toEqual([])
+    const f = family({ ops: [school] })
+    expect(reviewWork({ ...f.doc, book: null }, f.ctx, one, one, 'a').monthly).toBeLessThan(2 * 120_000)
+    // Кроме неё в разделе ещё 30 000 (≥ 10 % факта 200 000): «Поставить план» — на 30 000, без покупки.
+    const books = ['2026-10-05', '2026-10-06'].map((d) => op('KNIGI', -15_000, 'sc_edu', d))
+    const [p] = kind(cardsOf(family({ ops: [school, ...books] })), 'plan').filter((c) => c.target.kind === 'plan' && c.target.categoryId === 'sc_edu')
+    expect(p).toMatchObject({ figure: { value: 30_000 }, line: 'Плана нет', target: { kind: 'plan', categoryId: 'sc_edu', amount: 30_000 } })
+  })
+
   it('поставить план: «обычно» не выше плана — сумма кнопки — факт, план не понижается (критик 4б)', () => {
     // План 15 000; кафе 20 000 в августе, сентябре, октябре — выше плана второй месяц; «обычно» 13 333 < плана.
     const cafe = ['2026-08-12', '2026-09-12', '2026-10-02'].map((d) => op('KAFE', -20_000, 'sc_cafe', d))
@@ -193,6 +207,8 @@ describe('reviewCards — порядок, лимит, `by`', () => {
     op('AVTOSHKOLA', -60_000, 'sc_edu', '2026-10-02'),
     op('DIVAN', -50_000, 'sc_home', '2026-10-01'),
     op('SULPAK', -15_000, 'sc_tech', '2026-10-07'),
+    // Кафе без плана — своя карточка «Поставить план» (покупки «Похоже на разовую» её больше не дают, Х-13).
+    ...['2026-10-08', '2026-10-09', '2026-10-10'].map((d) => op('KAFE', -15_000, 'sc_cafe', d)),
   ]
 
   it('«Не разобрано» — первой, остальные по ₸ в месяц; не больше 6; все числа целые', () => {

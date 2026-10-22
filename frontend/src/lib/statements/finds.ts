@@ -298,7 +298,7 @@ export const unknownShare = (ops: Operation[], period: string): ShareFind => sha
  * 3 прошлых месяца; до `ONE_OFF_MAX` по сумме. Без своих операций раньше месяца — пусто: «новым» был бы каждый продавец.
  * Трата без раздела — мимо: её сначала разбирают карточкой «Не разобрано» (одна операция — одна карточка).
  */
-export function oneOffLike(ops: Operation[], period: string, fact: number, categories: Categories = []): { opId: string; name: string; amount: number }[] {
+export function oneOffLike(ops: Operation[], period: string, fact: number, categories: Categories = []): { opId: string; name: string; amount: number; categoryId: string }[] {
   const from = addMonths(period, -ONE_OFF_MONTHS)
   const before = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) < period && isSpend(op))
   // Свои траты — в каждом из 3 прошлых месяцев: выписка с 28-го прошлого месяца строку «впервые за 3 месяца» не даёт.
@@ -309,7 +309,7 @@ export function oneOffLike(ops: Operation[], period: string, fact: number, categ
     .filter((op) => spendOf(op) >= ONE_OFF_MIN && spendOf(op) * 100 >= fact * ONE_OFF_SHARE)
     .sort((a, b) => spendOf(b) - spendOf(a) || a.id.localeCompare(b.id))
     .slice(0, ONE_OFF_MAX)
-    .map((op) => ({ opId: op.id, name: clipName(op.merchant), amount: spendOf(op) }))
+    .map((op) => ({ opId: op.id, name: clipName(op.merchant), amount: spendOf(op), categoryId: op.categoryId! }))
 }
 
 /**
