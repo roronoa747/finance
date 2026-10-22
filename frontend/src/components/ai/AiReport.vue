@@ -120,10 +120,21 @@ function freeze() {
 watch(ordered, (list) => {
   if (!frozen.value.length && list.length) frozen.value = list
 })
+// Мысль пришла при открытом отчёте («Думаю…» → ответ, «Обновить») — её `next` встаёт следом, пока человек не нажимал
+// кнопок (Р-23; номер ✦ `card=n` считается тем же порядком — критик 4б).
+watch(
+  () => mine.value?.id,
+  () => {
+    if (!acted.value.size && ordered.value.length) frozen.value = ordered.value
+  },
+)
+/** Карточки-списки: разобрал одну трату из многих — кнопка остаётся, ✓ — когда карточка ушла (критик 4б). */
+const LIST_CARDS: ReviewCard['kind'][] = ['unknown', 'people', 'cash']
 function isDone(c: ReviewCard): boolean {
   if (c.target.kind === 'do') return made(c.target.candidate)
   if (!acted.value.has(c.id)) return false
   const now = props.cards?.find((x) => x.id === c.id)
+  if (LIST_CARDS.includes(c.kind)) return !now
   return !now || JSON.stringify(now) !== JSON.stringify(c)
 }
 function press(c: ReviewCard) {
@@ -259,7 +270,7 @@ const cards = computed<Card[]>(() => {
     if (mine.value?.lead) out.push({ kind: 'lead' })
     else if (!mine.value && ai.reviewState !== 'idle') out.push({ kind: 'state' })
     out.push(...frozen.value.map((card, i) => ({ kind: 'code' as const, card, n: i + 1 })))
-    if (split.value) out.push({ kind: 'where4' })
+    if (split.value?.total) out.push({ kind: 'where4' }) // трат месяца нет — пустой полосы нет (критик 4б)
     return out.length ? out : [{ kind: 'state' }]
   }
   if (!props.review) return [{ kind: 'state' }]

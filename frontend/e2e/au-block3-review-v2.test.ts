@@ -111,8 +111,9 @@ describe('e2e / ИИ-польза Блок 3 — разбор приходит �
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
     // Телефоны в тесте делят одно хранилище; попытку повода телефон 1 пишет до запроса (возврат AU-33) — у телефона 2
-    // своё хранилище, где её нет.
+    // своё хранилище, где её нет. Попытка пишется после свежего личного документа (критик 4б) — стираем после запроса.
     const first = one.ai.autoReview(one.aiClient)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     storage.delete('ff_ai_auto')
     await Promise.all([first, two.ai.autoReview(two.aiClient)])
     expect(aiReview).toHaveBeenCalledTimes(2)

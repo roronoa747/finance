@@ -17,6 +17,7 @@ import {
   cushionCover,
   freeByFact,
   allInDebt,
+  findMonth,
   goalPace,
   habitImages,
   lastAccountFor,
@@ -436,7 +437,15 @@ const spendShare = (fact: number | null, planned: number | null) =>
   fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
 /** Лист раздела: нажатие строки или адрес `?cat=<id>` («Открыть» совета и строка «Куда ушло» отчёта, Р-18, RZ-08); закрыли — параметр снят. */
 const { value: catFor, close: closeCat } = useQueryValue('cat')
-const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
+/**
+ * Месяц листов раздела и «Не разобрано»: поверх отчёта v4 — месяц его карточек (`findMonth` по своим выпискам: в первые
+ * дни месяца — прошлый), иначе — месяц экрана (критик 4б: «Разобрать» 12 трат открывал пустой лист текущего месяца).
+ */
+const sheetMonth = computed(() => (reviewOpen.value && v4Cards.value ? findMonth(ctx.value, me.value) : props.monthKey))
+const sheetCompare = computed(() =>
+  sheetMonth.value === props.monthKey || !canEdit.value ? compare.value : spendCompare(state.value, { ...ctx.value, key: sheetMonth.value }, me.value),
+)
+const catRow = computed(() => sheetCompare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 /** Раздел семьи, где у меня нет ни трат, ни плана (`?cat=` из отчёта): лист «нет трат», цифр партнёра нет (FB-12). */
 const catNone = computed(() => (canEdit.value && catFor.value && !catRow.value ? (categories.value.find((c) => c.id === catFor.value)?.name ?? null) : null))
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group, me.value) : null))
@@ -454,7 +463,7 @@ watch(catFor, () => (catAll.value = false))
 const catOps = computed(() => {
   if (!catFor.value || !canEdit.value) return null
   const { marked, categories } = ops.totalMarks(ops.shown)
-  return sectionMonth(ops.shown, { month: props.monthKey, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
+  return sectionMonth(ops.shown, { month: sheetMonth.value, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
 })
 const catOp = ref<string | null>(null)
 const catHand = ref<string | null>(null)
@@ -504,7 +513,7 @@ watch(unknownOpen, () => (unknownAll.value = false))
 const unknownOps = computed(() => {
   if (!unknownOpen.value || !canEdit.value) return null
   const { marked, categories } = ops.totalMarks(ops.shown)
-  const list = sectionMonth(ops.shown, { month: props.monthKey, categoryId: UNKNOWN_CATEGORY, marked, categories, ...(unknownAll.value ? { limit: Infinity } : {}) })
+  const list = sectionMonth(ops.shown, { month: sheetMonth.value, categoryId: UNKNOWN_CATEGORY, marked, categories, ...(unknownAll.value ? { limit: Infinity } : {}) })
   return list.count ? list : null
 })
 
@@ -1069,9 +1078,9 @@ function addFund(kind: 'reserve' | 'cushion') {
       :row="catRow"
       :rk="catRk"
       :plans="catPlans"
-      :can-edit="canEdit && monthKey >= monthNow()"
+      :can-edit="canEdit && sheetMonth >= monthNow()"
       :image="catImage"
-      :month="monthKey"
+      :month="sheetMonth"
       :ops="catOps"
       :none="catNone"
       :z="sheetZ"
@@ -1088,7 +1097,7 @@ function addFund(kind: 'reserve' | 'cushion') {
       <SectionOpsList v-if="oneOffOps" :ops="oneOffOps" @more="oneOffAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
     </Sheet>
     <Sheet :open="unknownOpen && canEdit" title="Не разобрано" :z="sheetZ" @close="closeUnknown">
-      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-unknown-amount>{{ money(compare.unknown) }}</p>
+      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-unknown-amount>{{ money(sheetCompare.unknown) }}</p>
       <p class="mt-1 text-[14px] text-ink-2">траты без раздела</p>
       <SectionOpsList v-if="unknownOps" :ops="unknownOps" data-unknown-ops @more="unknownAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
     </Sheet>

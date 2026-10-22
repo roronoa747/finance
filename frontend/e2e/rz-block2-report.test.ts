@@ -194,17 +194,21 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
     expect(visible(html)).toContain('Кафе и рестораны')
   })
 
-  it('(г) телефон 2 — тот же отчёт без запроса; точка «новый» гаснет после открытия', async () => {
+  // Было «тот же отчёт без запроса»: отменено Р-27 — общий v3 повод не закрывает. Выписка телефона 2 — по 30 сентября:
+  // его месяц находок — сентябрь (`findMonth` по своим выпискам, критик 4б), свой первый v4 — один запрос.
+  it('(г) телефон 2 — свой первый v4 за свой месяц находок, общий v3 партнёра повод не закрывает; точка гаснет после открытия', async () => {
     const one = await as('member', 'a')
     saveV3(one.store, K, answerFor)
     await sync(one)
     const two = await as('member', 'b')
-    await two.ai.autoReview(two.aiClient)
-    expect(aiReview).not.toHaveBeenCalled()
+    aiReview.mockImplementationOnce(async (body: unknown) => leadFor(body))
+    expect(await two.ai.autoReview(two.aiClient)).toMatchObject({ v: 4, by: 'b', month: K })
+    expect(aiReview).toHaveBeenCalledTimes(1)
     expect(await screen(two.pinia, Month, '/month')).toContain('data-review-dot')
-    const html = await report(two)
-    expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
+    expect(await report(two)).toContain('data-review-lead')
     expect(await screen(two.pinia, Month, '/month')).not.toContain('data-review-dot')
+    expect(await two.ai.autoReview(two.aiClient)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
   it('(д) viewer: «Открыть» есть, «Сделать» и «Обновить» нет; сам не разбирает', async () => {

@@ -185,22 +185,22 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     expect(html).toContain('href="/money/history?cat=sc_health"')
     expect(html).toMatch(/data-review-do(?=[\s=>])/)
     expect(old.v).toBe(3)
-    // Партнёр — тот же старый общий отчёт без запроса (своих трат октября нет — карточек нет); разбор новый — точка есть.
+    // Партнёр: выписка по 30 сентября — его месяц находок сентябрь (`findMonth` по своим выпискам, критик 4б): общий v3
+    // повод не закрывает (Р-27) — свой первый v4, один запрос.
     const two = await as('member', 'b')
-    expect(await two.ai.autoReview(two.aiClient)).toBeNull()
-    expect(await screen(two.pinia, Month, '/month')).toContain('data-review-dot')
-    expect(cards(await screen(two.pinia, Month, '/month?review=1'))).toEqual(['work', 'where', 'advice', 'advice'])
-    expect(aiReview).not.toHaveBeenCalled()
+    expect(await two.ai.autoReview(two.aiClient)).toMatchObject({ v: 4, by: 'b', month: K })
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(await screen(two.pinia, Month, '/month?review=1')).toContain('data-review-lead')
 
     // Телефон a новой сборки: общий v3 не свой v4 — повод открыт (бэклог «Фидбек», Р-27): один запрос v4 (карточки кода
     // из итогов — кафе без плана), дальше отчёт — свой v4.
     setActivePinia(phone.pinia)
-    // Телефоны в тесте делят одно хранилище: попытку повода (без карточек — исход без запроса) записал телефон партнёра.
+    // Телефоны в тесте делят одно хранилище: попытку повода записал телефон партнёра.
     storage.delete('ff_ai_auto')
     expect(await phone.ai.autoReview(phone.aiClient)).toMatchObject({ v: 4, month: K })
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview).toHaveBeenCalledTimes(2)
     expect(await phone.ai.autoReview(phone.aiClient)).toBeNull()
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview).toHaveBeenCalledTimes(2)
     expect(await screen(phone.pinia, Month, '/month?review=1')).toContain('data-review-lead')
   })
 

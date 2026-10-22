@@ -259,11 +259,18 @@ export const useAiStore = defineStore('ai', () => {
       const all = readAiAuto()
       writeAiAuto({ ...all, [rk]: { ...all[rk], ...p } })
     }
-    const tried = mine()[rk]
-    const age = tried?.at ? Date.now() - Date.parse(tried.at) : Infinity
     // Попытка за сутки: с исходом или уже повторная — молчим; без исхода и моложе окна ответа — запрос, возможно, ещё
     // идёт (вторая вкладка) — ждём; без исхода и старше окна — оборвана, идём повторять один раз (`lost`).
-    if (age < DAY_MS && (tried!.done || tried!.retry || age < REVIEW_INFLIGHT_MS)) return null
+    const ageOf = (t?: AiAutoTry) => (t?.at ? Date.now() - Date.parse(t.at) : Infinity)
+    const waits = (t?: AiAutoTry) => ageOf(t) < DAY_MS && (!!t!.done || !!t!.retry || ageOf(t) < REVIEW_INFLIGHT_MS)
+    if (waits(mine()[rk])) return null
+    // Повод решает личный документ, а синк зовёт разбор после общего — личный подтягивается рядом: свой разбор месяца
+    // со второго телефона человека мог ещё не дойти. Перед платным запросом — свежий личный документ и повод заново
+    // (критик 4б); не подтянулся — повод не тратим. Пока ждали, мог уйти запрос другого вызова — попытку читаем заново.
+    if (!(await finance.pullPrivateDoc(client)) || inflight || autoReason(key) !== reason) return null
+    const tried = mine()[rk]
+    const age = ageOf(tried)
+    if (waits(tried)) return null
     const lost = age < DAY_MS
     if (consent.value === 'unknown') {
       // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить заново один раз на повод.

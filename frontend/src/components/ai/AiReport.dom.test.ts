@@ -932,6 +932,7 @@ describe('RZ-07: отчёт разбора v3', () => {
  */
 describe('FB-17: отчёт разбора v4', () => {
   const OWN: Operation[] = [
+    { id: 'aa0000a0', bank: 'kaspi', date: '2026-06-16', amount: -50_000, kind: 'purchase', merchant: 'MAGNUM', categoryId: 'sc_food', internal: false },
     { id: 'aa0000a1', bank: 'kaspi', date: '2026-07-14', amount: -50_000, kind: 'purchase', merchant: 'MAGNUM', categoryId: 'sc_food', internal: false },
     { id: 'aa0000a2', bank: 'kaspi', date: '2026-08-11', amount: -50_000, kind: 'purchase', merchant: 'MAGNUM', categoryId: 'sc_food', internal: false },
     { id: 'aa0000b1', bank: 'kaspi', date: '2026-09-03', amount: -30_000, kind: 'purchase', merchant: 'SHOP X', categoryId: null, internal: false },
@@ -939,12 +940,13 @@ describe('FB-17: отчёт разбора v4', () => {
     { id: 'aa0000b3', bank: 'kaspi', date: '2026-09-05', amount: -60_000, kind: 'transfer-out', merchant: 'Замира Ш.', counterparty: 'Замира Ш.', note: 'Перевод', categoryId: 'sc_people', internal: false },
     { id: 'aa0000b4', bank: 'kaspi', date: '2026-09-06', amount: -40_000, kind: 'purchase', merchant: 'AVTOSHKOLA', categoryId: 'sc_education', internal: false },
   ]
-  async function seedRich() {
+  async function seedRich({ extra = [] as Operation[], to = '2026-09-10' } = {}) {
     const ops = useOperationsStore()
-    ops.ops = Object.fromEntries(OWN.map((o) => [o.id, o]))
-    const upload = { id: 'u-a', slot: 'a' as const, bank: 'kaspi', period_from: '2026-07-01', period_to: '2026-09-10', ops_count: OWN.length, created_at: T0 }
+    const list = [...OWN, ...extra]
+    ops.ops = Object.fromEntries(list.map((o) => [o.id, o]))
+    const upload = { id: 'u-a', slot: 'a' as const, bank: 'kaspi', period_from: '2026-06-01', period_to: to, ops_count: list.length, created_at: T0 }
     await ops.loadUploads({ listStatementUploads: async () => ({ uploads: [upload] }) } as unknown as ApiClient)
-    const totals = ['2026-07', '2026-08', KEY].flatMap((m) => spendTotals(OWN, 'a', 'month', m, T0, { marked: new Set(), categories: [] }))
+    const totals = ['2026-06', '2026-07', '2026-08', KEY].flatMap((m) => spendTotals(list, 'a', 'month', m, T0, { marked: new Set(), categories: [] }))
     useFinanceStore().mutateHouseholdDoc((d) => void (d.spendTotals = totals))
     await flush()
   }
@@ -1030,6 +1032,44 @@ describe('FB-17: отчёт разбора v4', () => {
     expect(txt(row)).toContain('SHOP X')
     await press(row)
     expect(sheetTitles().some((t) => t.includes('SHOP X'))).toBe(true)
+  })
+
+  it('мысль пришла при открытом отчёте («Думаю…» → ответ) — её `next` встаёт первой из карточек (критик 4б)', async () => {
+    const finance = await open({ ai: false })
+    await seedRich()
+    await press(q('[data-review-open]'))
+    expect(codeKinds()[0]).toBe('unknown')
+    finance.mutatePrivateDoc((d) => void (d.aiReviews = [mineV4()]))
+    await flush()
+    expect(codeKinds()[0]).toBe('people')
+  })
+
+  it('«Не разобрано»: разобрал одну трату из двух — кнопка остаётся, ✓ нет; разобрал все — ✓ (критик 4б)', async () => {
+    await open({ ai: false })
+    const z: Operation = { id: 'aa0000b5', bank: 'kaspi', date: '2026-09-07', amount: -25_000, kind: 'purchase', merchant: 'SHOP Z', categoryId: null, internal: false }
+    await seedRich({ extra: [z] })
+    await press(q('[data-review-open]'))
+    await press(cardButton('unknown'))
+    await closeTopSheet()
+    const ops = useOperationsStore()
+    ops.ops = { ...ops.ops, aa0000b1: { ...ops.ops.aa0000b1, categoryId: 'sc_food' } }
+    await flush()
+    expect(q('[data-review-card="unknown"] [data-review-card-done]')).toBeNull()
+    expect(cardButton('unknown')).not.toBeNull()
+    ops.ops = { ...ops.ops, aa0000b5: { ...z, categoryId: 'sc_food' } }
+    await flush()
+    expect(q('[data-review-card="unknown"] [data-review-card-done]')).not.toBeNull()
+  })
+
+  it('первые дни месяца (выписка по 5-е): «Разобрать» — «Не разобрано» месяца карточек, прошлого (критик 4б)', async () => {
+    await open({ ai: false })
+    const aug: Operation = { id: 'aa0000c1', bank: 'kaspi', date: '2026-08-20', amount: -25_000, kind: 'purchase', merchant: 'SHOP Z', categoryId: null, internal: false }
+    await seedRich({ extra: [aug], to: '2026-09-05' })
+    await press(q('[data-review-open]'))
+    await press(cardButton('unknown'))
+    expect(q('[data-cat-op="aa0000c1"]')).not.toBeNull()
+    expect(q('[data-cat-op="aa0000b1"]')).toBeNull()
+    expect(txt(q('[data-unknown-amount]'))).toBe(money(25_000).replace(/\s/g, ' '))
   })
 
   it('viewer — отчёта v4 нет: без разбора в общем документе пилюли нет', async () => {

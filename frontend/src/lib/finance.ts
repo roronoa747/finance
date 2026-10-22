@@ -7,7 +7,7 @@ import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTo
 import { HABITS } from '@/lib/statements/habits'
 import {
   CASH_SHARE,
-  FIND_NAME_MAX,
+  keyOf as sellerKey,
   PEOPLE_SHARE,
   SMALL_SHARE,
   UNKNOWN_SHARE,
@@ -6061,11 +6061,15 @@ export type ReviewFinding =
 /** Ключ находки участника — продавец или раздел после `участник:месяц:вид:`. */
 export const findKey = (f: Pick<ReviewFind, 'id' | 'by' | 'period' | 'kind'>) => f.id.slice(f.by.length + f.period.length + f.kind.length + 3)
 
-/** Месяц, о котором находки разбора месяца `ctx.key` (`FIND_MONTH_MIN_DAY`). */
-export function findMonth(ctx: Pick<MonthPlanCtx, 'key' | 'uploads'>): string {
+/**
+ * Месяц, о котором находки разбора месяца `ctx.key` (`FIND_MONTH_MIN_DAY`). С `by` — по выпискам участника (разбор v4
+ * свой у каждого, Р-23: выписка партнёра за текущий месяц не сдвигает мой разбор на месяц без моих операций — критик 4б).
+ */
+export function findMonth(ctx: Pick<MonthPlanCtx, 'key' | 'uploads'>, by?: PersonId): string {
   const from = `${ctx.key}-01`
   const day = `${ctx.key}-${String(FIND_MONTH_MIN_DAY).padStart(2, '0')}`
-  return ctx.uploads.some((u) => u.period_from.slice(0, 10) <= day && u.period_to.slice(0, 10) >= day && u.period_to.slice(0, 10) >= from)
+  const uploads = by ? ctx.uploads.filter((u) => u.slot === by) : ctx.uploads
+  return uploads.some((u) => u.period_from.slice(0, 10) <= day && u.period_to.slice(0, 10) >= day && u.period_to.slice(0, 10) >= from)
     ? ctx.key
     : addMonths(ctx.key, -1)
 }
@@ -6127,7 +6131,7 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx, by?: Pe
   leaks.sort((a, b) => b.monthly - a.monthly)
 
   // «Что раздуло»: раздел выше обычного и почему — 1–2 крупные покупки или частота; без причины — не находка (Р-1).
-  const month = findMonth(ctx)
+  const month = findMonth(ctx, by)
   const mctx = { ...ctx, key: month }
   const grew: Extract<ReviewFinding, { kind: 'grew' }>[] = []
   const usualOf = usualMonths(people, ctx.totals, ctx.uploads, month, 3, by)
@@ -6266,7 +6270,7 @@ export type WhereRow = {
  * деньги). Текста нет — его пишет модель. С `by` — разделы одного участника (FB-15).
  */
 export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5, by?: PersonId): WhereRow[] {
-  const rows = spendCompare(state, { ...ctx, key: findMonth(ctx) }, by)
+  const rows = spendCompare(state, { ...ctx, key: findMonth(ctx, by) }, by)
     .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
     .sort((a, b) => b.amount! - a.amount! || a.categoryId.localeCompare(b.categoryId))
   const max = Math.max(0, ...rows.flatMap((r) => [r.amount!, r.usual ?? 0, r.plan ?? 0]))
@@ -6345,7 +6349,7 @@ export function reviewCards(
   by: PersonId,
   opts: ReviewCardsOpts = {},
 ): ReviewCard[] {
-  const month = findMonth(ctx)
+  const month = findMonth(ctx, by)
   const mctx = { ...ctx, key: month }
   const cats = ctx.spendCategories
   const fact = factFor(state, mctx, by)
@@ -6353,7 +6357,6 @@ export function reviewCards(
   const share = (amount: number, pctMin: number) => amount > 0 && amount * 100 >= fact * pctMin
   const findings = reviewFindings(state, ctx, by)
   const mine = ops.filter((op) => op.date.slice(0, 7) === month && isSpend(op))
-  const sellerKey = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
   const out: ReviewCard[] = []
   const card = (c: Omit<ReviewCard, 'id'> & { key?: string }) => {
     const { key, ...rest } = c
@@ -6457,7 +6460,8 @@ export function reviewCards(
   for (const { r, monthly } of plans) {
     card({
       kind: 'plan', key: r.categoryId, title: r.name, figure: { value: monthly, unit: 'money' },
-      line: r.plan ? PLAN_LINE.over : PLAN_LINE.none, subject: r.name, button: 'Поставить план', target: { kind: 'plan', categoryId: r.categoryId, amount: r.usual || r.amount! }, monthly,
+      // «Обычно» не выше плана (выше плана — только эти месяцы) — план по факту: кнопка не понижает план (критик 4б).
+      line: r.plan ? PLAN_LINE.over : PLAN_LINE.none, subject: r.name, button: 'Поставить план', target: { kind: 'plan', categoryId: r.categoryId, amount: r.usual && r.usual > (r.plan ?? 0) ? r.usual : r.amount! }, monthly,
     })
   }
 
@@ -6484,7 +6488,7 @@ export type WherePart = { key: 'sellers' | 'people' | 'cash' | 'payments'; amoun
  * факт; `share` — целые % от факта (подпись полосы и факт модели). Выписок за месяц нет — null.
  */
 export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonId): { month: string; total: number; parts: WherePart[] } | null {
-  const month = findMonth(ctx)
+  const month = findMonth(ctx, by)
   if (!peopleOf(state.people ?? [], by).length || !uploadedBy(by, month, ctx.uploads)) return null
   const live = ctx.spendCategories.filter(alive)
   const sums: Record<WherePart['key'], number> = { sellers: 0, people: 0, cash: 0, payments: 0 }

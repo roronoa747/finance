@@ -113,6 +113,25 @@ describe('autoReview — повод «месяц», свой у каждого',
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
+  it('свой разбор месяца уже сделал второй телефон, личный документ здесь старый — перед запросом свежий личный: 0 (критик 4б)', async () => {
+    const { finance, ai } = await family()
+    const { client, aiReview } = fakeClient({ aiReviews: [mine({ id: 'r-a2' })] })
+    expect(await ai.autoReview(client)).toBeNull()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(finance.aiReviewOf(KEY)!.id).toBe('r-a2')
+    expect(localStorage.getItem('ff_ai_auto')).toBeNull()
+  })
+
+  it('личный документ не подтянулся (сеть) — повод не тратим: ни запроса, ни попытки (критик 4б)', async () => {
+    const { ai } = await family()
+    const { client, aiReview } = fakeClient()
+    ;(client.getPrivateDoc as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await ai.autoReview(client)).toBeNull()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(localStorage.getItem('ff_ai_auto')).toBeNull()
+    expect(await ai.autoReview(client)).not.toBeNull()
+  })
+
   it('два вызова сразу (focus и visibility) — один запрос', async () => {
     const { ai } = await family()
     const { client, aiReview } = fakeClient()
@@ -330,7 +349,8 @@ describe('autoReview — молча', () => {
     await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(2))
     fail(new ApiError('ai_failed', 502))
     await september
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)['v4:month:2026-10']).toMatchObject({ at: '2026-09-30T19:00:10.000Z' })
+    // Попытка октября второй вкладки на месте (пишется после свежего личного документа — на миллисекунды позже).
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)['v4:month:2026-10'].at).toMatch(/^2026-09-30T19:00:1/)
     vi.setSystemTime(new Date('2026-09-30T19:02:00Z'))
     void (await restart()).autoReview(client)
     await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(3))

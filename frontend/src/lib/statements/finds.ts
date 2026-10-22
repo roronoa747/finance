@@ -53,7 +53,7 @@ export type DueCtx = {
 }
 
 const clipName = (name: string) => name.trim().slice(0, FIND_NAME_MAX).trim()
-const keyOf = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
+export const keyOf = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
 const inMonth = (op: Operation, period: string) => op.date.slice(0, 7) === period
 
 /**
@@ -301,7 +301,8 @@ export const unknownShare = (ops: Operation[], period: string): ShareFind => sha
 export function oneOffLike(ops: Operation[], period: string, fact: number, categories: Categories = []): { opId: string; name: string; amount: number }[] {
   const from = addMonths(period, -ONE_OFF_MONTHS)
   const before = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) < period && isSpend(op))
-  if (!before.length || fact <= 0) return []
+  // Свои траты — в каждом из 3 прошлых месяцев: выписка с 28-го прошлого месяца строку «впервые за 3 месяца» не даёт.
+  if (new Set(before.map((op) => op.date.slice(0, 7))).size < ONE_OFF_MONTHS || fact <= 0) return []
   const seen = new Set(before.map(keyOf))
   return ops
     .filter((op) => inMonth(op, period) && !!op.categoryId && op.categoryId !== UNKNOWN_CATEGORY && freeOk(op, categories) && sellerOk(op) && !seen.has(keyOf(op)))

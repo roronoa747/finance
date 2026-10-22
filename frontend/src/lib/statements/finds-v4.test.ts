@@ -58,8 +58,15 @@ describe('доли разделов месяца — люди, наличные,
 })
 
 describe('oneOffLike — похоже на разовую', () => {
-  const before = [op('MAGNUM', -5_000, 'sc_food', '2026-07-10'), op('KAFE', -4_000, 'sc_cafe', '2026-08-10')]
+  const before = [op('MAGNUM', -5_000, 'sc_food', '2026-06-10'), op('MAGNUM', -5_000, 'sc_food', '2026-07-10'), op('KAFE', -4_000, 'sc_cafe', '2026-08-10')]
   const fact = 400_000 // 5 % — 20 000
+
+  it('свои траты не во всех 3 прошлых месяцах (выписка с конца августа) — «впервые за 3 месяца» не скажешь: пусто (критик 4б)', () => {
+    const at = op('AVTOSHKOLA', -90_000, 'sc_edu', '2026-09-12')
+    expect(oneOffLike([op('KAFE', -4_000, 'sc_cafe', '2026-08-28'), at], SEP, fact)).toEqual([])
+    expect(oneOffLike([...before.slice(1), at], SEP, fact)).toEqual([])
+    expect(oneOffLike([...before, at], SEP, fact)).toHaveLength(1)
+  })
 
   it('порог: 20 000 и 5 % факта — да; на шаг ниже — нет', () => {
     const at = op('AVTOSHKOLA', -ONE_OFF_MIN, 'sc_edu', '2026-09-12')

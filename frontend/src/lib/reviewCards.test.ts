@@ -163,6 +163,26 @@ describe('reviewCards — виды таблицы Р-24', () => {
     const once = [op('KAFE', -20_000, 'sc_cafe', '2026-10-02')]
     expect(kind(cardsOf(family({ ops: once, plans: [plan('a', 'sc_food', 200_000), plan('a', 'sc_cafe', 10_000)] })), 'plan')).toEqual([])
   })
+
+  it('поставить план: «обычно» не выше плана — сумма кнопки — факт, план не понижается (критик 4б)', () => {
+    // План 15 000; кафе 20 000 в августе, сентябре, октябре — выше плана второй месяц; «обычно» 13 333 < плана.
+    const cafe = ['2026-08-12', '2026-09-12', '2026-10-02'].map((d) => op('KAFE', -20_000, 'sc_cafe', d))
+    const [c] = kind(cardsOf(family({ ops: cafe, plans: [plan('a', 'sc_food', 200_000), plan('a', 'sc_cafe', 15_000)] })), 'plan')
+    expect(c).toMatchObject({ figure: { value: 5_000 }, target: { kind: 'plan', categoryId: 'sc_cafe', amount: 20_000 } })
+  })
+})
+
+describe('reviewCards — месяц находок по своим выпискам (критик 4б)', () => {
+  it('выписка партнёра покрывает октябрь, моя — по 30 сентября: мои карточки — за сентябрь, не пусто', () => {
+    const f = family({ ops: [op('SHOP X', -30_000, null, '2026-09-03')] })
+    const uploads: UploadPeriod[] = [
+      { slot: 'a', period_from: '2026-07-01', period_to: '2026-09-30' },
+      { slot: 'b', period_from: '2026-07-01', period_to: '2026-10-15' },
+    ]
+    const cards = reviewCards({ ...f.doc, book: null }, { ...f.ctx, uploads }, f.ops, 'a')
+    expect(cards[0]).toMatchObject({ kind: 'unknown', line: '1 трата без раздела' })
+    expect(whereSplit({ ...f.doc, book: null }, { ...f.ctx, uploads }, 'a')!.month).toBe('2026-09')
+  })
 })
 
 describe('reviewCards — порядок, лимит, `by`', () => {
