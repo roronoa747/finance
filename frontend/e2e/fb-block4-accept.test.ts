@@ -258,14 +258,17 @@ describe('e2e / приёмка Фидбек Блок 4б — разбор v4 п�
     expect((server.data.spendTotals ?? []).find((t) => t.id === total.id)).toMatchObject({ oneOff: 0 })
   })
 
-  it('(и) Х-11: участник без ИИ и без выписок — «Нужна выписка», одна кнопка «Загрузить выписку» ведёт к загрузке; запроса нет', async () => {
-    // Участник с ИИ без выписок вместо «Нужна выписка» видит «Не вышло» (запрос без карточек — `ai_failed`) — расхождение
-    // записано в «Приёмке» SESSION.md, здесь — путь без ИИ.
-    const A = await phone('a', false)
+  it.each([
+    ['без ИИ', false],
+    ['с ИИ и согласием', true], // возврат приёмки 4б: было «Не вышло» — запрос без карточек считался сбоем
+  ])('(и) Х-11: участник %s и без выписок — «Нужна выписка», одна кнопка «Загрузить выписку» ведёт к загрузке; запроса нет', async (_, ai) => {
+    const A = await phone('a', ai)
+    if (ai) on(A).ai.setConsent(true)
     expect(await on(A).ai.autoReview(A.client)).toBeNull()
     await mountMonth(A)
     await press(q('[data-review-open]'))
-    expect(txt(q('[data-review-empty] h2'))).toBe('Нужна выписка')
+    await vi.waitFor(() => expect(txt(q('[data-review-empty] h2'))).toBe('Нужна выписка'))
+    expect(txt(q('[data-report]'))).not.toContain('Не вышло')
     expect(codeKinds()).toEqual([])
     expect(document.querySelectorAll('[data-report] button:not([data-report-close]), [data-report] a')).toHaveLength(1)
     await press(q('[data-review-upload]'))

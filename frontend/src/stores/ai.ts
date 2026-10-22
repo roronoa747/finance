@@ -141,7 +141,7 @@ export const useAiStore = defineStore('ai', () => {
   /**
    * Разбор v4 месяца `key` (бэклог «Фидбек», Р-23, Р-26, Р-27): карточки кода по своим операциям и факты
    * (`buildReviewFactsV4`, без имён людей и участников) → ручка → одна главная мысль и id следующей карточки → разбор в
-   * **личный** документ (партнёр его не видит). Карточек нет — не спрашиваем (`ai_failed` без запроса); `next` не из
+   * **личный** документ (партнёр его не видит). Карточек нет — не спрашиваем (`no_cards` без запроса); `next` не из
    * присланных — `ai_failed`. Счётчик работы — свои операции и карточки (`reviewWork(…, by)`). Ошибка — код ручки строкой
    * (`ai_limit`, `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ. Не сохранён — отчёт
    * показывает карточки кода без мысли (FB-17).
@@ -153,7 +153,7 @@ export const useAiStore = defineStore('ai', () => {
       const by = auth.slot ?? 'a'
       const { ops, opts } = cardsInput()
       const { payload, cards, cardById, labels } = buildReviewFactsV4(finance.householdDoc, input, ops, by, reason, opts)
-      if (!payload.facts.length || !payload.cards.length) return 'ai_failed'
+      if (!payload.facts.length || !payload.cards.length) return 'no_cards'
       try {
         const res = await client.aiReview({ reason, ...payload })
         const next = cardById.get(res.next)
@@ -187,14 +187,15 @@ export const useAiStore = defineStore('ai', () => {
 
   /**
    * Разбор по нажатию (✦ «Разобрать» — повод `month`, «Обновить» — `refresh`): согласие спрашивает вызывающий
-   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; прочее и сеть — «не вышло».
+   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; своих карточек нет — не сбой: отчёт сам
+   * покажет «Нужна выписка» (Х-11, приёмка 4б); прочее и сеть — «не вышло».
    */
   async function runReview(key: string, reason: ReviewReason = 'month', client: ApiClient = apiClient): Promise<AiReview | null> {
     if (reviewState.value === 'thinking' || !available.value) return null
     reviewState.value = 'thinking'
     const r = await requestReview(key, reason, client)
     if (typeof r === 'string') {
-      reviewState.value = r === 'ai_limit' ? 'limit' : 'failed'
+      reviewState.value = r === 'ai_limit' ? 'limit' : r === 'no_cards' ? 'idle' : 'failed'
       return null
     }
     reviewState.value = 'idle'
@@ -232,7 +233,7 @@ export const useAiStore = defineStore('ai', () => {
    * «Пришла». Участник с ИИ (`available`: не viewer, не демо), в сети, есть повод текущего месяца. «Да» текущей версии
    * согласия (`AI_CONSENT_V`) — запрос в фоне, без «Думаю…»; «да» прежней версии — лист согласия один раз на повод
    * (закрыл — до следующего повода); не спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть, тело старой
-   * версии (400) и семья без кнопок (`ai_failed` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
+   * версии (400) и семья без кнопок (`no_cards` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
    * сутки (`ff_ai_auto`, попытка пишется до запроса, исход — после). Страница не дожила до ответа (перезагрузка,
    * закрытый PWA: ответ идёт 5–55 с; владелец 2026-10-18 — 33 открытия за 2 минуты, ответ 200 пришёл на мёртвую
    * страницу, RZ-HF2) — попытка без исхода: повод повторяется один раз, как только окно ответа вышло; второй обрыв

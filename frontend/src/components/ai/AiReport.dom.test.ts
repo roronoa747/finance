@@ -1020,6 +1020,18 @@ describe('FB-17: отчёт разбора v4', () => {
     expect(document.querySelectorAll('[data-report] button:not([data-report-close]), [data-report] a')).toHaveLength(1)
   })
 
+  it('с ИИ и согласием без своих трат — тоже «Нужна выписка», не «Не вышло»; запроса нет (Х-11, приёмка 4б)', async () => {
+    const spy = vi.spyOn(apiClient, 'aiReview')
+    await open()
+    useAiStore().setConsent(true)
+    await press(q('[data-review-open]'))
+    await vi.waitFor(() => expect(kinds()).toEqual(['empty']))
+    expect(txt(q('[data-review-empty] h2'))).toBe('Нужна выписка')
+    expect(txt(dialog())).not.toContain('Не вышло')
+    expect(useAiStore().reviewState).toBe('idle')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
   it('без ИИ — без мысли и «Работы ИИ»: карточки кода и «Куда ушло»; запроса нет', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
     await open({ ai: false })
