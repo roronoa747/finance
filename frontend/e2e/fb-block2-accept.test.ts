@@ -16,7 +16,8 @@ import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, state
  * было; (б) продавец с тремя подписками разной цены (каждый месяц, как на выписке владельца): «В платежи» у самой
  * дорогой строки заполняет её сумму, а не медианой всех строк продавца; (в) ручная разовая доходит до второго телефона; (г)
  * «В платежи»: после синка строка не трата ни у кого. (а2), (б), (г) — **возврат приёмки**, починены исполнителем
- * (`writeTotals` — ноль `unmarked`/`oneOff` явно; `recurringOf` — строки в допуске суммы нажатой).
+ * (`writeTotals` — ноль `unmarked`/`oneOff` явно; `recurringOf` — строки в допуске суммы нажатой). (д) — повторная
+ * приёмка: «В платежи» со второго телефона, первый телефон и партнёр после синка — без строки в тратах.
  */
 type Phone = { pinia: Pinia; client: ApiClient; storage: Map<string, string> }
 let cur = new Map<string, string>()
@@ -167,6 +168,24 @@ describe('e2e / Фидбек Блок 2 — приёмка', () => {
     await useOperationsStore().addToPayments('f000000000000001', id, A1.client)
     await sync(A1, B, A1)
     expect([unmarked(A1), unmarked(B)]).toEqual([0, 0])
+  })
+
+  // Повторная приёмка: «В платежи» со второго телефона — первый держал итог с прежним `unmarked`; после синка у обоих
+  // телефонов и партнёра строка не трата (стенд: выписка владельца, три участника, сервер `unmarked` без строки).
+  it('(д) «В платежи» со второго телефона: первый телефон и партнёр после синка — без строки в тратах', async () => {
+    const A1 = await phone(server, st, pv, 'u-a')
+    const B = await phone(server, st, pv, 'u-b')
+    await upload(A1, '2026-09-01', '2026-09-26', [buy('f000000000000001', '2026-09-14', 4_990, 'APPLE.COM BILL')])
+    await sync(A1, B)
+    const A2 = await phone(server, st, pv, 'u-a')
+    const unmarked = (p: Phone) => (use(p), useFinanceStore().householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_subscriptions')?.unmarked ?? 0)
+    expect([unmarked(A1), unmarked(A2), unmarked(B)]).toEqual([4_990, 4_990, 4_990])
+    use(A2)
+    at('2026-09-26T07:05:00Z')
+    const id = useFinanceStore().addObligation({ name: 'Apple Music', note: '', day: 14, category: 'd4', amount: 4_990 })
+    await useOperationsStore().addToPayments('f000000000000001', id, A2.client)
+    await sync(A2, A1, B, A2)
+    expect([unmarked(A1), unmarked(A2), unmarked(B)]).toEqual([0, 0, 0])
   })
 
   it('(б) три подписки у одного продавца: «В платежи» у дорогой строки — её сумма и день (возврат приёмки)', async () => {
