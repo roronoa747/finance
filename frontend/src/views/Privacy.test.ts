@@ -48,12 +48,21 @@ describe('B2C-26: /privacy — публичная политика конфид�
   it('RZ-03: согласие v3 — продавцы с суммами частых трат, списаний и крупнейших покупок без дат и людей, чек, фраза мечты, разбор сам; RU и EN', async () => {
     const html = await renderScreen(Privacy, '/privacy')
     expect(html).not.toContain('названия продавцов и подписок без сумм')
-    for (const text of ['названия продавцов и суммы частых трат, повторяющихся списаний и крупнейших покупок, число повторов (без дат, без людей)', 'фото чека', 'фраза о мечте', 'Разбор месяца приходит сам', '1-го числа и после отметки зарплаты', 'Фото чека уходит ИИ-помощнику и нигде не сохраняется', '20 октября 2026']) {
+    for (const text of ['названия продавцов и суммы частых трат, повторяющихся списаний и крупнейших покупок, число повторов (без дат, без людей)', 'фото чека', 'фраза о мечте', 'Разбор месяца приходит сам', '1-го числа и после отметки зарплаты', 'Фото чека уходит ИИ-помощнику и нигде не сохраняется', '21 октября 2026']) {
       expect(html, text).toContain(text)
     }
-    for (const text of ['amounts of frequent spending, repeated charges and the largest purchases, and repeat counts (no dates, no people)', 'receipt photos (never stored)', 'dream phrase', 'arrives by itself', 'after a salary is marked', 'October 20, 2026']) {
+    for (const text of ['amounts of frequent spending, repeated charges and the largest purchases, and repeat counts (no dates, no people)', 'receipt photos (never stored)', 'dream phrase', 'arrives by itself', 'after a salary is marked', 'October 21, 2026']) {
       expect(html, text).toContain(text)
     }
+  })
+
+  // «Фидбек» Блок 1 (Р-11, Р-22): заметки и «Мне вернули» — личный документ, партнёру — только итоги; RU и EN.
+  it('FB-06: заметки к операциям и «Мне вернули» — в личном документе, видны только вам; RU и EN', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    expect(html).toContain('Ваши заметки к операциям и отметки «Мне вернули» — в вашем личном документе')
+    expect(html).toContain('партнёру доходят лишь итоги разделов')
+    expect(html).toContain('with your notes')
+    expect(html).toContain('(your personal document, visible only to you)')
   })
 
   it('открывается без входа и пользователю без семьи; вошедший тоже видит', async () => {
