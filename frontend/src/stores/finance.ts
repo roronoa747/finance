@@ -102,7 +102,7 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { DEFAULT_CATEGORY_NAMES, HUE_KEYS, type CategoryKey, type HueKey } from '@/lib/palette'
-import { seedSpendCategories } from '@/lib/statements/model'
+import { liveOpEdits, seedSpendCategories } from '@/lib/statements/model'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -2080,6 +2080,38 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /**
+   * Выписка заменила операции с телефона (Р-16; `pairs` — id операции с телефона → строка выписки, фантом — null): правки
+   * переходят к строке (заметка, «Мне вернули», «Разовая»), возврат приходом с телефона — к строке прихода (критик Блока 1:
+   * иначе пуш, поправленный днём, после выписки терял заметку и возврат, итоги росли обратно). Запись заменённой
+   * операции снимается — её возврат держал бы приход «между своими» и после снятия возврата у строки. У строки, где
+   * уже есть своя правка, остаётся её.
+   */
+  function carryOpEdits(pairs: ReadonlyMap<string, string | null>) {
+    const live = liveOpEdits(opEdits.value)
+    const touched = live.filter((e) => pairs.has(e.id) || (e.refund?.opId && pairs.has(e.refund.opId)))
+    if (!touched.length) return
+    const at = new Date().toISOString()
+    const has = new Set(live.map((e) => e.id))
+    const writes = new Map<string, OpEdit>()
+    for (const e of touched) {
+      const income = e.refund?.opId
+      const refund = e.refund && income && pairs.has(income) ? { amount: e.refund.amount, ...(pairs.get(income) ? { opId: pairs.get(income)! } : {}) } : (e.refund ?? null)
+      const fields = { memo: e.memo ?? null, oneOff: e.oneOff ?? null, refund }
+      if (!pairs.has(e.id)) {
+        writes.set(e.id, { id: e.id, ...fields, updatedAt: at })
+        continue
+      }
+      writes.set(e.id, { id: e.id, memo: null, oneOff: null, refund: null, updatedAt: at })
+      const to = pairs.get(e.id)
+      if (to && !has.has(to)) writes.set(to, { id: to, ...fields, updatedAt: at })
+    }
+    mutatePrivateDoc((doc) => {
+      const list = (doc.opEdits as OpEdit[] | undefined) ?? []
+      doc.opEdits = [...list.filter((e) => !writes.has(e.id)), ...writes.values()]
+    })
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2510,6 +2542,7 @@ export const useFinanceStore = defineStore('finance', () => {
     includeInTrip,
     opEdits,
     setOpEdit,
+    carryOpEdits,
     setSpendPlan,
     ensureFund,
     setFundMonths,

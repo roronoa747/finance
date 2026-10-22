@@ -141,6 +141,47 @@ describe('FB-02 — правки операции (editOp)', () => {
     expect(server.sent.some((o) => 'memo' in o || 'refund' in o)).toBe(false)
   })
 
+  // Критик Блока 1: днём приходит пуш, выписка — потом; правка пуша не должна пропасть вместе с ним.
+  const pushWire = (id: string, date: string, amount: number, kind: string, merchant: string): OperationWire => ({
+    id, bank: 'kaspi', date, amount, kind, merchant, category_id: null, internal: false,
+    source: 'push', occurred_at: `${date}T09:00:00Z`, updated_at: `${date}T09:00:01Z`,
+  })
+
+  it('выписка заменила пуш — заметка и «Мне вернули» переходят к её строке, итоги не растут обратно; запись пуша снята', async () => {
+    signIn()
+    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
+    const store = useOperationsStore()
+    const { server, client } = fakeServer()
+    server.feed = [pushWire('p0000001', '2026-10-14', -30_000, 'transfer-out', 'Перевод Айгерим С.')]
+    await store.pull(client)
+    store.editOp('p0000001', { memo: 'ужин', refund: { amount: 10_000 } })
+    expect(total('month', '2026-10', 'sc_people')).toMatchObject({ amount: 20_000, ops: 1 })
+
+    const line: Operation = { id: 'f0000009', bank: 'kaspi', date: '2026-10-14', amount: -30_000, kind: 'transfer-out', merchant: 'Айгерим С.', counterparty: 'Айгерим С.', note: 'Перевод', categoryId: null, internal: false }
+    await store.upload([{ name: 'kaspi.pdf', parsed: { bank: 'kaspi', from: '2026-10-01', to: '2026-10-15', skipped: 0, operations: [line] } }], client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.map((o) => o.id)).toEqual(['f0000009'])
+    expect(store.all[0]).toMatchObject({ memo: 'ужин', refund: { amount: 10_000 } })
+    expect(total('month', '2026-10', 'sc_people')).toMatchObject({ amount: 20_000, ops: 1 })
+    expect(useFinanceStore().opEdits.find((e) => e.id === 'p0000001')).toMatchObject({ memo: null, refund: null })
+  })
+
+  it('вернули переводом с телефона: выписка заменила пуш прихода — возврат указывает на её строку, та «между своими»', async () => {
+    const { store, server, client } = await loaded()
+    server.feed = [pushWire('p0000002', '2026-10-16', 2_000, 'transfer-in', 'Перевод Дана К.')]
+    await store.pull(client)
+    store.editOp(COFFEE.id, { refund: { amount: 2_000, opId: 'p0000002' } })
+    expect(store.all.find((o) => o.id === 'p0000002')?.internal).toBe(true)
+
+    const back: Operation = { id: 'f0000010', bank: 'kaspi', date: '2026-10-16', amount: 2_000, kind: 'transfer-in', merchant: 'Дана К.', counterparty: 'Дана К.', note: 'Перевод', categoryId: null, internal: false }
+    await store.upload([{ name: 'kaspi-2.pdf', parsed: { bank: 'kaspi', from: '2026-10-16', to: '2026-10-16', skipped: 0, operations: [back] } }], client)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(store.all.some((o) => o.id === 'p0000002')).toBe(false)
+    expect(store.all.find((o) => o.id === COFFEE.id)?.refund).toEqual({ amount: 2_000, opId: 'f0000010' })
+    expect(store.all.find((o) => o.id === 'f0000010')?.internal).toBe(true)
+    expect(store.pendingMatches.filter((c) => c.opId === 'f0000010')).toEqual([])
+  })
+
   it('пустая заметка снимает правку; запись в личном документе остаётся без полей (не надгробие)', async () => {
     const { store } = await loaded()
     store.editOp(COFFEE.id, { memo: 'обед' })

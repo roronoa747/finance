@@ -618,6 +618,8 @@ export const useOperationsStore = defineStore('operations', () => {
       return to ? [`${to}|${pair}`] : []
     })
     if (carried.length) declined.value = [...new Set([...declined.value, ...carried])]
+    // Правки операции с телефона (заметка, «Мне вернули») — тоже к её строке (личный документ, критик Блока 1).
+    finance.carryOpEdits(pairs)
     for (const o of replaced) delete ops.value[o.id]
     const ids = new Set(fresh.map((o) => o.id))
     // Пара с операцией прошлой выписки другого банка делает внутренней и её — она тоже уходит.
