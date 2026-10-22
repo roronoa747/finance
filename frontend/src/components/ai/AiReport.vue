@@ -12,7 +12,7 @@ import { findMonth, reviewCardOrder, reviewOutcome, reviewWorkMonthly, shiftMade
 import { weekendShare } from '@/lib/statements/finds'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
-import { addMonths, dayLabel, monthBy, monthIn, today } from '@/lib/dates'
+import { addMonths, dayLabel, monthBy, monthIn, monthTitle, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import { holdTips } from '@/components/kit/tips'
 import { isTopSheet, popSheet, pushSheet } from '@/components/kit/sheetStack'
@@ -142,8 +142,13 @@ function press(c: ReviewCard) {
   if (c.target.kind === 'do') doCandidate.value = c.target.candidate
   else if (c.target.kind !== 'obligation') emit('act', c)
 }
-const figureOf = (c: ReviewCard) => (c.figure.unit === 'pct' ? `${c.figure.value} %` : money(c.figure.value))
+// «Дорогая неделя» — на сколько дороже обычной: «+45 %», а не «45 %» неизвестно чего (`/ux` 4б).
+const figureOf = (c: ReviewCard) => (c.figure.unit === 'pct' ? `${c.kind === 'week' ? '+' : ''}${c.figure.value} %` : money(c.figure.value))
 const by = computed(() => auth.slot ?? 'a')
+/** Месяц карточек v4 — по своим выпискам (`findMonth(…, by)`, как `reviewCards`); в первые дни — прошлый. */
+const cardMonth = computed(() => findMonth(input.value.ctx, by.value))
+/** Карточки не за открытый месяц (первые дни) — его имя в шапке отчёта: «Выше плана» иначе читается про этот (`/ux` 4б). */
+const pastMonth = computed(() => (v4.value && !props.example && cardMonth.value !== props.monthKey ? monthTitle(cardMonth.value).replace(/ \d{4}$/, '') : ''))
 /** «Куда ушло» v4: на всю сумму (`whereSplit`), выходные — по своим операциям, разделы продавцов — свои (`whereRows`). */
 const split = computed(() => (v4.value ? whereSplit(input.value.state, input.value.ctx, by.value) : null))
 const weekend = computed(() => (split.value ? weekendShare(useOperationsStore().all, split.value.month, input.value.ctx.spendCategories) : null))
@@ -220,7 +225,7 @@ const whenLine = computed(() =>
 )
 
 /* ---------- «Куда ушло» (Р-4): полосы считает код за месяц находок ---------- */
-const whereMonth = computed(() => `в ${monthIn(pictureMonth.value, false)}`)
+const whereMonth = computed(() => `в ${monthIn(v4.value ? cardMonth.value : pictureMonth.value, false)}`)
 const rows = computed(() => (v3.value ? whereRows(input.value.state, input.value.ctx) : []))
 /** Полосы растут, когда карточку «Куда ушло» впервые видно: карточки монтируются сразу, рост шёл за кадром (`/ux`). */
 const whereSeen = ref(false)
@@ -523,7 +528,7 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center justify-between gap-3">
           <!-- Пометка заготовки демо (Р-12): не ответ ИИ, а пример. -->
-          <span class="type-meta"><template v-if="example"><span data-review-example>Пример</span></template></span>
+          <span class="type-meta"><template v-if="example"><span data-review-example>Пример</span></template><template v-else-if="pastMonth"><span data-review-month>{{ pastMonth }}</span></template></span>
           <button
             type="button"
             aria-label="Закрыть"
@@ -629,7 +634,7 @@ onUnmounted(() => {
               <h2 class="type-h2-lg text-ink">Куда ушло</h2>
               <p class="mt-1 text-[15px] text-ink-2" data-review-where-month>{{ whereMonth }}</p>
               <WhereSplit class="mt-5" :parts="split.parts" :weekend="weekend" :play="whereSeen" />
-              <WhereBars v-if="rowsV4.length" class="mt-6" :rows="rowsV4" :play="whereSeen" :month="pictureMonth" />
+              <WhereBars v-if="rowsV4.length" class="mt-6" :rows="rowsV4" :play="whereSeen" :month="cardMonth" />
             </template>
 
             <!-- Итог прошлого месяца (Р-20): советы — сделан / нет, разделы к «обычно», срок главной мечты -->

@@ -940,12 +940,13 @@ describe('FB-17: отчёт разбора v4', () => {
     { id: 'aa0000b3', bank: 'kaspi', date: '2026-09-05', amount: -60_000, kind: 'transfer-out', merchant: 'Замира Ш.', counterparty: 'Замира Ш.', note: 'Перевод', categoryId: 'sc_people', internal: false },
     { id: 'aa0000b4', bank: 'kaspi', date: '2026-09-06', amount: -40_000, kind: 'purchase', merchant: 'AVTOSHKOLA', categoryId: 'sc_education', internal: false },
   ]
-  async function seedRich({ extra = [] as Operation[], to = '2026-09-10' } = {}) {
+  async function seedRich({ extra = [] as Operation[], to = '2026-09-10', partnerTo = '' } = {}) {
     const ops = useOperationsStore()
     const list = [...OWN, ...extra]
     ops.ops = Object.fromEntries(list.map((o) => [o.id, o]))
     const upload = { id: 'u-a', slot: 'a' as const, bank: 'kaspi', period_from: '2026-06-01', period_to: to, ops_count: list.length, created_at: T0 }
-    await ops.loadUploads({ listStatementUploads: async () => ({ uploads: [upload] }) } as unknown as ApiClient)
+    const partner = partnerTo ? [{ ...upload, id: 'u-b', slot: 'b' as const, period_to: partnerTo }] : []
+    await ops.loadUploads({ listStatementUploads: async () => ({ uploads: [upload, ...partner] }) } as unknown as ApiClient)
     const totals = ['2026-06', '2026-07', '2026-08', KEY].flatMap((m) => spendTotals(list, 'a', 'month', m, T0, { marked: new Set(), categories: [] }))
     useFinanceStore().mutateHouseholdDoc((d) => void (d.spendTotals = totals))
     await flush()
@@ -995,6 +996,19 @@ describe('FB-17: отчёт разбора v4', () => {
     expect(kinds()).not.toContain('lead')
     expect(kinds().at(-1)).toBe('where4')
     expect(spy).not.toHaveBeenCalled()
+    // Карточки за открытый месяц — имени месяца в шапке нет.
+    expect(q('[data-review-month]')).toBeNull()
+  })
+
+  it('«Дорогая неделя» — цифра со знаком: «+N %» дороже обычной (`/ux` 4б)', async () => {
+    await open({ ai: false })
+    // Обычная неделя — 20 000 (и крупная неделя 31.08–06.09); неделя 14–20 сентября — 200 000 у знакомого продавца.
+    const small = (date: string, amount: number, i: number): Operation => ({ id: `aa0000d${i}`, bank: 'kaspi', date, amount: -amount, kind: 'purchase', merchant: 'SMALL', categoryId: 'sc_food', internal: false })
+    const weeks = ['2026-08-10', '2026-08-17', '2026-08-24', '2026-08-31', '2026-09-07'].map((date, i) => small(date, 20_000, i))
+    await seedRich({ extra: [...weeks, small('2026-09-15', 200_000, 8), small('2026-09-20', 1_000, 9)], to: '2026-09-21' })
+    await press(q('[data-review-open]'))
+    expect(codeKinds()).toContain('week')
+    expect(txt(q('[data-review-card="week"] [data-review-figure]'))).toMatch(/^\+\d+ %$/)
   })
 
   it('кнопки открывают свои листы поверх отчёта; закрыли — отчёт на месте', async () => {
@@ -1064,8 +1078,12 @@ describe('FB-17: отчёт разбора v4', () => {
   it('первые дни месяца (выписка по 5-е): «Разобрать» — «Не разобрано» месяца карточек, прошлого (критик 4б)', async () => {
     await open({ ai: false })
     const aug: Operation = { id: 'aa0000c1', bank: 'kaspi', date: '2026-08-20', amount: -25_000, kind: 'purchase', merchant: 'SHOP Z', categoryId: null, internal: false }
-    await seedRich({ extra: [aug], to: '2026-09-05' })
+    // Партнёр загрузил сентябрь целиком — месяц моих карточек всё равно мой (август).
+    await seedRich({ extra: [aug], to: '2026-09-05', partnerTo: '2026-09-30' })
     await press(q('[data-review-open]'))
+    // Карточки — за август: его имя в шапке и в «Куда ушло» (`/ux` 4б), иначе «Выше плана» читается про сентябрь.
+    expect(txt(q('[data-review-month]'))).toBe('Август')
+    expect(txt(q('[data-review-where-month]'))).toBe('в августе')
     await press(cardButton('unknown'))
     expect(q('[data-cat-op="aa0000c1"]')).not.toBeNull()
     expect(q('[data-cat-op="aa0000b1"]')).toBeNull()
