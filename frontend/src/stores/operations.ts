@@ -46,9 +46,14 @@ const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
  */
 export const UPLOAD_HOLD_MS = 6_000
 
-/** Итог тот же: сумма, строки и сумма без отметки — запись не нужна. */
+/** Итог тот же: сумма, строки, сумма без отметки и разовые — запись не нужна. */
 const sameTotal = (a: SpendTotal | undefined, b: SpendTotal) =>
-  !!a && !a.deletedAt && a.amount === b.amount && a.ops === b.ops && (a.unmarked ?? 0) === (b.unmarked ?? 0)
+  !!a &&
+  !a.deletedAt &&
+  a.amount === b.amount &&
+  a.ops === b.ops &&
+  (a.unmarked ?? 0) === (b.unmarked ?? 0) &&
+  (a.oneOff ?? 0) === (b.oneOff ?? 0)
 
 /** Операций в одном POST /api/operations/batch (сервер принимает до 2000). */
 export const BATCH_SIZE = 500
@@ -432,7 +437,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const ids = new Set(next.map((t) => t.id))
       for (const t of byId.values()) {
         if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops)) {
-          const { unmarked: _gone, ...rest } = t
+          const { unmarked: _gone, oneOff: _oneOff, ...rest } = t
           writes.push({ ...rest, amount: 0, ops: 0, updatedAt: at })
         }
       }

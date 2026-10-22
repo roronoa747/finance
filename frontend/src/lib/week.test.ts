@@ -398,3 +398,27 @@ describe('sectionMonth — свои операции раздела за мес�
     expect(sectionMonth(list, { month: '2026-10', categoryId: 'sc_utilities', marked: new Set(['u1']), categories: [] }).days.flatMap((d) => d.ops.map((o) => o.id))).toEqual(['u2'])
   })
 })
+
+describe('«Разовая» в неделе и месяце (FB-07, Р-16)', () => {
+  // W42: продукты Magnum 13-го 7 000 — разовая.
+  const edited = OPS.map((o) => (o.date === '2026-10-13' && o.merchant === 'Magnum' ? { ...o, oneOff: true } : o))
+  const totalsOf = (ops: Operation[]) => periodsOf(ops).flatMap(({ kind, period }) => spendTotals(ops, 'a', kind, period, T0))
+
+  it('сумма недели, строка раздела и лента — с разовой («Неделя» — мои траты)', () => {
+    const before = myWeek(state(), { ...base, totals: totalsOf(OPS), week: '2026-W42', today: '2026-10-21', by: 'a' })
+    const after = myWeek(state(), { ...base, ops: edited, totals: totalsOf(edited), week: '2026-W42', today: '2026-10-21', by: 'a' })
+    expect(after.total).toBe(before.total)
+    expect(after.rows.map((r) => [r.categoryId, r.amount])).toEqual(before.rows.map((r) => [r.categoryId, r.amount]))
+    // «Осталось до плана» — из строки раздела месяца, а она без разовых (как на «Месяце»): 51 000 − 7 000.
+    expect(after.rows.find((r) => r.categoryId === 'sc_food')).toMatchObject({ spent: 44_000, rest: 106_000 })
+    expect(weekFeed(edited, { week: '2026-W42' }).total).toBe(weekFeed(OPS, { week: '2026-W42' }).total)
+    expect(sectionWeek(edited, { week: '2026-W42', categoryId: 'sc_food', limit: Infinity }).total).toBe(25_000)
+  })
+
+  it('лист раздела «Месяца» — без разовой; лист «Разовые» — только она', () => {
+    expect(sectionMonth(edited, { month: '2026-10', categoryId: 'sc_food' }).total).toBe(57_000 - 7_000)
+    const one = sectionMonth(edited, { month: '2026-10', oneOff: true })
+    expect(one).toMatchObject({ total: 7_000, count: 1, more: null })
+    expect(one.days.flatMap((d) => d.ops.map((o) => o.name))).toEqual(['Magnum'])
+  })
+})

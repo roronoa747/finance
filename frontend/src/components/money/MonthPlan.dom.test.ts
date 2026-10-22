@@ -1225,3 +1225,52 @@ describe('FB-05: свои операции в листе раздела «Мес
     expect(q('[data-cat-ops]')).toBeNull()
   })
 })
+
+describe('FB-07: «Разовые» на «Месяце» — тихая строка и лист своих разовых', () => {
+  const totals: SpendTotal[] = [{ id: 'a:month:2026-09:sc_cafe', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_cafe', amount: 7_000, ops: 2, updatedAt: T0 }]
+  const OPS: Operation[] = [
+    { id: 'c0000001', bank: 'kaspi', date: '2026-09-12', amount: -4_500, kind: 'purchase', merchant: 'COFFEE BOOM ALMATY KZ', categoryId: 'sc_cafe', internal: false },
+    { id: 'c0000002', bank: 'kaspi', date: '2026-09-14', amount: -2_500, kind: 'purchase', merchant: 'Starbucks', categoryId: 'sc_cafe', internal: false },
+  ]
+  async function openMonth(role: 'member' | 'viewer', oneOff: boolean) {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 40, created_at: T0 }] } as never)
+    const doc = planFamilyDoc({ spendTotals: oneOff ? [{ ...totals[0], oneOff: 4_500 }] : totals })
+    const finance = await open(role, doc)
+    const ops = useOperationsStore()
+    if (role === 'member') {
+      for (const o of OPS) ops.ops[o.id] = o
+      if (oneOff) ops.editOp('c0000001', { oneOff: true })
+    }
+    await ops.loadUploads()
+    await flush()
+    await press(section('spend'))
+    return finance
+  }
+
+  it('разовая: раздел без неё, «Разовые» — она; нажатие → лист с суммой и строкой → лист операции', async () => {
+    const finance = await openMonth('member', true)
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_cafe')).toMatchObject({ amount: 7_000, oneOff: 4_500 })
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(plain(2_500)))
+    expect(txt(q('[data-spend-oneoff]'))).toBe(norm(`Разовые${plain(4_500)}`))
+    await press(q('[data-spend-oneoff]'))
+    expect(txt(q('[data-oneoff-amount]'))).toBe(norm(money(4_500)))
+    expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 1')
+    await press(q('[data-cat-op="c0000001"]'))
+    const dialogs = all('[role="dialog"]')
+    expect(dialogs).toHaveLength(2)
+    expect(txt(dialogs[1])).toContain('COFFEE BOOM')
+  })
+
+  it('без разовых — строки нет; viewer — строка без листа', async () => {
+    await openMonth('member', false)
+    expect(q('[data-spend-oneoff]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openMonth('viewer', true)
+    const row = q('[data-spend-oneoff]')
+    expect(row?.tagName).toBe('DIV')
+    await press(row)
+    expect(q('[data-oneoff-amount]')).toBeNull()
+  })
+})

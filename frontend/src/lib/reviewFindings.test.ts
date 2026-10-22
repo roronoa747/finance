@@ -387,3 +387,17 @@ describe('reviewOutcome — итог прошлого месяца', () => {
     expect(reviewOutcome(stateOf(doc), ctxOf(doc), other)!.dream).toBeNull()
   })
 })
+
+describe('«Разовая» в разборе (FB-07, Р-16)', () => {
+  // Кафе октября 150 000, из них разовая 60 000 (банкет): раздел — 90 000 = обычно, не «раздуло»; «куда ушло» — 90 000.
+  const doc = family({
+    spendTotals: TOTALS.map((t) => (t.by === 'a' && t.period === KEY && t.categoryId === 'sc_cafe' ? { ...t, oneOff: 60_000 } : t)),
+  })
+  it('разовая не «раздуло»', () => {
+    expect(of(findingsOf(family()), 'grew').some((g) => g.categoryId === 'sc_cafe')).toBe(true)
+    expect(of(findingsOf(doc), 'grew').some((g) => g.categoryId === 'sc_cafe')).toBe(false)
+  })
+  it('«куда ушло» — без разовой', () => {
+    expect(whereRows(stateOf(doc), ctxOf(doc)).find((r) => r.categoryId === 'sc_cafe')).toMatchObject({ amount: 90_000, over: false })
+  })
+})
