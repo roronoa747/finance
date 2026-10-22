@@ -1323,3 +1323,47 @@ describe('stores/operations — итоги находок (RZ-01)', () => {
     expect(finance.householdDoc.reviewFinds).toEqual([])
   })
 })
+
+describe('stores/operations — «В платежи» (FB-09, Р-17)', () => {
+  const op = (date: string, amount: number, merchant: string): Omit<Operation, 'id'> => ({
+    bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false,
+  })
+  const statement = (from: string, to: string, ...list: Omit<Operation, 'id'>[]): ParsedStatement => ({
+    bank: 'kaspi', from, to, operations: assignIds(list), skipped: 0,
+  })
+
+  it('платёж d4, месяц отмечен этой строкой, правило по продавцу, строка не трата раздела; второй отметки нет; следующая выписка — сама', async () => {
+    signIn('a')
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(planFamilyDoc(), 1)
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-14', -4_990, 'APPLE.COM BILL'))))
+    await store.send(client)
+    const line = store.all.find((o) => o.merchant === 'APPLE.COM BILL')!
+    expect(line.categoryId).toBe('sc_subscriptions')
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_subscriptions')).toMatchObject({ unmarked: 4_990 })
+    const prefill = store.recurringFor(line)!
+    expect(prefill).toMatchObject({ name: 'APPLE.COM BILL', amount: 4_990, day: 14 })
+
+    const id = finance.addObligation({ name: 'Apple Music', note: 'ежемесячно', day: prefill.day, category: 'd4', amount: prefill.amount })
+    await store.addToPayments(line.id, id, client)
+    const marks = () => finance.payments.filter((p) => !p.deletedAt && p.targetId === id)
+    expect(marks()).toEqual([expect.objectContaining({ kind: 'obligation', period: '2026-09', amount: 4_990, source: 'statement', opId: line.id })])
+    expect(finance.merchantRules.find((r) => r.match.merchant === normalizeMerchant('APPLE.COM BILL'))?.to).toEqual({
+      payment: { kind: 'obligation', targetId: id, categoryId: 'sc_subscriptions' },
+    })
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_subscriptions')?.unmarked ?? 0).toBe(0)
+    expect(store.recurringFor(line)).toBeNull()
+
+    await store.addToPayments(line.id, id, client)
+    expect(marks()).toHaveLength(1)
+
+    vi.setSystemTime(new Date('2026-10-16T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-16', op('2026-10-14', -4_990, 'APPLE.COM BILL'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(1)
+    expect(marks().map((p) => p.period)).toEqual(['2026-09', '2026-10'])
+  })
+})

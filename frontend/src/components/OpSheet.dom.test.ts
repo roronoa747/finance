@@ -197,3 +197,25 @@ describe('FB-08: «Разовая» в листе операции', () => {
     expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_food')?.oneOff).toBeUndefined()
   })
 })
+
+describe('FB-09: чип «В платежи» в листе операции', () => {
+  it('у повтора продавца (словарная подписка) — чип; у покупки в магазине и перевода — нет; заведённый (правило платежа) — нет', async () => {
+    const store = await mount()
+    const apple: Operation = { id: 'ap1', bank: 'kaspi', date: '2026-10-13', amount: -4_990, kind: 'purchase', merchant: 'APPLE.COM BILL', categoryId: 'sc_subscriptions', internal: false }
+    store.ops[apple.id] = apple
+    await open('ap1')
+    expect(dialog()!.querySelector('[data-op-extra] [data-op-pay]')).not.toBeNull()
+    await press(dialog()!.querySelector('[data-op-pay]'))
+    const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"]')
+    expect(txt(dialogs[dialogs.length - 1])).toContain('Регулярный платёж')
+    opId.value = null
+    await flush()
+    for (const id of ['p1', 's1']) {
+      await open(id)
+      expect(dialog()!.querySelector('[data-op-pay]')).toBeNull()
+    }
+    useFinanceStore().addMerchantRules([{ match: ruleMatchOf(apple), to: { payment: { kind: 'obligation', targetId: 'x', categoryId: 'sc_subscriptions' } } }], 'a')
+    await open('ap1')
+    expect(dialog()!.querySelector('[data-op-pay]')).toBeNull()
+  })
+})

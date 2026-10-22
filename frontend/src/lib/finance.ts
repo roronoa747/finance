@@ -2,6 +2,7 @@ import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, Pa
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
+import type { RecurringPrefill } from '@/lib/statements/firstRun'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -5220,7 +5221,7 @@ export type SectionWeek = {
    * Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата»,
    * Р-2); `amount` — `spendOf`, `refund` — сколько вернули (FB-04, Р-12), `oneOff` — «Разовая» (FB-08, метка).
    */
-  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number; oneOff?: true }[] }[]
+  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number; oneOff?: true; recurring?: RecurringPrefill }[] }[]
   /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
   more: { count: number; amount: number } | null
 }
@@ -5236,11 +5237,11 @@ export const SECTION_OPS = 5
  */
 export function sectionWeek(
   ops: Operation[],
-  where: { week: string; categoryId: string; limit?: number; tops?: number },
+  where: { week: string; categoryId: string; limit?: number; tops?: number; recurring?: (op: Operation) => RecurringPrefill | null },
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5256,7 +5257,7 @@ export function sectionWeek(
   const days: SectionWeek['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}), ...(op.recurring ? { recurring: op.recurring } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }
@@ -5288,6 +5289,8 @@ export function sectionMonth(
     /** Раздел; не нужен при `oneOff`. */
     categoryId?: string
     oneOff?: boolean
+    /** «В платежи» (FB-09): повтор продавца строки (`recurringOf`); строка получает `recurring`, когда он есть. */
+    recurring?: (op: Operation) => RecurringPrefill | null
     limit?: number
     marked?: ReadonlySet<string>
     categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]
@@ -5307,13 +5310,13 @@ export function sectionMonth(
             !isOneOff(op) &&
             (!planned || (!!where.marked && !where.marked.has(op.id)))),
     )
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
   const shown = list.slice(0, where.limit ?? SECTION_OPS)
   const days: SectionMonth['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}), ...(op.recurring ? { recurring: op.recurring } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }

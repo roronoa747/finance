@@ -285,3 +285,33 @@ describe('FB-08: «Разовая» в форме «Трата» и метка �
     expect(txt(q(`[data-hand-op="${own.id}"] [data-oneoff]`))).toBe('разовая')
   })
 })
+
+describe('FB-09: «В платежи» в листе раздела «Подписки» на «Неделе»', () => {
+  const APPLE: Operation = { id: 'aaaa0000bbbb1111', bank: 'kaspi', date: '2026-10-19', amount: -4_990, kind: 'purchase', merchant: 'APPLE.COM BILL', categoryId: 'sc_subscriptions', internal: false }
+
+  it('кнопка у строки → форма заполнена → имя «Apple Music» → «Добавить»: платёж есть, строки в разделе недели нет', async () => {
+    const { finance, store } = await openWeek('/week')
+    store.ops[APPLE.id] = APPLE
+    const marks = { marked: new Set<string>(), categories: [] }
+    finance.householdDoc.spendTotals = periodsOf([LINE, APPLE]).flatMap(({ kind, period }) => spendTotals([LINE, APPLE], 'a', kind, period, '', marks))
+    await flush()
+    const before = finance.obligations.length
+    await press(q('[data-row="sc_subscriptions"] button.row-open'))
+    expect(q(`[data-section-pay="${APPLE.id}"]`), 'кнопка у строки').toBeTruthy()
+    await press(q(`[data-section-pay="${APPLE.id}"]`))
+    const dialogs = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')]
+    const form = dialogs.at(-1)!
+    expect(txt(form)).toContain('Регулярный платёж')
+    const name = [...form.querySelectorAll('label')].find((l) => l.textContent?.includes('Что оплачиваем'))!.querySelector('input')!
+    expect(name.value).toBe('APPLE.COM BILL')
+    await type(name, 'Apple Music')
+    await press([...form.querySelectorAll<HTMLElement>('button')].find((b) => txt(b) === 'Добавить'))
+    await flush()
+    const ob = finance.obligations.find((o) => o.name === 'Apple Music')!
+    expect(finance.obligations).toHaveLength(before + 1)
+    expect(finance.payments.find((p) => !p.deletedAt && p.targetId === ob.id)).toMatchObject({ period: '2026-10', opId: APPLE.id })
+    expect(txt(document.body)).toContain('Добавлено в платежи')
+    expect(total(finance, 'a:week:2026-W43:sc_subscriptions')?.unmarked ?? 0).toBe(0)
+    expect(q('[data-row="sc_subscriptions"]')).toBeNull()
+  })
+})

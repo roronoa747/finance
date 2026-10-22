@@ -23,7 +23,8 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { declineKey, isDeclined, markedOps, matchCandidates, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { recurringOf, type RecurringPrefill } from '@/lib/statements/firstRun'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacementPairs } from '@/lib/statements/phone'
 import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
@@ -687,6 +688,28 @@ export const useOperationsStore = defineStore('operations', () => {
     return refundCandidates(op, all.value, linked)
   }
 
+  /** Повтор продавца для «В платежи» (FB-09, `recurringOf`): по своим операциям, правилам и отметкам семьи; viewer — нет. */
+  function recurringFor(op: Operation): RecurringPrefill | null {
+    if (auth.isViewer) return null
+    return recurringOf(op, shown.value, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() })
+  }
+
+  /**
+   * «В платежи» сохранено (FB-09, Р-17; образец — `answerRecurring` первого запуска): месяц платежа отмечается этой
+   * строкой (ближайший к дате операции по дню платежа; уже отмечен — второй отметки нет), правило «это платёж по …» по
+   * продавцу — строка уходит из трат раздела, следующие выписки отмечаются сами (`autoMark`).
+   */
+  async function addToPayments(opId: string, obligationId: string, client: ApiClient = apiClient) {
+    const op = all.value.find((o) => o.id === opId)
+    const o = finance.obligations.find((x) => x.id === obligationId && !x.deletedAt)
+    if (!op || !o || auth.isViewer) return
+    const { period } = nearestPeriod(op.date, o.day)
+    const paid = finance.payments.some((p) => !p.deletedAt && p.kind === 'obligation' && p.targetId === o.id && p.period === period)
+    // Отметка — до пересчёта: итоги пишутся с ней, отмеченная строка не трата (хвосты 952/967).
+    if (!paid) finance.markPaid('obligation', o.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
+    await recategorize(ruleMatchOf(op), { payment: { kind: 'obligation', targetId: o.id, categoryId: matchCategory('obligation', o) } }, client)
+  }
+
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */
   async function recategorize(match: MerchantRule['match'], to: MerchantRule['to'], client: ApiClient = apiClient) {
     return recategorizeAll([match], to, client)
@@ -1073,6 +1096,8 @@ export const useOperationsStore = defineStore('operations', () => {
     recategorize,
     editOp,
     refundsFor,
+    recurringFor,
+    addToPayments,
     recategorizeAll,
     totalMarks,
     forgetRule,
