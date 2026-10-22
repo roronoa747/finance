@@ -21,8 +21,17 @@
   дерево — только worktree `C:\Users\SW\finance-razbor`; пуш ради CI; `main`, прод, `memory/STATE.md` не трогать; без
   `npm ci` и новых зависимостей.
 - Задачи по порядку: FB-07 → FB-08 → FB-09 → FB-10. Каждая — коммит `FB-NN: …`.
-- **Факты кода после Блока 1** — критик Блока 1 впишет сюда: имя листа операции и его событий, `OpEdit`/`editOp`/`withEdits`,
-  `spendOf`, `refundCandidates`, `addSpendCategory`, `sectionMonth`, §6 «После Блока 1».
+- **Факты кода после Блока 1** (критик Блока 1, подробно — §6 «После Блока 1»): лист операции — `components/OpSheet.vue`
+  (пропы `opId`, `z`; событие `close`; чипы «Разовая» и «В платежи» — в ряд к «Мне вернули», `data-op-extra`, тихие).
+  Флаг пишется `useOperationsStore().editOp(id, {oneOff: true | null})` (→ `finance.setOpEdit`; снятое — `null`, надгробий
+  нет; итоги периода пересчитываются сами, правка со второго телефона — наблюдатель `opEdits`, он уже смотрит `oneOff`);
+  ручная трата — тот же `editOp` из формы «Трата» (операция в копии). Читать — `store.all` (`withEdits` кладёт `oneOff` на
+  операцию), писать и слать — только `raw`. Сумма — одна `spendOf(op)`; `oneOff` в `SpendTotal` — поверх неё (как
+  `unmarked`). Отбор находок: `sellerOk`/`leakFinds`/`topFinds`/`dueFinds` (в `dueFinds` возвращённое целиком уже не
+  участвует), привычки — `habitTotals`. Пуш, заменённый выпиской, отдаёт правки строке (`finance.carryOpEdits`, `oneOff`
+  тоже). Лист раздела «Недели» — `week/SectionSheet` (`open`/`edit`), «Месяца» — `money/SpendCategorySheet` (`ops` из
+  `sectionMonth`, события `open`/`hand`/`more`) — сюда небольшая кнопка «В платежи» у строки. `addSpendCategory`,
+  `NewCategoryChip`, `refundCandidates` — без изменений.
 - Стенд — §6 (PG `54491`, Go `8191`, Vite `5291`); для FB-09 — выписка владельца с повторяющимся списанием (в Handoff без сумм).
 - Инварианты: деньги целые, одна `spendOf`; `oneOff` в итогах — как `unmarked` (часть `amount`); «Неделя» с разовыми, «Месяц»
   и «обычно» — без (Р-16); на сервер правки не уходят; миграций нет.

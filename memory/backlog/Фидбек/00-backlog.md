@@ -2,7 +2,8 @@
 
 > **Статус:** составлен 2026-10-21 (составитель — Fable 5.1, уровень deep; владелец доступен, но вопросов не задавалось —
 > неясное решено дефолтом с пометкой «решение составителя» в §2, владельцу посмотреть Р-10…Р-22). В работе — Блок 1:
-> исполнитель ✅ 2026-10-21 (ветка `fb-block-1-operations`), следующий шаг — `/critic Фидбек 1`. Блоки 1–3 строятся сразу; Блоки 4–5 — сначала исследование артефактом, потом
+> исполнитель ✅ 2026-10-21, критик ✅ 2026-10-22 (ветка `fb-block-1-operations`, `origin/main` влит), следующий шаг —
+> `/ux Фидбек 1`. FB-13 (4а) — на проде. Блоки 1–3 строятся сразу; Блоки 4–5 — сначала исследование артефактом, потом
 > задачи (в §4 — заглушки).
 
 Источник: `Фидбек-brief.md` (резюме интервью подтверждено владельцем 2026-10-21, 2 раунда, без правок; Р-9 принято).
@@ -188,6 +189,7 @@
 |---|---|---|
 | Х-1. Разбор сам стартует до выписок: `afterPull` → `autoReview` идёт параллельно `GET /api/statements` — запрос успевает раньше `operations.uploads`, счётчик «K находок из 0 операций», часть находок без «обычных» месяцев (стенд 4а: 7 находок и 0 операций вместо 9 и 554). Код на `main` тот же — не регресс 4а | Приёмка 4а (FB-13), 2026-10-21 | ⬜ владелец |
 | Х-2 «Нет, это другое» и «Потом» помнятся на устройстве: второй телефон того же человека спросит об операции ещё раз (воспроизведение FB-01); перенос в личный документ | Блок 1, исполнитель (FB-01 п. 5) | после MVP (§4), решает владелец |
+| Х-3. «Мне вернули» предлагает только приходы-переводы (`transfer-in` / `income`, Р-12); возврат продавца на карту (Kaspi/Freedom «Покупка» со знаком +) в список не попадает — сейчас его можно отметить только «Наличными» с суммой, а сама строка возврата остаётся в «Истории» плюсом. Добавить плюсовые покупки того же продавца в кандидаты — правка `refundCandidates` | Блок 1, критик | ⬜ владелец |
 
 ## 5. Протокол
 
@@ -297,6 +299,28 @@
   `monthly` — её `yearShare`), `yearly` у находок нет; факты — «— в месяц», образ утечки — доля взноса (`goalPace`) или
   мерка; `reviewWork` → `{ops, found, monthly}`, старый `work.yearly` читает только `reviewWorkMonthly`; отчёт — «в месяц
   уходит на найденное»; Go `reviewSystem` — «по деньгам в месяц».
+
+**После Блока 1 (FB-01…FB-06, критик 2026-10-22).**
+- Стор операций: `raw` — сырая копия (всё, что пишет и шлёт на сервер: `remember`, `recategorizeAll`, `forgetRule`,
+  `settleReleased`, `settlePhone`, `send`); `all = withEdits(raw, finance.opEdits)` — для чтения (итоги, лента, листы,
+  находки, привычки, поездка, вопросы). `editOp(id, {memo?, oneOff?, refund?})` → `finance.setOpEdit` + `writeTotals`
+  периодов операции; `refundsFor(op)` → `refundCandidates(op, all, отмеченные зарплатой)`; наблюдатель `opEdits`
+  (подпись — `refund`/`oneOff`, не заметка) переписывает итоги правок со второго телефона. В `send` выписка, заменившая
+  пуш, забирает его «нет» (`declined` `<opId>|пара`) и правки (`finance.carryOpEdits(pairs)`; `replacementPairs` в `phone.ts`).
+- Типы: `OpEdit = Tracked & {id, memo?, oneOff?, refund?: {amount, opId?}}` — снятое поле `null`, надгробий нет;
+  `Operation.memo/oneOff/refund` — только наложенные. `privateDoc.opEdits` в `mergePrivateDocs` (`known`). `liveOpEdits`.
+- Деньги: `spendOf(op)` (`model.ts`) = списание − возврат, не ниже 0 — в `spendTotals` (и `unmarked`), `unknownGroups`,
+  `sectionWeek`/`sectionMonth`/`weekFeed`/`myWeek`, `historyCategories`, `tripTotal` и строках `TripCard`, `leakFinds`/
+  `topFinds`/`dueFinds` (возвращённое целиком в находках не участвует), `habitTotals`. Приход-возврат (`refund.opId`) —
+  `internal` только в `all`; «История» его не показывает.
+- Телефон: `withPhoneCounterparty` (`model.ts`) в `fromWire` и при чтении копии с диска; `toWire` у операций с телефона
+  шлёт `counterparty: null`. «Потом» — `readDeferred`/`writeDeferred` (`lib/storage.ts`, `ff_decisions_deferred`, сутки),
+  ключ пачки `unknownBatch:<неделя>` (`decisionQueue(…, {week})`).
+- Экраны: `components/OpSheet.vue` (пропы `opId`, `z`; событие `close`; ряд тихих чипов под чертой `data-op-extra` — место
+  «Разовой» и «В платежи»); `OpCategorySheet.vue` удалён. `CategoryChips` — проп `current`, внутри `NewCategoryChip`
+  (`created(id)`; он же в `HandSpendSheet`); `finance.addSpendCategory(name) → id | null`. `week/SectionSheet` — события
+  `open(id)` / `edit(id)`; `money/SpendCategorySheet` — проп `ops?: SectionMonth`, события `open` / `hand` / `more`;
+  `sectionMonth(ops, {month, categoryId, limit?, marked?, categories?})`. `OpRow` — проп `refund`; `WeekFeedOp.refund`.
 
 **Команды и среда.**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт `src/**` и `e2e/**`; на `main` 2026-10-20 — 267
