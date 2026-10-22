@@ -229,8 +229,10 @@ describe('stores/operations — отправка выписки', () => {
     await store.send(client)
     await store.recategorize({ merchant: 'steam' }, { categoryId: 'sc_other' }, client)
     const fun = finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2025-07:sc_fun')
-    expect(fun).toMatchObject({ amount: 0, ops: 0 })
+    // Ноль `unmarked`/`oneOff` — явно (возврат приёмки Блока 2 «Фидбек»): без поля слияние вернуло бы прежнее с сервера.
+    expect(fun).toMatchObject({ amount: 0, ops: 0, unmarked: 0, oneOff: 0 })
     expect(fun?.deletedAt).toBeFalsy()
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2025-07:sc_other')).toMatchObject({ unmarked: 0, oneOff: 0 })
   })
 })
 

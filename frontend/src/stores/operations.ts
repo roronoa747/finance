@@ -424,7 +424,9 @@ export const useOperationsStore = defineStore('operations', () => {
   /**
    * Итоги по разделам в общий документ (Р-21) — из **всех** своих операций периода, записи по
    * id заменяются целиком. Раздел, из которого ушли все траты, обнуляется, а не удаляется:
-   * надгробие навсегда закрыло бы этот id.
+   * надгробие навсегда закрыло бы этот id. `unmarked` и `oneOff` пишутся всегда, ноль — явно: слияние оставляет поля,
+   * которых победитель не знает (правило 3 `lib/merge.ts`), — без нуля снятая «Разовая» и отмеченная строка платежа
+   * вернулись бы с сервера прежней суммой (возврат приёмки Блока 2 «Фидбек»).
    */
   function writeTotals(periods: ReturnType<typeof periodsOf>) {
     if (!periods.length) return
@@ -437,13 +439,12 @@ export const useOperationsStore = defineStore('operations', () => {
       const next = spendTotals(all.value, by, kind, period, at, marks)
       const ids = new Set(next.map((t) => t.id))
       for (const t of byId.values()) {
-        if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops)) {
-          const { unmarked: _gone, oneOff: _oneOff, ...rest } = t
-          writes.push({ ...rest, amount: 0, ops: 0, updatedAt: at })
+        if (t.by === by && t.kind === kind && t.period === period && !ids.has(t.id) && (t.amount || t.ops || t.unmarked || t.oneOff)) {
+          writes.push({ ...t, amount: 0, ops: 0, unmarked: 0, oneOff: 0, updatedAt: at })
         }
       }
       // Тот же итог второй раз не пишется: наблюдатель отметок будит пересчёт, а запись — синк.
-      for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push(t)
+      for (const t of next) if (!sameTotal(byId.get(t.id), t)) writes.push({ ...t, unmarked: t.unmarked ?? 0, oneOff: t.oneOff ?? 0 })
     }
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
