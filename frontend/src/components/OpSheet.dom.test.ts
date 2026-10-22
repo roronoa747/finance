@@ -194,7 +194,7 @@ describe('FB-08: «Разовая» в листе операции', () => {
     await press(chip())
     expect(finance.opEdits.find((e) => e.id === 'p1')?.oneOff).toBeNull()
     expect(chip()!.getAttribute('aria-pressed')).toBe('false')
-    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_food')?.oneOff).toBeUndefined()
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_food')?.oneOff).toBe(0)
   })
 })
 

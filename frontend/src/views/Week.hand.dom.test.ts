@@ -275,7 +275,7 @@ describe('FB-08: «Разовая» в форме «Трата» и метка �
     await press(toggle())
     await press(q('[data-hand-save]'))
     expect(finance.opEdits.find((e) => e.id === own.id)?.oneOff).toBeNull()
-    expect(total(finance, 'a:week:2026-W43:sc_food')?.oneOff).toBeUndefined()
+    expect(total(finance, 'a:week:2026-W43:sc_food')?.oneOff).toBe(0)
 
     await press(q('[data-row="sc_food"] button.row-open'))
     expect(q(`[data-hand-op="${own.id}"] [data-oneoff]`)).toBeNull()
