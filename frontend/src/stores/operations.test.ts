@@ -1367,6 +1367,19 @@ describe('stores/operations — «В платежи» (FB-09, Р-17)', () => {
     expect(marks().map((p) => p.period)).toEqual(['2026-09', '2026-10'])
   })
 
+  it('строка ждёт «это платёж по …?» к заведённому платежу — «В платежи» не предлагается (/ux Блока 2: дубль платежа)', async () => {
+    signIn('a')
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(planFamilyDoc(), 1)
+    finance.addObligation({ name: 'Яндекс Плюс', note: 'ежемесячно', day: 14, category: 'd4', amount: 4_990 })
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const store = useOperationsStore()
+    const line: Operation = { id: 'yp000001', ...op('2026-09-14', -4_990, 'Яндекс Плюс'), categoryId: 'sc_subscriptions' }
+    store.ops[line.id] = line
+    expect(store.pendingMatches.some((c) => c.opId === line.id), 'вопрос «это платёж по Яндекс Плюс?»').toBe(true)
+    expect(store.recurringFor(line)).toBeNull()
+  })
+
   it('viewer: повтора нет, «В платежи» ничего не пишет (критик Блока 2)', async () => {
     signIn('a')
     const finance = useFinanceStore()

@@ -688,9 +688,14 @@ export const useOperationsStore = defineStore('operations', () => {
     return refundCandidates(op, all.value, linked)
   }
 
-  /** Повтор продавца для «В платежи» (FB-09, `recurringOf`): по своим операциям, правилам и отметкам семьи; viewer — нет. */
+  /**
+   * Повтор продавца для «В платежи» (FB-09, `recurringOf`): по своим операциям, правилам и отметкам семьи; viewer — нет.
+   * Строка уже отмечена или ждёт вопроса «это платёж по …?» к заведённому платежу (`markedOps`) — тоже нет: второй такой
+   * же платёж не заводим (`/ux` Блока 2).
+   */
+  const shownMarked = computed(() => totalMarks(shown.value).marked)
   function recurringFor(op: Operation): RecurringPrefill | null {
-    if (auth.isViewer) return null
+    if (auth.isViewer || shownMarked.value.has(op.id)) return null
     return recurringOf(op, shown.value, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() })
   }
 
