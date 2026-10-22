@@ -8,6 +8,7 @@ import { money, plain } from '@/lib/money'
 import { dayLabel } from '@/lib/dates'
 import { tripSpent, type TripStatus } from '@/lib/finance'
 import { spendColor } from '@/lib/palette'
+import { spendOf } from '@/lib/statements/model'
 import type { Operation } from '@/lib/statements/types'
 import type { Goal } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
@@ -79,7 +80,7 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
       </button>
       <div v-if="opsOpen" class="mt-1" data-trip-ops>
         <div v-for="o in lists.ops" :key="o.id" class="flex items-center gap-2 border-t border-line py-2.5 first:border-t-0" :data-trip-op="o.id">
-          <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="o.amount" :date="day(o.date)" />
+          <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="-spendOf(o)" :refund="o.refund?.amount" :date="day(o.date)" />
           <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-exclude @click="exclude(o)">Убрать</Button>
         </div>
       </div>
@@ -98,7 +99,7 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
       </button>
       <div v-if="excludedOpen" class="mt-1" data-trip-excluded>
         <div v-for="o in lists.excluded" :key="o.id" class="flex items-center gap-2 border-t border-line py-2.5 first:border-t-0" :data-trip-excluded-op="o.id">
-          <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="o.amount" :date="day(o.date)" muted />
+          <OpRow class="min-w-0 flex-1 !border-t-0 !py-0" :merchant="o.merchant" :category="category(o)" :amount="-spendOf(o)" :refund="o.refund?.amount" :date="day(o.date)" muted />
           <Button variant="ghost" size="sm" class="shrink-0 px-2" data-trip-include @click="include(o)">Вернуть</Button>
         </div>
       </div>

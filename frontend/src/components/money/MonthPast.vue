@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
-import { monthPlan, monthPlanPast, rkShare, spendCompare, spendPlansBy } from '@/lib/finance'
+import { monthPlan, monthPlanPast, rkShare, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
+import OpSheet from '@/components/OpSheet.vue'
+import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
 import { useQueryValue } from '@/components/useQuerySheet'
 
 /**
@@ -38,6 +42,22 @@ const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, i
 const catPlans = computed(() =>
   catRow.value ? spendPlansBy(monthPlan(input.value.state, input.value.ctx), finance.people.filter((p) => !p.deletedAt), catRow.value.categoryId) : [],
 )
+/** Свои операции раздела за тот месяц (FB-05, Р-14) — как на «Месяце»; viewer — нет. */
+const auth = useAuthStore()
+const ops = useOperationsStore()
+const catAll = ref(false)
+watch(catFor, () => (catAll.value = false))
+const catOps = computed(() => {
+  if (!catFor.value || auth.isViewer) return null
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  return sectionMonth(ops.shown, { month: props.monthKey, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
+})
+const catOp = ref<string | null>(null)
+const catHand = ref<string | null>(null)
+function openCatHand(id: string) {
+  closeCat()
+  catHand.value = id
+}
 </script>
 
 <template>
@@ -67,6 +87,20 @@ const catPlans = computed(() =>
       </div>
     </Card>
 
-    <SpendCategorySheet :row="catRow" :rk="catRk" :plans="catPlans" :can-edit="false" :month="monthKey" @close="closeCat" />
+    <SpendCategorySheet
+      :row="catRow"
+      :rk="catRk"
+      :plans="catPlans"
+      :can-edit="false"
+      :month="monthKey"
+      :ops="catOps"
+      @close="closeCat"
+      @more="catAll = true"
+      @open="(id) => (catOp = id)"
+      @hand="openCatHand"
+    />
+    <!-- Своя операция прошлого месяца — заметку и «Мне вернули» поправить можно (FB-05). -->
+    <OpSheet :op-id="catOp" :z="60" @close="catOp = null" />
+    <HandSpendSheet v-if="!auth.isViewer" :open="catHand !== null" :op-id="catHand" @close="catHand = null" />
   </div>
 </template>

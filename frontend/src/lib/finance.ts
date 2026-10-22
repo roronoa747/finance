@@ -1,7 +1,7 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
-import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant } from '@/lib/statements/model'
+import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
@@ -2461,7 +2461,7 @@ export function historyCategories(ops: Operation[], months: string[]): string[] 
   for (const o of ops) {
     if (o.internal || o.amount >= 0 || !months.includes(o.date.slice(0, 7))) continue;
     const id = o.categoryId ?? UNKNOWN_CATEGORY;
-    sums.set(id, (sums.get(id) ?? 0) - o.amount);
+    sums.set(id, (sums.get(id) ?? 0) + spendOf(o));
   }
   return [...sums].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 }
@@ -5132,7 +5132,7 @@ export function myWeek(
   for (const op of ctx.ops ?? []) {
     if (!isSpend(op) || op.date <= end || op.date.slice(0, 7) !== month) continue
     const id = op.categoryId ?? UNKNOWN_CATEGORY
-    later.set(id, (later.get(id) ?? 0) - op.amount)
+    later.set(id, (later.get(id) ?? 0) + spendOf(op))
   }
 
   const ids = [...new Set([...now.keys(), ...planned.map((r) => r.categoryId)])]
@@ -5194,8 +5194,11 @@ export type SectionWeek = {
   count: number
   /** Топ продавцов: имя, число операций, сумма — по убыванию суммы. */
   tops: { name: string; count: number; amount: number }[]
-  /** Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата», Р-2). */
-  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean }[] }[]
+  /**
+   * Операции по дням, свежие сверху — первые `limit`; `hand` — вписана руками, её можно поправить (бэклог «Ручная трата»,
+   * Р-2); `amount` — `spendOf`, `refund` — сколько вернули (FB-04, Р-12).
+   */
+  days: { date: string; ops: { id: string; name: string; amount: number; hand: boolean; refund?: number }[] }[]
   /** Хвост «Ещё N · сумма»: что не поместилось; null — показано всё. */
   more: { count: number; amount: number } | null
 }
@@ -5206,7 +5209,8 @@ export const SECTION_OPS = 5
 
 /**
  * Лист раздела (Р-101): свои траты раздела за неделю — топ продавцов и операции по дням. Отбор — тот же, что у
- * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное.
+ * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное. Имя —
+ * продавец коротко (`shortMerchant`) или получатель, как в ленте и листе операции.
  */
 export function sectionWeek(
   ops: Operation[],
@@ -5214,7 +5218,7 @@ export function sectionWeek(
 ): SectionWeek {
   const list = ops
     .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? op.merchant, amount: -op.amount, hand: isHand(op), key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 
   const groups = new Map<string, { name: string; count: number; amount: number }>()
@@ -5230,7 +5234,7 @@ export function sectionWeek(
   const days: SectionWeek['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }
@@ -5244,6 +5248,42 @@ export function sectionWeek(
   }
 }
 
+/** Лист раздела «Месяца» (FB-05, Р-14): свои операции раздела за месяц по дням — как у недели, без топа продавцов. */
+export type SectionMonth = Omit<SectionWeek, 'tops'>
+
+/**
+ * Свои операции раздела за месяц `YYYY-MM` (FB-05, Р-4, Р-14) — для листа раздела «Месяца»: отбор — как у факта
+ * раздела (`isSpend`; у разделов платежей — только строки без отметки `marked`, как `weekFeed` и итоги `unmarked`),
+ * сумма строки — `spendOf` (с «вернули»), дни свежими сверху, первые `limit` и «Ещё N · сумма». Сумма всех строк —
+ * своя часть факта раздела. Топа продавцов нет: в месяце он у находок.
+ */
+export function sectionMonth(
+  ops: Operation[],
+  where: { month: string; categoryId: string; limit?: number; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+): SectionMonth {
+  const planned = plannedElsewhere(where.categoryId, where.categories ?? [])
+  const list = ops
+    .filter(
+      (op) =>
+        isSpend(op) &&
+        (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
+        op.date.slice(0, 7) === where.month &&
+        (!planned || (!!where.marked && !where.marked.has(op.id))),
+    )
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount }))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
+  const shown = list.slice(0, where.limit ?? SECTION_OPS)
+  const days: SectionMonth['days'] = []
+  for (const op of shown) {
+    const last = days.at(-1)
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}) }
+    if (last?.date === op.date) last.ops.push(item)
+    else days.push({ date: op.date, ops: [item] })
+  }
+  const rest = list.slice(shown.length)
+  return { total: amountTotal(list), count: list.length, days, more: rest.length ? { count: rest.length, amount: amountTotal(rest) } : null }
+}
+
 /** Трата ленты недели (`weekFeed`). */
 export type WeekFeedOp = {
   id: string
@@ -5255,8 +5295,10 @@ export type WeekFeedOp = {
   categoryId: string
   /** Пришла с телефона (касание Apple Pay или пуш банка); нет — строка выписки. */
   phone: boolean
-  /** Вписана руками (бэклог «Ручная трата», Р-2): нажатие — лист правки «Трата», а не «куда отнести?». */
+  /** Вписана руками (бэклог «Ручная трата», Р-2): нажатие — лист правки «Трата», а не лист операции. */
   hand: boolean
+  /** «Мне вернули» (FB-04, Р-12): сколько вернули; `amount` — уже за вычетом (`spendOf`). */
+  refund?: number
 }
 
 /**
@@ -5284,10 +5326,11 @@ export function weekFeed(
       id: op.id,
       // Ручная — подпись как вписал человек (заметка или раздел), без сокращения продавца выписки.
       name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)),
-      amount: -op.amount,
+      amount: spendOf(op),
       categoryId: op.categoryId ?? UNKNOWN_CATEGORY,
       phone: !!op.source,
       hand: isHand(op),
+      ...(op.refund ? { refund: op.refund.amount } : {}),
     }
     const last = days.at(-1)
     if (last?.date === op.date) last.ops.push(item)
@@ -5528,6 +5571,8 @@ export function decisionQueue(
     unknown?: UnknownGroup[]
     answeredMonthEnd?: string | null
     now?: { day: number; key: string }
+    /** Неделя пачки «Без раздела» (FB-01, Р-15 а): ключ `unknownBatch:<неделя>` — «Потом» новой недели не прячет. */
+    week?: string
   },
 ): Decision[] {
   if (ctx.canEdit === false) return []
@@ -5546,12 +5591,13 @@ export function decisionQueue(
     })
   }
 
-  // Все незнакомые — одно решение-пачка (Р-58): ключ постоянный — «Потом» откладывает всю пачку, «N из M» считает её одной.
+  // Все незнакомые — одно решение-пачка (Р-58): ключ — с неделей (FB-01): «Потом» откладывает пачку этой недели, «N из M»
+  // считает её одной.
   const unknown = [...(ctx.unknown ?? [])].sort((a, b) => b.amount - a.amount)
   if (unknown.length) {
     out.push({
       kind: 'unknownBatch',
-      key: 'unknownBatch',
+      key: ctx.week ? `unknownBatch:${ctx.week}` : 'unknownBatch',
       question: `Без раздела · ${unknown.length}`,
       meta: money(amountTotal(unknown)),
       actions: { ghost: 'Потом' },
@@ -5636,8 +5682,8 @@ export function tripOps(
 }
 
 /** Сумма трат (положительная, целые тенге) и число строк. */
-export function tripTotal(ops: Pick<Operation, 'amount'>[]): { amount: number; ops: number } {
-  return { amount: ops.reduce((s, op) => s + Math.round(-op.amount), 0), ops: ops.length }
+export function tripTotal(ops: Pick<Operation, 'amount' | 'refund'>[]): { amount: number; ops: number } {
+  return { amount: ops.reduce((s, op) => s + Math.round(spendOf(op)), 0), ops: ops.length }
 }
 
 export type TripSpent = {

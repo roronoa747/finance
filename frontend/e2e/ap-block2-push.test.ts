@@ -110,7 +110,7 @@ describe('e2e / Apple Pay Блок 2 — пуши банков', () => {
     expect(weekTotal(A)).toBe(5_500)
   })
 
-  it('перевод себе Kaspi → Freedom — не трата, итог недели не вырос; перевод человеку — трата «Без раздела»', async () => {
+  it('перевод себе Kaspi → Freedom — не трата, итог недели не вырос; перевод человеку — трата «Переводы людям» (FB-01: получатель из продавца пуша)', async () => {
     const A = await phone(server, st, 'a')
     serverPush(st, 'u-a', { id: 'c000000000000001', date: '2026-10-15', amount: -20_000, merchant: 'Перевод', kind: 'transfer-out', bank: 'kaspi' })
     // Телефон подтянул списание раньше, чем пришло пополнение: пока это трата.
@@ -126,7 +126,9 @@ describe('e2e / Apple Pay Блок 2 — пуши банков', () => {
     serverPush(st, 'u-a', { id: 'c000000000000003', date: '2026-10-15', amount: -7_000, merchant: 'Перевод Айгерим С.', kind: 'transfer-out', bank: 'freedom' })
     await pull(A)
     expect(weekTotal(A)).toBe(7_000)
-    expect(unknownGroups(opsOf(A)).map((g) => g.label)).toEqual(['Перевод Айгерим С.'])
+    // FB-01 (Р-15 б): получатель выведен из «Перевод Имя Ф.» — раздел как у строки выписки, вопроса «Без раздела» нет.
+    expect(opsOf(A).find((o) => o.id === 'c000000000000003')).toMatchObject({ counterparty: 'Айгерим С.', categoryId: 'sc_people' })
+    expect(unknownGroups(opsOf(A))).toEqual([])
 
     // Критик Б2: пополнение той же суммы без отправителя в другом банке — не пара переводу человеку: ни пушем (сервер),
     // ни строкой выписки (`pairInternalTransfers` не берёт операции с телефона) — трата другу не пропадает.

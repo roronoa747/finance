@@ -10,13 +10,14 @@ import Sheet from '@/components/kit/Sheet.vue'
 
 /**
  * Лист раздела «Недели» (Р-101; макет week-month.html «Нажал „Такси“»): сумма за неделю, к прошлой, остаток на
- * месяц, топ продавцов и свои операции по дням — первые пять, остальные за «Ещё N». Только чтение, кроме ручных трат
- * (нажатие — `edit`, лист «Трата», бэклог «Ручная трата», Р-2); всё считает
+ * месяц, топ продавцов и свои операции по дням — первые пять, остальные за «Ещё N». Строка — кнопка: ручная трата —
+ * `edit` (лист «Трата», бэклог «Ручная трата», Р-2), строка выписки и с телефона — `open` (лист операции `OpSheet`,
+ * FB-04, Р-14); у возврата — «вернули N» мелко. Всё считает
  * `sectionWeek` / `myWeek` (`finance.ts`). Времени операции в выписке нет — строка без него. Операции — вместе с
  * выпиской, которая ещё ждёт тост (`store.shown`): лист сходится со строкой раздела и до отправки.
  */
 const props = defineProps<{ row: MyWeekRow | null; week: string; monthName: string }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'edit', id: string): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'edit', id: string): void; (e: 'open', id: string): void }>()
 
 const store = useOperationsStore()
 const all = ref(false)
@@ -52,25 +53,23 @@ const detail = computed(() =>
       <div class="flex flex-col" data-section-ops>
         <template v-for="d in detail.days" :key="d.date">
           <p class="pb-1 pt-2.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ dayWeekdayLabel(d.date) }}</p>
-          <template v-for="o in d.ops" :key="o.id">
-            <!-- Ручная трата (бэклог «Ручная трата», Р-2): строка — кнопка правки, карандаш у суммы; строки выписки — только чтение. -->
-            <button
-              v-if="o.hand"
-              type="button"
-              class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-[7px] text-left text-[14.5px] text-ink"
-              :aria-label="`Поправить: ${o.name}`"
-              :data-hand-op="o.id"
-              @click="emit('edit', o.id)"
-            >
-              <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
-              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
-              <PhPencilSimple :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
-            </button>
-            <div v-else class="flex items-baseline gap-2 border-t border-line py-[7px] text-[14.5px] text-ink">
-              <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
-              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
-            </div>
-          </template>
+          <!-- Строка — кнопка: ручная (карандаш) — лист «Трата», выписка и телефон (шеврон) — лист операции (FB-04). -->
+          <button
+            v-for="o in d.ops"
+            :key="o.id"
+            type="button"
+            class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-[7px] text-left text-[14.5px] text-ink"
+            :aria-label="o.hand ? `Поправить: ${o.name}` : o.name"
+            :data-hand-op="o.hand ? o.id : undefined"
+            :data-section-op="o.hand ? undefined : o.id"
+            @click="o.hand ? emit('edit', o.id) : emit('open', o.id)"
+          >
+            <span class="min-w-0 flex-1 truncate">{{ o.name }}</span>
+            <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
+            <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+            <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+            <PhCaretRight v-else :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+          </button>
         </template>
       </div>
       <button

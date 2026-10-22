@@ -8,7 +8,7 @@ import { RouterLink } from 'vue-router'
  * ревью магазинов.
  */
 const CONTACT = 'ilyas.muratbek.99@gmail.com'
-const UPDATED = '20 октября 2026'
+const UPDATED = '21 октября 2026'
 </script>
 
 <template>
@@ -31,6 +31,7 @@ const UPDATED = '20 октября 2026'
         <li>Почту, имя и идентификатор аккаунта Google — чтобы вы входили.</li>
         <li>Общий документ семьи: доходы, платежи, цели, желания, итоги трат по разделам — его видят участники семьи.</li>
         <li>Ваши операции из выписок — продавец, дата, сумма, раздел и банк. Без ФИО, номеров карт и счетов. Видны только вам.</li>
+        <li>Ваши заметки к операциям и отметки «Мне вернули» — в вашем личном документе. Видны только вам; партнёру доходят лишь итоги разделов.</li>
         <li>Apple Pay и пуши банков, если подключите: магазин или получатель («Имя Ф.»), сумма, банк и время — без номера карты, остатка и текста пуша. Видно только вам, отключается в настройках.</li>
         <li>Фото целей и желаний, которые вы добавили.</li>
         <li>Подписки на уведомления, если вы их включите.</li>
@@ -86,7 +87,8 @@ const UPDATED = '20 октября 2026'
       <h2 class="type-h3 text-ink">Privacy policy (summary)</h2>
       <p class="mt-1.5">
         Family Finance stores your Google email, name and account id; your household's shared budget document; your own
-        statement transactions (merchant, date, amount, category, bank — no names or card/account numbers), Apple Pay
+        statement transactions (merchant, date, amount, category, bank — no names or card/account numbers) with your notes
+        and "refunded" marks on them (your personal document, visible only to you), Apple Pay
         purchases and bank notifications if you connect them (store or recipient as "Name I.", amount, bank and time — no
         card number, balance or notification text; visible only to you,
         turned off in Settings), goal photos,
@@ -100,7 +102,7 @@ const UPDATED = '20 октября 2026'
         on this data, processes it outside Seoul and keeps requests for up to 30 days. We store your consent, the
         household's month reviews with the figures sent, and monthly AI request counts and spend.
         Delete your account and data any time in Settings → “Удалить аккаунт и данные”. Contact:
-        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 20, 2026.
+        <a :href="`mailto:${CONTACT}`" class="text-brand">{{ CONTACT }}</a>. Updated October 21, 2026.
       </p>
     </section>
   </article>

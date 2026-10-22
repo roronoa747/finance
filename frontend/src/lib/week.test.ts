@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionWeek, startWeek, weekFeed, weekTrend, type MonthPlanState } from './finance'
+import { firstWeek, monthPlan, myWeek, prevWeekKey, sectionMonth, sectionWeek, startWeek, weekFeed, weekTrend, type MonthPlanState } from './finance'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
@@ -215,7 +215,8 @@ describe('sectionWeek — раздел за неделю (Р-101)', () => {
   })
 
   it('не разобранное — раздел `_unknown`; переводы между своими и доходы не входят', () => {
-    expect(sectionWeek(OPS, { week: '2026-W42', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 12_400, count: 1, tops: [{ name: 'ИП Ахметова', count: 1, amount: 12_400 }] })
+    // Имя — продавец коротко, как в ленте и в заголовке листа операции (/ux Фидбек 1).
+    expect(sectionWeek(OPS, { week: '2026-W42', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 12_400, count: 1, tops: [{ name: 'Ахметова', count: 1, amount: 12_400 }] })
     expect(sectionWeek(OPS, { week: '2026-W41', categoryId: UNKNOWN_CATEGORY })).toMatchObject({ total: 0, count: 0, tops: [], days: [], more: null })
   })
 
@@ -343,5 +344,57 @@ describe('startWeek · firstWeek — какую неделю открыть и �
     expect(firstWeek(TOTALS, 'a')).toBe('2026-W40')
     expect(firstWeek(TOTALS, 'b')).toBe('2026-W42')
     expect(firstWeek([], 'a')).toBeNull()
+  })
+})
+
+describe('«Мне вернули» в неделе (FB-02, Р-12): одна spendOf у итогов, ленты и листа раздела', () => {
+  // W42: продукты Magnum 13-го 7 000 — вернули 3 000 (частично), Базар 15-го 4 000 — вернули всё.
+  const edited = OPS.map((o) =>
+    o.date === '2026-10-13' && o.merchant === 'Magnum' ? { ...o, refund: { amount: 3_000 } } : o.date === '2026-10-15' && o.merchant === 'Базар' ? { ...o, refund: { amount: 4_000 } } : o,
+  )
+  const totals = periodsOf(edited).flatMap(({ kind, period }) => spendTotals(edited, 'a', kind, period, T0))
+  const food = (t: SpendTotal[]) => t.find((x) => x.kind === 'week' && x.period === '2026-W42' && x.categoryId === 'sc_food')!
+
+  it('итог недели раздела: 25 000 − 3 000 − 4 000 = 18 000; строк — 7 (полный возврат остаётся строкой)', () => {
+    expect(food(totals)).toMatchObject({ amount: 18_000, ops: 7 })
+  })
+
+  it('лента и лист раздела — те же суммы: строка с полным возвратом — 0', () => {
+    const f = weekFeed(edited, { week: '2026-W42' })
+    // 41 400 − 7 000 = 34 400.
+    expect(f.total).toBe(34_400)
+    expect(f.days.find((d) => d.date === '2026-10-15')!.ops.map((o) => o.amount)).toEqual([0])
+    const s = sectionWeek(edited, { week: '2026-W42', categoryId: 'sc_food', limit: Infinity })
+    expect(s.total).toBe(food(totals).amount)
+    expect(s.count).toBe(7)
+  })
+})
+
+describe('sectionMonth — свои операции раздела за месяц (FB-05, Р-14)', () => {
+  it('октябрь, продукты: 11 строк по дням свежими сверху, первые 5 и «Ещё 6 · сумма»; сумма всех = факт раздела месяца', () => {
+    const m = sectionMonth(OPS, { month: '2026-10', categoryId: 'sc_food' })
+    // 8 000 + 18 000 + 25 000 + 6 000 = 57 000 (сентябрьские 10 000 не в счёт), 11 строк.
+    expect(m).toMatchObject({ total: 57_000, count: 11 })
+    expect(m.days.map((d) => d.date)).toEqual(['2026-10-20', '2026-10-18', '2026-10-17', '2026-10-16', '2026-10-15'])
+    expect(m.more).toEqual({ count: 6, amount: 57_000 - (6_000 + 2_500 + 1_500 + 3_000 + 4_000) })
+    const total = TOTALS.find((t) => t.by === 'a' && t.kind === 'month' && t.period === '2026-10' && t.categoryId === 'sc_food')!
+    expect(sectionMonth(OPS, { month: '2026-10', categoryId: 'sc_food', limit: Infinity }).days.flatMap((d) => d.ops).reduce((a, o) => a + o.amount, 0)).toBe(total.amount)
+    expect(sectionMonth(OPS, { month: '2026-09', categoryId: 'sc_food' })).toMatchObject({ total: 10_000, count: 1, more: null })
+  })
+
+  it('возврат — spendOf и «вернули» в строке; ручная — hand; раздел платежей — только строки без отметки', () => {
+    const list: Operation[] = [
+      op('2026-10-05', 12_000, 'sc_home', 'Leroy', { refund: { amount: 2_000 } }),
+      op('2026-10-06', 3_000, 'sc_home', 'Базар', { bank: 'hand' }),
+      op('2026-10-10', 25_000, 'sc_utilities', 'Алсеко', { id: 'u1' }),
+      op('2026-10-11', 5_000, 'sc_utilities', 'Алсеко', { id: 'u2' }),
+    ]
+    const home = sectionMonth(list, { month: '2026-10', categoryId: 'sc_home' })
+    expect(home.total).toBe(13_000)
+    expect(home.days.flatMap((d) => d.ops)).toEqual([
+      { id: expect.any(String), name: 'Базар', amount: 3_000, hand: true },
+      { id: expect.any(String), name: 'Leroy', amount: 10_000, hand: false, refund: 2_000 },
+    ])
+    expect(sectionMonth(list, { month: '2026-10', categoryId: 'sc_utilities', marked: new Set(['u1']), categories: [] }).days.flatMap((d) => d.ops.map((o) => o.id))).toEqual(['u2'])
   })
 })

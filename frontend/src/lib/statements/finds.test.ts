@@ -194,3 +194,35 @@ describe('reviewFinds — всё вместе', () => {
     expect(sameFind(undefined, f)).toBe(false)
   })
 })
+
+describe('«Мне вернули» в находках (FB-02, Р-12)', () => {
+  it('утечка — сумма за вычетом возврата; полный возврат — не покупка утечки', () => {
+    const list = times(7, 'Apteka Plus', -1_500, 'sc_health', SEP)
+    list[0] = { ...list[0], refund: { amount: 500 } }
+    expect(leakFinds(list, 'a', SEP)[0]).toMatchObject({ count: 7, amount: 10_000 })
+    // Шесть покупок и одна возвращённая целиком: в утечке шесть (порог LEAK_MIN_COUNT = 6) — 9 000.
+    const full = times(7, 'Apteka Plus', -1_500, 'sc_health', SEP)
+    full[0] = { ...full[0], refund: { amount: 1_500 } }
+    expect(leakFinds(full, 'a', SEP)[0]).toMatchObject({ count: 6, amount: 9_000 })
+    // Шестая тоже возвращена — пять, не утечка.
+    full[1] = { ...full[1], refund: { amount: 1_500 } }
+    expect(leakFinds(full, 'a', SEP)).toEqual([])
+  })
+
+  it('верхушка раздела — сумма и крупнейшие покупки по spendOf', () => {
+    const ops = [op('Divan Store', -200_000, 'sc_home', day(SEP, 3), { refund: { amount: 150_000 } }), op('Leroy', -80_000, 'sc_home', day(SEP, 4))]
+    const top = topFinds(ops, 'a', SEP)[0]
+    expect(top).toMatchObject({ amount: 130_000, count: 2 })
+    expect(top.top).toEqual([{ name: 'Leroy', amount: 80_000 }, { name: 'Divan Store', amount: 50_000 }])
+  })
+
+  it('двойное, которое вернули целиком, — не находка; подорожание — по сумме за вычетом возврата (критик Блока 1)', () => {
+    const at = (d: number, extra: Partial<Operation> = {}) => op('SPORT CLUB', -12_000, 'sc_fun', day(SEP, d), extra)
+    expect(dueFinds([at(3), at(4)], 'a', SEP, NONE).map((f) => f.kind)).toEqual(['double'])
+    expect(dueFinds([at(3), at(4, { refund: { amount: 12_000 } })], 'a', SEP, NONE)).toEqual([])
+    // Кинопоиск 2 990 при плане 2 490, вернули 600 — заплачено 2 390: не дороже.
+    const ctx = { ...NONE, obligations: [obligation('o1', 'Кинопоиск', 2_490)], rules: [payRule('KINOPOISK', 'o1')] }
+    expect(dueFinds([op('KINOPOISK', -2_990, 'sc_subscriptions', day(SEP, 10))], 'a', SEP, ctx).map((f) => f.kind)).toEqual(['pricier'])
+    expect(dueFinds([op('KINOPOISK', -2_990, 'sc_subscriptions', day(SEP, 10), { refund: { amount: 600 } })], 'a', SEP, ctx)).toEqual([])
+  })
+})

@@ -4,7 +4,7 @@ import type { Credit, Obligation, PersonId, RateBook } from '@/types/finance'
 import { UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
 import { detectRecurring } from './firstRun'
 import { habitKeepFrom, habitOf } from './habits'
-import { dayNumber, entrepreneurName, isSpend, normalizeMerchant, ruleFor } from './model'
+import { dayNumber, entrepreneurName, isSpend, normalizeMerchant, ruleFor, spendOf } from './model'
 import type { MerchantRule, Operation, ReviewFind, SpendCategory } from './types'
 
 // Находки по операциям (бэклог «Разбор», Р-13, Р-14, RZ-01): каждый телефон ищет их по своим операциям — операции
@@ -94,10 +94,11 @@ const latest = (list: Operation[]) => list.reduce((a, b) => (b.date > a.date ? b
 
 /** Утечки участника за месяц: частые мелкие траты у одного продавца; до 5 по сумме. */
 export function leakFinds(ops: Operation[], by: PersonId, period: string, categories: Categories = [], at = new Date().toISOString()): ReviewFind[] {
-  const mine = ops.filter((op) => inMonth(op, period) && sellerOk(op, categories) && habitOf(op) === null)
+  // Возврат на всю сумму (`spendOf` 0, FB-02) — не трата продавца.
+  const mine = ops.filter((op) => inMonth(op, period) && sellerOk(op, categories) && habitOf(op) === null && spendOf(op) > 0)
   const out: ReviewFind[] = []
   for (const [key, list] of bySeller(mine)) {
-    const amount = list.reduce((s, op) => s - op.amount, 0)
+    const amount = list.reduce((s, op) => s + spendOf(op), 0)
     if (list.length < LEAK_MIN_COUNT || amount > LEAK_MAX_AVG * list.length) continue
     const last = latest(list)
     out.push(find(by, period, 'leak', key, { name: clipName(last.merchant), categoryId: last.categoryId, count: list.length, amount }, at))
@@ -109,7 +110,7 @@ export function leakFinds(ops: Operation[], by: PersonId, period: string, catego
 export function topFinds(ops: Operation[], by: PersonId, period: string, categories: Categories = [], at = new Date().toISOString()): ReviewFind[] {
   const groups = new Map<string, Operation[]>()
   for (const op of ops) {
-    if (!inMonth(op, period) || !isSpend(op) || !op.categoryId) continue
+    if (!inMonth(op, period) || !isSpend(op) || !op.categoryId || !spendOf(op)) continue
     const c = op.categoryId
     if (c === UNKNOWN_CATEGORY || SPEND_LAST.includes(c) || plannedElsewhere(c, categories)) continue
     const list = groups.get(c)
@@ -118,13 +119,13 @@ export function topFinds(ops: Operation[], by: PersonId, period: string, categor
   }
   const out: ReviewFind[] = []
   for (const [categoryId, list] of groups) {
-    const amount = list.reduce((s, op) => s - op.amount, 0)
+    const amount = list.reduce((s, op) => s + spendOf(op), 0)
     // В покупки — только те, что можно назвать (без людей и ИП); в сумму и счётчик — все траты раздела.
     const top = list
       .filter((op) => sellerOk(op))
-      .sort((a, b) => a.amount - b.amount || a.date.localeCompare(b.date))
+      .sort((a, b) => spendOf(b) - spendOf(a) || a.date.localeCompare(b.date))
       .slice(0, 2)
-      .map((op) => ({ name: clipName(op.merchant), amount: -op.amount }))
+      .map((op) => ({ name: clipName(op.merchant), amount: spendOf(op) }))
     out.push(find(by, period, 'top', categoryId, { name: '', categoryId, count: list.length, amount, top }, at))
   }
   return out.sort((a, b) => b.amount - a.amount).slice(0, FINDS_MAX.top)
@@ -143,7 +144,8 @@ const paymentOf = (op: Operation, rules: MerchantRule[]) => {
  */
 export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: DueCtx, at = new Date().toISOString()): ReviewFind[] {
   const from = addMonths(period, -DUE_MONTHS)
-  const window = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) <= period && sellerOk(op))
+  // Возврат на всю сумму (`spendOf` 0, FB-02) — не списание: двойное, которое банк вернул, — не находка (критик Блока 1).
+  const window = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) <= period && sellerOk(op) && spendOf(op) > 0)
   const out: ReviewFind[] = []
   const planned = new Set(
     [...ctx.obligations, ...ctx.credits].filter((x) => !x.deletedAt).map((x) => normalizeMerchant(x.name)),
@@ -174,7 +176,7 @@ export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: Du
     const o = ctx.obligations.find((x) => x.id === p.targetId && !x.deletedAt)
     if (!o || o.estimate) continue
     const was = amountAt(o, period, ctx.book)
-    const paid = -op.amount
+    const paid = spendOf(op)
     if (was <= 0 || paid * 100 < was * (100 + PRICIER_SHARE) || paid - was < PRICIER_MIN) continue
     const key = keyOf(op)
     const prev = pricier.get(key)

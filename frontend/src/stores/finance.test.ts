@@ -2546,3 +2546,40 @@ describe('PN-22: «Пришла» по ритму — ключ прихода', 
     expect(store.markSalary('a', { accountId: null })!).toMatchObject({ period: '2026-10', amount: 700_000 })
   })
 })
+
+describe('FB-03: addSpendCategory — новый раздел трат', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('id sc_ + 8 hex, order — последний + 1, цвет — следующий по кругу, слот не выбран; дубль по имени — тот же id; пустое — ничего', () => {
+    const store = useFinanceStore()
+    store.householdDoc.spendCategories = [
+      { id: 'sc_food', name: 'Продукты', hue: 'green', order: 1, updatedAt: '' },
+      { id: 'sc_x', name: 'Последний', hue: 'steel', order: 7, updatedAt: '' },
+      { id: 'sc_gone', name: 'Удалённый', hue: 'blue', order: 9, updatedAt: '', deletedAt: '2026-01-01T00:00:00Z' },
+    ]
+    const id = store.addSpendCategory('  Подарки  ')!
+    expect(id).toMatch(/^sc_[0-9a-f]{8}$/)
+    const c = store.householdDoc.spendCategories!.find((x) => x.id === id)!
+    // order: max(1, 7, 9) + 1 = 10; цвет — после steel (последний живой по порядку) по кругу — blue.
+    expect(c).toMatchObject({ name: 'Подарки', order: 10, hue: 'blue', slot: null })
+    expect(store.addSpendCategory('ПОДАРКИ')).toBe(id)
+    expect(store.addSpendCategory('продукты')).toBe('sc_food')
+    expect(store.addSpendCategory('   ')).toBeNull()
+    expect(store.addSpendCategory('Очень длинное название раздела трат')).toBeTruthy()
+    expect(store.householdDoc.spendCategories!.at(-1)!.name).toHaveLength(24)
+  })
+
+  it('документ без разделов — сначала словарь (18), потом новый; партнёр получает раздел слиянием', () => {
+    const store = useFinanceStore()
+    store.householdDoc.spendCategories = []
+    const before = JSON.parse(JSON.stringify(store.householdDoc))
+    const id = store.addSpendCategory('Подарки')!
+    expect(store.householdDoc.spendCategories).toHaveLength(19)
+    expect(store.householdDoc.spendCategories!.find((c) => c.id === id)).toMatchObject({ order: 19 })
+    // Партнёр: его документ без нового раздела — слияние приносит раздел.
+    const merged = mergeDocs(before, JSON.parse(JSON.stringify(store.householdDoc)))
+    expect(merged.spendCategories!.some((c) => c.id === id && c.name === 'Подарки')).toBe(true)
+  })
+})

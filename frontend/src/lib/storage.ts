@@ -22,9 +22,34 @@ export const OPERATIONS_STORAGE_KEYS = {
   cursor: 'ff_operations_cursor',
   pending: 'ff_operations_pending',
   demoUploads: 'ff_statement_uploads_demo',
-  /** «Нет, это другое» на предложение сопоставления — на этот месяц (B2C-15). */
+  /**
+   * «Нет, это другое» на предложение сопоставления (B2C-15): `<opId>|<kind>:<targetId>:<period>` — операция больше не
+   * предлагается ни одной цели (FB-01, Р-15 в); старые записи `<kind>:<targetId>:<period>` — пара на этот месяц.
+   */
   declined: 'ff_match_declined',
+  /** «Потом» у вопросов «Недели» (FB-01, Р-15 а): `{ [ключ решения]: untilIso }` — сутки на этом устройстве. */
+  deferred: 'ff_decisions_deferred',
 } as const
+
+/** Сколько помнится «Потом» у вопроса «Недели» (FB-01, Р-15 а). */
+export const DEFER_MS = 24 * 3_600_000
+
+/** Отложенные «Потом» вопросы, что ещё не протухли (протухшие выброшены). */
+export function readDeferred(now = Date.now()): Record<string, string> {
+  const v = readStorage<unknown>(OPERATIONS_STORAGE_KEYS.deferred, {})
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, until] of Object.entries(v)) if (typeof until === 'string' && Date.parse(until) > now) out[k] = until
+  return out
+}
+
+/** «Потом» у ключей `keys` — на сутки от `now`; протухшие выбрасываются. Отдаёт новое состояние. */
+export function writeDeferred(keys: string[], now = Date.now()): Record<string, string> {
+  const until = new Date(now + DEFER_MS).toISOString()
+  const next = { ...readDeferred(now), ...Object.fromEntries(keys.map((k) => [k, until])) }
+  writeStorage(OPERATIONS_STORAGE_KEYS.deferred, next)
+  return next
+}
 
 export function readStorage<T>(key: string, fallback: T): T {
   try {

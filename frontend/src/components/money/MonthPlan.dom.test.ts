@@ -1189,3 +1189,39 @@ describe('RZ-16: одна метка у заголовка раздела', () =
     expect(q('[data-section="queue"] [data-section-mark]')).not.toBeNull()
   })
 })
+
+describe('FB-05: свои операции в листе раздела «Месяца»', () => {
+  const totals: SpendTotal[] = [{ id: 'a:month:2026-09:sc_cafe', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_cafe', amount: 7_000, ops: 2, updatedAt: T0 }]
+  const OPS: Operation[] = [
+    { id: 'c0000001', bank: 'kaspi', date: '2026-09-12', amount: -4_500, kind: 'purchase', merchant: 'COFFEE BOOM ALMATY KZ', categoryId: 'sc_cafe', internal: false },
+    { id: 'h0000001', bank: 'hand', date: '2026-09-14', amount: -2_500, kind: 'purchase', merchant: 'Обед', note: 'Обед', categoryId: 'sc_cafe', internal: false },
+  ]
+  async function openCat(role: 'member' | 'viewer') {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 40, created_at: T0 }] } as never)
+    const spendPlans = [{ id: 'a:sc_cafe', by: 'a' as const, categoryId: 'sc_cafe', amount: 20_000, updatedAt: T0 }]
+    await open(role, planFamilyDoc({ spendTotals: totals, spendPlans }), '/month?cat=sc_cafe')
+    if (role === 'member') for (const o of OPS) useOperationsStore().ops[o.id] = o
+    await useOperationsStore().loadUploads()
+    await flush()
+  }
+
+  it('?cat= — лист раздела с «Мои операции · 2»; строка выписки → лист операции поверх (два диалога); ручная → «Трата»', async () => {
+    await openCat('member')
+    expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 2')
+    await press(q('[data-cat-op="c0000001"]'))
+    const dialogs = all('[role="dialog"]')
+    expect(dialogs).toHaveLength(2)
+    expect(txt(dialogs[1])).toContain('COFFEE BOOM')
+    expect(txt(dialogs[1])).toContain('Мне вернули')
+    await press(dialogs[1].querySelector<HTMLElement>('button[aria-label="Закрыть"]'))
+    await press(q('[data-cat-op="h0000001"]'))
+    expect(q('[data-hand-sheet]')).not.toBeNull()
+  })
+
+  it('viewer — операций в листе нет', async () => {
+    await openCat('viewer')
+    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(q('[data-cat-ops]')).toBeNull()
+  })
+})

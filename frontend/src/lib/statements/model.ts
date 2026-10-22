@@ -1,7 +1,7 @@
 import { addDaysIso, todayIso, weekKey } from '@/lib/dates'
 import type { Person, PersonId, SyncDoc } from '@/types/finance'
 import { DEFAULT_SPEND_CATEGORIES, DICTIONARY, KIND_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
-import type { MerchantRule, Operation, PaymentRule, SpendCategory, SpendTotal } from './types'
+import type { MerchantRule, OpEdit, Operation, PaymentRule, SpendCategory, SpendTotal } from './types'
 
 // Модель операций выписки (B2C-02): чистые функции, деньги — целые тенге.
 
@@ -200,6 +200,21 @@ export function isPhoneStub(op: Pick<Operation, 'source' | 'merchant' | 'counter
   return op.source === 'push' && !op.counterparty && phoneStubs.has(normalizeMerchant(op.merchant))
 }
 
+/** «Перевод Айгерим С.» — продавец пуша о переводе человеку (`applepay` сервера): имя и инициал, как у выписки Kaspi. */
+const PHONE_PERSON = /^Перевод (\p{Lu}\p{Ll}+(?: \p{Lu}\p{Ll}+)? \p{Lu}\.)$/u
+
+/**
+ * Получатель перевода с телефона (FB-01, Р-15 б): пуш приходит продавцом «Перевод Имя Ф.» без `counterparty` (Р-23
+ * Apple Pay), строка выписки о том же переводе — с `counterparty` «Имя Ф.». Выведенный получатель даёт им один ключ
+ * правила (`ruleMatchOf`), раздел «Переводы людям» и «Кому → что», как у выписки. Вывод клиента — на сервер не уходит
+ * (`toWire`). «Перевод» без имени — заглушка (`isPhoneStub`), получателя нет. Ничего не выводится — та же операция.
+ */
+export function withPhoneCounterparty<T extends Pick<Operation, 'source' | 'kind' | 'merchant' | 'counterparty'>>(op: T): T {
+  if (!op.source || op.counterparty || (op.kind !== 'transfer-out' && op.kind !== 'transfer-in')) return op
+  const who = PHONE_PERSON.exec(op.merchant.trim())?.[1]
+  return who ? { ...op, counterparty: who } : op
+}
+
 /**
  * Трата, вписанная руками (бэклог «Ручная трата», Р-1, Р-2): обычная личная операция, банк `hand`. Раздел выбрал
  * человек — правила семьи и словарь его не меняют (`categorize`), вопросом «это платёж по …?» она не становится
@@ -306,7 +321,8 @@ export const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY
  * (есть `counterparty`) и пары внутри одного банка сюда не попадают: «пополнил Kaspi со
  * своей карты и тут же перевёл другу» — это трата, а не внутренний перевод. Операции с телефона
  * (Apple Pay Блок 2) — тоже нет: получатель пуша живёт в продавце («Перевод Айгерим С.»,
- * `counterparty` пуст, Р-23), их пары ставит сервер (10 минут, без получателя с обеих сторон);
+ * на сервере `counterparty` пуст, Р-23; в копии он выведен — `withPhoneCounterparty`, FB-01), их пары
+ * ставит сервер (10 минут, без получателя с обеих сторон);
  * выписка своего банка заменит такую операцию строкой, и пара сложится из строк выписок.
  */
 export function pairInternalTransfers(ops: Operation[]): Operation[] {
@@ -354,6 +370,65 @@ export function periodOf(date: string, kind: SpendTotal['kind']): string {
 export const isSpend = (op: Pick<Operation, 'amount' | 'internal'>) => op.amount < 0 && !op.internal
 
 /**
+ * Сумма траты (FB-02, Р-12): списание минус «Мне вернули», целые тенге, не ниже 0 — одна функция для итогов, ленты,
+ * листов, находок, привычек и поездки. Отбор трат — `isSpend` (без изменений): трата с полным возвратом остаётся
+ * строкой с суммой 0.
+ */
+export const spendOf = (op: Pick<Operation, 'amount' | 'refund'>) => Math.max(0, -op.amount - (op.refund?.amount ?? 0))
+
+/** Правки операций (`opEdits` личного документа), что что-то меняют: снятые поля — `null`, запись без полей — нет правки. */
+export const liveOpEdits = (edits: OpEdit[]) => edits.filter((e) => !e.deletedAt && (e.memo || e.oneOff || e.refund))
+
+/**
+ * Копия операций с наложенными правками (FB-02, Р-11): заметка, «Разовая», «Мне вернули» — на операции; приход, которым
+ * вернули (`refund.opId`), — `internal` (не доход, не вопрос «это зарплата?», не «История»). Только для чтения: копия,
+ * очередь на сервер и `toWire` работают с сырыми операциями. Без правки — та же операция (тот же объект).
+ */
+export function withEdits(ops: Operation[], edits: OpEdit[]): Operation[] {
+  const live = liveOpEdits(edits)
+  if (!live.length) return ops
+  const byId = new Map(live.map((e) => [e.id, e]))
+  const incomes = new Set(live.map((e) => e.refund?.opId).filter((id): id is string => !!id))
+  return ops.map((op) => {
+    const e = byId.get(op.id)
+    const income = incomes.has(op.id) && op.amount > 0
+    if (!e && !income) return op
+    return {
+      ...op,
+      ...(e?.memo ? { memo: e.memo } : {}),
+      ...(e?.oneOff ? { oneOff: true } : {}),
+      ...(e?.refund && op.amount < 0 ? { refund: { amount: Math.min(e.refund.amount, -op.amount), ...(e.refund.opId ? { opId: e.refund.opId } : {}) } } : {}),
+      ...(income ? { internal: true } : {}),
+    }
+  })
+}
+
+/** Окно «Вернули переводом» (Р-12): приход ±14 дней от траты. */
+export const REFUND_WINDOW_DAYS = 14
+
+/**
+ * Приходы, которыми могли вернуть трату (Р-12): свои `transfer-in` / `income` с суммой не больше траты, ±14 дней, не
+ * между своими, не отмеченные зарплатой (`linked` — id операций отметок), не взятые возвратом другой траты; ближайшие по
+ * дате первыми. `ops` — копия с правками (`withEdits`).
+ */
+export function refundCandidates(op: Operation, ops: Operation[], linked: ReadonlySet<string> = new Set()): Operation[] {
+  const taken = new Set(ops.filter((o) => o.id !== op.id && o.refund?.opId).map((o) => o.refund!.opId!))
+  const day = dayNumber(op.date)
+  return ops
+    .filter(
+      (o) =>
+        o.amount > 0 &&
+        (o.kind === 'transfer-in' || o.kind === 'income') &&
+        (!o.internal || o.id === op.refund?.opId) &&
+        !linked.has(o.id) &&
+        !taken.has(o.id) &&
+        o.amount <= -op.amount &&
+        Math.abs(dayNumber(o.date) - day) <= REFUND_WINDOW_DAYS,
+    )
+    .sort((a, b) => Math.abs(dayNumber(a.date) - day) - Math.abs(dayNumber(b.date) - day) || b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
+}
+
+/**
  * Итоги по разделам за период (Р-21): только списания, внутренние не входят; незнакомое —
  * `_unknown`. Суммы положительные, целые. Считаются из **всех** операций периода. `marks` — у разделов
  * платежей (`plannedElsewhere`) сумма строк без отметки (`unmarked`, хвосты 952/967).
@@ -372,10 +447,10 @@ export function spendTotals(
     const categoryId = op.categoryId ?? UNKNOWN_CATEGORY
     const id = `${by}:${kind}:${period}:${categoryId}`
     const total = out.get(id) ?? { id, by, kind, period, categoryId, amount: 0, ops: 0, updatedAt: at }
-    total.amount += -op.amount
+    total.amount += spendOf(op)
     total.ops += 1
     if (marks && !marks.marked.has(op.id) && op.categoryId && plannedElsewhere(op.categoryId, marks.categories)) {
-      total.unmarked = (total.unmarked ?? 0) - op.amount
+      total.unmarked = (total.unmarked ?? 0) + spendOf(op)
     }
     out.set(id, total)
   }
@@ -424,7 +499,7 @@ export function unknownGroups(ops: Operation[], categoryId: string | null = null
     const key = JSON.stringify(match)
     const g = groups.get(key) ?? { match, label: op.counterparty ?? op.merchant, count: 0, amount: 0 }
     g.count += 1
-    g.amount += -op.amount
+    g.amount += spendOf(op)
     groups.set(key, g)
   }
   return [...groups.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label))

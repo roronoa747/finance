@@ -7,6 +7,7 @@ import { clearPhotoDisk } from '@/lib/photos/store'
 import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
 import {
   accountBalance,
+  liveSpendCategories,
   termSnapOf,
   type PlanShiftDraft,
   allocationFor,
@@ -95,12 +96,13 @@ import type {
   DebtCard,
   TripExcluded,
 } from '@/types/finance'
-import type { MerchantRule } from '@/lib/statements/types'
+import type { MerchantRule, OpEdit } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
-import { DEFAULT_CATEGORY_NAMES, type CategoryKey, type HueKey } from '@/lib/palette'
+import { DEFAULT_CATEGORY_NAMES, HUE_KEYS, type CategoryKey, type HueKey } from '@/lib/palette'
+import { liveOpEdits, seedSpendCategories } from '@/lib/statements/model'
 import type { ConflictResponse, HouseholdDocResponse } from '@/types/api'
 
 export function defaultSyncDoc(): SyncDoc {
@@ -2051,6 +2053,65 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /* ---------------- правки своих операций (FB-02, Р-11) — личный документ ---------------- */
+  const OP_MEMO_MAX = 60
+  /** Имя нового раздела трат (FB-03, Р-13) — не длиннее. */
+  const SPEND_CATEGORY_NAME_MAX = 24
+  /** Все записи `opEdits` (и «без правок»): слой поверх копии операций (`withEdits` в сторе операций). */
+  const opEdits = computed(() => (privateDoc.value.opEdits as OpEdit[] | undefined) ?? [])
+
+  /**
+   * Правка операции: поля патча сливаются с записью; `undefined`/`null` в патче — снять поле (пишется `null`, см.
+   * `OpEdit`). Пустая заметка — снять; заметка — до 60 знаков. Та же запись — ничего не пишется. Партнёр личный документ
+   * не видит (Р-22); итоги пересчитывает стор операций (`editOp`).
+   */
+  function setOpEdit(id: string, patch: { memo?: string | null; oneOff?: boolean | null; refund?: OpEdit['refund'] }) {
+    const prev = opEdits.value.find((e) => e.id === id)
+    const next: OpEdit = { id, memo: prev?.memo ?? null, oneOff: prev?.oneOff ?? null, refund: prev?.refund ?? null, updatedAt: new Date().toISOString() }
+    if ('memo' in patch) next.memo = patch.memo?.trim().slice(0, OP_MEMO_MAX) || null
+    if ('oneOff' in patch) next.oneOff = patch.oneOff || null
+    if ('refund' in patch) next.refund = patch.refund && patch.refund.amount > 0 ? { amount: Math.round(patch.refund.amount), ...(patch.refund.opId ? { opId: patch.refund.opId } : {}) } : null
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+    if (prev && same(prev.memo, next.memo) && same(prev.oneOff, next.oneOff) && same(prev.refund, next.refund)) return
+    if (!prev && !next.memo && !next.oneOff && !next.refund) return
+    mutatePrivateDoc((doc) => {
+      const list = (doc.opEdits as OpEdit[] | undefined) ?? []
+      doc.opEdits = list.some((e) => e.id === id) ? list.map((e) => (e.id === id ? next : e)) : [...list, next]
+    })
+  }
+
+  /**
+   * Выписка заменила операции с телефона (Р-16; `pairs` — id операции с телефона → строка выписки, фантом — null): правки
+   * переходят к строке (заметка, «Мне вернули», «Разовая»), возврат приходом с телефона — к строке прихода (критик Блока 1:
+   * иначе пуш, поправленный днём, после выписки терял заметку и возврат, итоги росли обратно). Запись заменённой
+   * операции снимается — её возврат держал бы приход «между своими» и после снятия возврата у строки. У строки, где
+   * уже есть своя правка, остаётся её.
+   */
+  function carryOpEdits(pairs: ReadonlyMap<string, string | null>) {
+    const live = liveOpEdits(opEdits.value)
+    const touched = live.filter((e) => pairs.has(e.id) || (e.refund?.opId && pairs.has(e.refund.opId)))
+    if (!touched.length) return
+    const at = new Date().toISOString()
+    const has = new Set(live.map((e) => e.id))
+    const writes = new Map<string, OpEdit>()
+    for (const e of touched) {
+      const income = e.refund?.opId
+      const refund = e.refund && income && pairs.has(income) ? { amount: e.refund.amount, ...(pairs.get(income) ? { opId: pairs.get(income)! } : {}) } : (e.refund ?? null)
+      const fields = { memo: e.memo ?? null, oneOff: e.oneOff ?? null, refund }
+      if (!pairs.has(e.id)) {
+        writes.set(e.id, { id: e.id, ...fields, updatedAt: at })
+        continue
+      }
+      writes.set(e.id, { id: e.id, memo: null, oneOff: null, refund: null, updatedAt: at })
+      const to = pairs.get(e.id)
+      if (to && !has.has(to)) writes.set(to, { id: to, ...fields, updatedAt: at })
+    }
+    mutatePrivateDoc((doc) => {
+      const list = (doc.opEdits as OpEdit[] | undefined) ?? []
+      doc.opEdits = [...list.filter((e) => !writes.has(e.id)), ...writes.values()]
+    })
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2160,6 +2221,30 @@ export const useFinanceStore = defineStore('finance', () => {
       const c = (doc.spendCategories ?? []).find((x) => x.id === id)
       if (c) Object.assign(c, patch, { updatedAt: t })
     })
+  }
+
+  /**
+   * Новый раздел трат (FB-03, Р-13) — из чипов «куда отнести?» и формы «Трата»: имя без пробелов по краям, до 24 знаков;
+   * пустое — ничего (`null`); живой раздел с тем же именем (без регистра) — его id. Новый — в общий документ (партнёр
+   * видит слиянием): id `sc_` + 8 hex, `order` — последний + 1, цвет — следующий по кругу палитры после последнего
+   * раздела, слот не выбран. Документ без разделов сначала засевается словарём. Возвращает id.
+   */
+  function addSpendCategory(raw: string): string | null {
+    const name = raw.trim().replace(/\s+/g, ' ').slice(0, SPEND_CATEGORY_NAME_MAX).trim()
+    if (!name) return null
+    const same = liveSpendCategories(householdDoc.value.spendCategories).find((c) => c.name.toLocaleLowerCase('ru') === name.toLocaleLowerCase('ru'))
+    if (same) return same.id
+    const id = `sc_${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}`
+    const t = new Date().toISOString()
+    mutateHouseholdDoc((doc) => {
+      seedSpendCategories(doc, t)
+      const list = doc.spendCategories ?? []
+      const last = list.filter((c) => !c.deletedAt).sort((a, b) => a.order - b.order).at(-1)
+      const hue = HUE_KEYS[(HUE_KEYS.indexOf(last?.hue ?? HUE_KEYS[HUE_KEYS.length - 1]) + 1) % HUE_KEYS.length]
+      const order = list.reduce((m, c) => Math.max(m, c.order), 0) + 1
+      doc.spendCategories = [...list, { id, name, hue, order, slot: null, updatedAt: t }]
+    })
+    return id
   }
 
   /* ---------- план разбора (B2C-54) ---------- */
@@ -2455,6 +2540,9 @@ export const useFinanceStore = defineStore('finance', () => {
     tripExcluded,
     excludeFromTrip,
     includeInTrip,
+    opEdits,
+    setOpEdit,
+    carryOpEdits,
     setSpendPlan,
     ensureFund,
     setFundMonths,
@@ -2467,6 +2555,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setArticle,
     setMoneySettings,
     updateSpendCategory,
+    addSpendCategory,
     addGift,
     updateGift,
     removeGift,
