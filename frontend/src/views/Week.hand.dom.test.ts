@@ -255,6 +255,7 @@ describe('FB-08: «Разовая» в форме «Трата» и метка �
     const { finance, store } = await openWeek('/week?spend=1')
     const toggle = () => q<HTMLButtonElement>('[data-hand-oneoff] [role="switch"]')
     expect(toggle()!.getAttribute('aria-checked')).toBe('false')
+    expect(q('[data-hand-oneoff] [data-hand-oneoff-hint]'), '«?» у «Разовая» (/ux)').toBeTruthy()
     await type(q<HTMLInputElement>('input[data-hand-amount]'), '250000')
     await press(q('[data-hand-category="sc_food"]'))
     await type(q<HTMLInputElement>('[data-hand-note]'), 'Диван')

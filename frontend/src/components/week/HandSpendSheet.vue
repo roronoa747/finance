@@ -17,6 +17,7 @@ import Sheet from '@/components/kit/Sheet.vue'
 import { useFormCheck } from '@/components/kit/useFormCheck'
 import NewCategoryChip from '@/components/NewCategoryChip.vue'
 import Toggle from '@/components/kit/Toggle.vue'
+import Hint from '@/components/kit/Hint.vue'
 
 /**
  * «Трата» руками (бэклог «Ручная трата», Р-1, Р-2): сумма и раздел — обязательны, заметка «что / где» и дата (сегодня)
@@ -115,7 +116,10 @@ function remove() {
       </Field>
       <!-- «Разовая» (FB-08, Р-16): автошкола, диван — в факт месяца, не в «обычно» раздела -->
       <div class="mb-3.5 flex items-center justify-between gap-3" data-hand-oneoff>
-        <span class="text-[13.5px] font-medium text-ink">Разовая</span>
+        <span class="flex items-center gap-1 text-[13.5px] font-medium text-ink">
+          Разовая
+          <Hint label="Про разовую" data-hand-oneoff-hint>Включите для редкой покупки — автошкола, диван: она войдёт в траты месяца, но не в обычные траты раздела</Hint>
+        </span>
         <Toggle v-model="oneOff" label="Разовая" tone="ok" />
       </div>
       <Button size="lg" class="w-full" :class="editing && 'mb-3'" data-hand-save @click="form.submit(save)">Сохранить</Button>
