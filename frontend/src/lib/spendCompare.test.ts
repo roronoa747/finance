@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OVER_MIN, earlierLabel, monthCovered, monthPlan, rkShare, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
+import { OVER_MIN, earlierLabel, monthCovered, monthPlan, participantLines, rkShare, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
 import { RK_GROUP_BY_CATEGORY, RK_SPEND_GROUPS } from './statements/dictionary'
 import type { SpendTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
@@ -355,6 +355,10 @@ describe('spendCompare по участнику (FB-11)', () => {
       const r = spendCompare(family(), ctx, by)
       expect(r.rows.reduce((s, x) => s + (x.amount ?? 0), 0) + r.unknown + r.oneOff).toBe(plan.spend.find((s) => s.by === by)!.fact)
     }
+    // Критик Блока 3: «потрачено» семьи в заголовке = Σ фактов строк участников.
+    const lines = participantLines(plan, family().people!, 'a')
+    expect(lines.map((l) => l.by)).toEqual(['a', 'b'])
+    expect(lines.reduce((s, l) => s + (l.fact ?? 0), 0)).toBe(spendFact(plan.spend))
   })
   it('участник без выписки месяца — факта нет', () => {
     const r = spendCompare(family(), ctxOf(), 'b')

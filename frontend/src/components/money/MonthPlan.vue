@@ -407,7 +407,7 @@ function editDue(d: PlanDue) {
 const dueNote = (d: PlanDue) => (d.kind === 'obligation' && d.obligation.estimate ? 'примерно' : '')
 const askPayer = (d: PlanDue) => (payerFor.value = { kind: d.kind, id: d.targetId, name: d.name, payer: d.payer })
 
-/* ---------- траты: разделы семьи (Р-5), план каждого — в листе раздела (Р-81) ---------- */
+/* ---------- траты: строки участников и свои разделы (FB-12), свой план — в листе раздела ---------- */
 const categories = computed(() => {
   const all = finance.householdDoc.spendCategories ?? []
   return liveSpendCategories(all).filter((c) => !plannedElsewhere(c.id, all))
