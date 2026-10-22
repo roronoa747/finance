@@ -168,7 +168,9 @@ const doneTitle = computed(() => {
  */
 const shiftInput = computed(() => financeStore.planInput(monthKey()))
 const shiftSnap = computed(() => financeStore.termSnapFor(monthKey()))
-const shift = computed(() => (goal.value && !isDone.value ? dreamShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id) : null))
+// Раздел причины — только свой (Х-8, Р-29); viewer — семейная причина, как было.
+const shiftBy = computed(() => (authStore.isViewer ? undefined : authStore.slot ?? undefined))
+const shift = computed(() => (goal.value && !isDone.value ? dreamShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id, shiftBy.value) : null))
 const shiftText = computed(() => (shift.value ? shiftLabel(shift.value) : ''))
 const returnShift = computed(() =>
   shift.value && shift.value.days > 0 && goal.value ? returnTermShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id) : null,

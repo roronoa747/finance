@@ -77,7 +77,8 @@ function termOf(g: Goal) {
 const snap = computed(() => financeStore.termSnapFor(key.value))
 function shiftOf(g: Goal) {
   const { state, ctx } = financeStore.planInput(key.value)
-  const s = dreamShift(state, ctx, snap.value, g.id)
+  // Раздел причины — только свой (Х-8, Р-29); viewer — семейная причина, как было.
+  const s = dreamShift(state, ctx, snap.value, g.id, authStore.isViewer ? undefined : authStore.slot ?? undefined)
   return s ? { text: shiftLabel(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
 }
 const heroShift = computed(() => (main.value ? shiftOf(main.value) : null))

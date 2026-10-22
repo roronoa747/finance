@@ -5,10 +5,23 @@ import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchan
 import type { RecurringPrefill } from '@/lib/statements/firstRun'
 import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
+import {
+  CASH_SHARE,
+  FIND_NAME_MAX,
+  PEOPLE_SHARE,
+  SMALL_SHARE,
+  UNKNOWN_SHARE,
+  cashShare,
+  dearerWeek,
+  oneOffLike,
+  peopleShare,
+  smallBuys,
+  unknownShare,
+} from '@/lib/statements/finds'
 import { COFFEE_CUP, MEASURES, PRICES, type PriceId } from '@/lib/prices'
 import { templateById } from '@/lib/goalTemplates'
 import { DEFAULT_SPEND_CATEGORIES, RK_GROUP_BY_CATEGORY, UNKNOWN_CATEGORY, plannedElsewhere, type RkGroup } from '@/lib/statements/dictionary'
-import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthBy, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange } from '@/lib/dates'
+import { addDaysIso, addMonths, dayLabel, daysInMonth, isoIn, monthBy, monthFrom, monthKey, parseMonthKey, today, todayIso, weekdayShort, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { spendColor } from '@/lib/palette'
 import { money, pct, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -4288,8 +4301,9 @@ export type DreamShift = { days: number; reason: DreamShiftReason; name?: string
  * «Мечта сдвинулась» (Р-6, Р-18): сколько мечта получит в этом месяце сейчас — `max(given по факту, put)`, где `given`
  * — из `monthPlan` с тратами по факту (`byFact`) — против `given` снимка начала месяца; разница переводится в дни
  * темпом цели (`closerDays`). Меньше недели, нет снимка, цели в снимке, темпа; цель на паузе или собрана — null.
+ * С `by` (Х-8, Р-29) причина `spend` называет раздел, только если он выше плана и у `by`; иначе — «траты выше плана».
  */
-export function dreamShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermSnap | null | undefined, goalId: string): DreamShift | null {
+export function dreamShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermSnap | null | undefined, goalId: string, by?: PersonId): DreamShift | null {
   if (!snap || snap.deletedAt || snap.id !== ctx.key) return null
   const was = snap.goals.find((g) => g.goalId === goalId)
   const goal = (state.goals ?? []).find((g) => g.id === goalId && !g.deletedAt)
@@ -4305,14 +4319,17 @@ export function dreamShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermS
   const incomeDiff = plan.income.total - snap.income
   if (delta > 0) {
     // Дальше: крупнейший раздел выше плана, крупнейший новый платёж, падение дохода — что больше, то и причина.
-    const over = spendCompare(state, ctx)
-      .rows.filter((r) => r.amount !== null && r.plan !== null && r.amount > r.plan)
-      .map((r) => ({ name: r.name, value: r.amount! - r.plan! }))
+    const overOf = (who?: PersonId) =>
+      spendCompare(state, ctx, who).rows.filter((r) => r.amount !== null && r.plan !== null && r.amount > r.plan)
+    const over = overOf()
+      .map((r) => ({ categoryId: r.categoryId, name: r.name, value: r.amount! - r.plan! }))
       .sort((a, b) => b.value - a.value)[0]
+    // Чужой раздел не называем (Р-29): на «Месяце» у партнёра его разделов нет (Р-18).
+    const overName = over && (!by || overOf(by).some((r) => r.categoryId === over.categoryId)) ? over.name : undefined
     const known = new Set(snap.dueIds)
     const fresh = plan.dues.filter((d) => !known.has(d.targetId)).sort((a, b) => b.amount - a.amount)[0]
     const options: { reason: DreamShiftReason; value: number; name?: string }[] = [
-      { reason: 'spend', value: over?.value ?? 0, name: over?.name },
+      { reason: 'spend', value: over?.value ?? 0, name: overName },
       { reason: 'due', value: fresh?.amount ?? 0, name: fresh?.name },
       { reason: 'less', value: Math.max(0, -incomeDiff) },
     ]
@@ -5860,9 +5877,10 @@ export function earlierDays(goal: Goal, key: string, amount: number): number | n
  * из 3 закрытых месяцев до `key` (Р-30); сумма — среднее этих месяцев. Такси → накопить на машину (мечта «Машина» семьи
  * или `car_used`; без кредита, Р-25); кофе → кофемашина окупится (> 12 месяцев или расход ≥ трат — образа нет); доставка,
  * обеды, покупки → сумма за год долей первой мечты очереди или меркой; перенос — доля привычки (`IMAGE_MOVE_SHARE`).
+ * С `by` — привычки одного участника по его итогам (разбор v4, FB-15); мечты — семьи.
  */
-export function habitImages(state: ImageState, key: string): HabitImage[] {
-  const live = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+export function habitImages(state: ImageState, key: string, by?: PersonId): HabitImage[] {
+  const live = new Set(peopleOf(state.people ?? [], by).map((p) => p.id))
   const months = Array.from({ length: IMAGE_MONTHS }, (_, i) => addMonths(key, -(i + 1)))
   const totals = (state.habitTotals ?? []).filter((t) => !t.deletedAt && live.has(t.by) && t.count > 0 && t.amount > 0 && months.includes(t.period))
   const goals = openGoals(state.goals ?? []).filter((g) => !g.fund)
@@ -6053,8 +6071,8 @@ export function findMonth(ctx: Pick<MonthPlanCtx, 'key' | 'uploads'>): string {
 }
 
 /** Живые итоги находок живых участников с суммой. */
-const liveFinds = (state: MonthPlanState) => {
-  const people = new Set((state.people ?? []).filter(alive).map((p) => p.id))
+const liveFinds = (state: MonthPlanState, by?: PersonId) => {
+  const people = new Set(peopleOf(state.people ?? [], by).map((p) => p.id))
   return (state.reviewFinds ?? []).filter((f) => !f.deletedAt && people.has(f.by) && f.count > 0 && f.amount > 0)
 }
 
@@ -6071,11 +6089,12 @@ function bestBy<T>(list: T[], key: (x: T) => string, pick: (x: T) => number): T[
 /**
  * Находки семьи (Р-5, Р-14) по итогам участников в документе: утечки — по 3 закрытым месяцам до `ctx.key`; «что
  * раздуло», новые и подорожавшие списания, двойные — за месяц находок (`findMonth`). Все вместе — до 12: «раздуло» по
- * приросту, затем остальные по цене в месяц.
+ * приросту, затем остальные по цене в месяц. С `by` (бэклог «Фидбек», Р-23, FB-15) — находки одного участника: его итоги
+ * находок и трат, «обычно» по его полным месяцам; образ утечки — мечта семьи (мечты общие).
  */
-export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): ReviewFinding[] {
-  const finds = liveFinds(state)
-  const people = (state.people ?? []).filter(alive)
+export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx, by?: PersonId): ReviewFinding[] {
+  const finds = liveFinds(state, by)
+  const people = peopleOf(state.people ?? [], by)
   const named = liveSpendCategories(ctx.spendCategories)
   const main = mainGoal(state.goals ?? [], state.goalOrder, state.moneySettings)
   // Образ утечки — доля месячного взноса в главную мечту (темп `goalPace`); нет темпа — мерка по месячной сумме.
@@ -6111,12 +6130,12 @@ export function reviewFindings(state: MonthPlanState, ctx: MonthPlanCtx): Review
   const month = findMonth(ctx)
   const mctx = { ...ctx, key: month }
   const grew: Extract<ReviewFinding, { kind: 'grew' }>[] = []
-  const usualOf = usualMonths(people, ctx.totals, ctx.uploads, month)
+  const usualOf = usualMonths(people, ctx.totals, ctx.uploads, month, 3, by)
   const opsOf = (categoryId: string, period: string) =>
     ctx.totals
       .filter((t) => !t.deletedAt && t.kind === 'month' && t.period === period && t.categoryId === categoryId && people.some((p) => p.id === t.by))
       .reduce((s, t) => s + t.ops, 0)
-  for (const r of spendCompare(state, mctx).rows) {
+  for (const r of spendCompare(state, mctx, by).rows) {
     if (!r.over || SPEND_LAST.includes(r.categoryId) || r.amount === null || r.usual === null) continue
     const growth = r.amount - r.usual
     const items = finds
@@ -6201,16 +6220,18 @@ export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, finding
 
 /**
  * Счётчик работы ИИ (Р-8, Р-19): `ops` — операций всех участников за `ctx.key` и до 3 месяцев «обычно»; `found` — находок
- * семьи; `monthly` — сумма цен в месяц у находок советов (`used`, каждая один раз; бэклог «Фидбек», Р-19).
+ * семьи; `monthly` — сумма цен в месяц у находок советов (`used`, каждая один раз; бэклог «Фидбек», Р-19). С `by` — операции
+ * одного участника по его месяцам «обычно» (FB-15).
  */
 export function reviewWork(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
   findings: ReviewFinding[],
   used: ReviewFinding[] = findings,
+  by?: PersonId,
 ): { ops: number; found: number; monthly: number } {
-  const people = (state.people ?? []).filter(alive)
-  const months = new Set([ctx.key, ...usualMonths(people, ctx.totals, ctx.uploads, ctx.key, 3)])
+  const people = peopleOf(state.people ?? [], by)
+  const months = new Set([ctx.key, ...usualMonths(people, ctx.totals, ctx.uploads, ctx.key, 3, by)])
   const ops = ctx.totals
     .filter((t) => !t.deletedAt && t.kind === 'month' && months.has(t.period) && people.some((p) => p.id === t.by))
     .reduce((s, t) => s + t.ops, 0)
@@ -6242,10 +6263,10 @@ export type WhereRow = {
 /**
  * «Куда ушло» (Р-4) за месяц находок (`findMonth`): разделы `spendCompare` с фактом, без переводов людям и наличных, по
  * убыванию факта — до `n`; `share` — доля полосы от наибольшего из фактов, «обычно» и планов всех строк (геометрия, не
- * деньги). Текста нет — его пишет модель.
+ * деньги). Текста нет — его пишет модель. С `by` — разделы одного участника (FB-15).
  */
-export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): WhereRow[] {
-  const rows = spendCompare(state, { ...ctx, key: findMonth(ctx) })
+export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5, by?: PersonId): WhereRow[] {
+  const rows = spendCompare(state, { ...ctx, key: findMonth(ctx) }, by)
     .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
     .sort((a, b) => b.amount! - a.amount! || a.categoryId.localeCompare(b.categoryId))
   const max = Math.max(0, ...rows.flatMap((r) => [r.amount!, r.usual ?? 0, r.plan ?? 0]))
@@ -6262,6 +6283,204 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5): Wher
     planShare: r.plan ? at(r.plan) : null,
     over: r.over,
   }))
+}
+
+/* ---------------- разбор v4: карточки кода и «Куда ушло» на всю сумму (бэклог «Фидбек», Р-23…Р-25, FB-15) ---------------- */
+
+/** Карточек в отчёте v4 — не больше (Р-24). */
+export const REVIEW_CARDS_MAX = 6
+/** «Поставить план»: раздел без плана — от 10 % своего факта месяца; таких карточек — до 2. */
+export const PLAN_CARD_SHARE = 10
+export const PLAN_CARDS_MAX = 2
+
+export type ReviewCardKind = 'unknown' | 'people' | 'cash' | 'oneoff' | 'week' | 'recurring' | 'habit' | 'small' | 'plan' | 'pricier' | 'double'
+
+/** Куда ведёт кнопка карточки (лист поверх отчёта, FB-17). */
+export type ReviewCardTarget =
+  | { kind: 'op'; opId: string }
+  | { kind: 'cat'; categoryId: string }
+  | { kind: 'unknown' }
+  | { kind: 'pay'; opId: string }
+  | { kind: 'image'; image: HabitImage }
+  | { kind: 'do'; candidate: StepCandidate }
+  | { kind: 'plan'; categoryId: string; amount: number }
+  | { kind: 'obligation'; obligationId: string }
+
+/**
+ * Карточка разбора v4 (Р-24): заголовок 1–3 слова, одна крупная цифра (₸ или %), одна строка, одна кнопка с призывом и
+ * её цель; `monthly` — ₸ в месяц для порядка. Имя человека бывает только в `line` карточки `people` (своя операция).
+ */
+export type ReviewCard = {
+  id: string
+  kind: ReviewCardKind
+  title: string
+  figure: { value: number; unit: 'money' | 'pct' }
+  line: string
+  button: string
+  target: ReviewCardTarget
+  monthly: number
+}
+
+export type ReviewCardsOpts = {
+  /** «В платежи» у своей траты (стор `recurringFor`); нет — нет карточки «Не в платежах». */
+  recurringFor?: (op: Operation) => RecurringPrefill | null
+}
+
+/** Свой факт месяца участника — `PlanSpend.fact` (с разовыми); выписок нет — 0. */
+const factFor = (state: MonthPlanState, ctx: MonthPlanCtx, by: PersonId) => monthPlan(state, ctx).spend.find((s) => s.by === by)?.fact ?? 0
+
+/**
+ * Карточки разбора v4 участника `by` (Р-24): находки по своим операциям `ops` (`finds.ts`) и свои находки v3
+ * (`reviewFindings(…, by)`) за месяц находок — у каждой исполнимая кнопка, нет кнопки — нет карточки. «Не разобрано» —
+ * первой, остальные — по ₸ в месяц; до `REVIEW_CARDS_MAX`. Мечты, планы и платежи — семьи; суммы — свои.
+ */
+export function reviewCards(
+  state: MonthPlanState & ImageState,
+  ctx: MonthPlanCtx,
+  ops: Operation[],
+  by: PersonId,
+  opts: ReviewCardsOpts = {},
+): ReviewCard[] {
+  const month = findMonth(ctx)
+  const mctx = { ...ctx, key: month }
+  const cats = ctx.spendCategories
+  const fact = factFor(state, mctx, by)
+  if (fact <= 0) return []
+  const share = (amount: number, pctMin: number) => amount > 0 && amount * 100 >= fact * pctMin
+  const findings = reviewFindings(state, ctx, by)
+  const mine = ops.filter((op) => op.date.slice(0, 7) === month && isSpend(op))
+  const sellerKey = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
+  const out: ReviewCard[] = []
+  const card = (c: Omit<ReviewCard, 'id'> & { key?: string }) => {
+    const { key, ...rest } = c
+    out.push({ id: key ? `${c.kind}:${key}` : c.kind, ...rest })
+  }
+
+  const unknown = unknownShare(ops, month)
+  if (share(unknown.amount, UNKNOWN_SHARE)) {
+    card({
+      kind: 'unknown', title: 'Не разобрано', figure: { value: Math.round((unknown.amount * 100) / fact), unit: 'pct' },
+      line: `${unknown.count} ${plural(unknown.count, 'трата', 'траты', 'трат')} без раздела`, button: 'Разобрать', target: { kind: 'unknown' }, monthly: unknown.amount,
+    })
+  }
+  const people = peopleShare(ops, month)
+  if (share(people.amount, PEOPLE_SHARE)) {
+    card({
+      kind: 'people', title: 'Переводы людям', figure: { value: people.amount, unit: 'money' },
+      line: people.top ? `Больше всех — ${people.top}` : `${people.count} ${plural(people.count, 'перевод', 'перевода', 'переводов')}`,
+      button: 'Разобрать', target: { kind: 'cat', categoryId: 'sc_people' }, monthly: people.amount,
+    })
+  }
+  const cash = cashShare(ops, month)
+  if (share(cash.amount, CASH_SHARE) && cash.bare > 0) {
+    card({
+      kind: 'cash', title: 'Наличные', figure: { value: cash.amount, unit: 'money' },
+      line: `${cash.bare} ${plural(cash.bare, 'снятие', 'снятия', 'снятий')} без заметки`, button: 'На что?', target: { kind: 'cat', categoryId: 'sc_cash' }, monthly: cash.amount,
+    })
+  }
+  for (const o of oneOffLike(ops, month, fact, cats)) {
+    card({
+      kind: 'oneoff', key: o.opId, title: 'Похоже на разовую', figure: { value: o.amount, unit: 'money' },
+      line: `${o.name} — впервые за 3 месяца`, button: 'Отметить разовой', target: { kind: 'op', opId: o.opId }, monthly: o.amount,
+    })
+  }
+  const week = dearerWeek(ops, month, cats)
+  if (week) {
+    card({
+      kind: 'week', key: week.week, title: 'Дорогая неделя', figure: { value: week.pct, unit: 'pct' },
+      line: `${weekRangeLabel(weekRange(week.week))} — дороже обычной`, button: 'Отметить разовой', target: { kind: 'op', opId: week.opId }, monthly: week.amount - week.usual,
+    })
+  }
+  for (const f of findings) {
+    if (f.kind === 'recurring') {
+      const op = mine.filter((o) => sellerKey(o) === f.key).sort((a, b) => b.date.localeCompare(a.date))[0]
+      if (!op || !opts.recurringFor?.(op)) continue
+      card({
+        kind: 'recurring', key: f.key, title: 'Не в платежах', figure: { value: f.amount, unit: 'money' },
+        line: `${f.name} — каждый месяц`, button: 'В платежи', target: { kind: 'pay', opId: op.id }, monthly: f.monthly,
+      })
+    } else if (f.kind === 'pricier') {
+      card({
+        kind: 'pricier', key: f.key, title: 'Подорожало', figure: { value: f.amount - f.was, unit: 'money' },
+        line: `${f.name} — дороже, чем было`, button: 'Обновить сумму', target: { kind: 'obligation', obligationId: f.obligationId }, monthly: f.monthly,
+      })
+    } else if (f.kind === 'double') {
+      // Второе списание той же суммы — его и разбирают («Мне вернули»).
+      const same = mine.filter((o) => sellerKey(o) === f.key && -o.amount === f.amount).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+      if (same.length < 2) continue
+      card({
+        kind: 'double', key: f.key, title: 'Дважды', figure: { value: f.monthly, unit: 'money' },
+        line: `${f.name} — списали дважды`, button: 'Разобрать', target: { kind: 'op', opId: same[same.length - 1].id }, monthly: f.monthly,
+      })
+    }
+  }
+  for (const image of habitImages(state, ctx.key, by)) {
+    if (image.action?.kind !== 'move') continue
+    card({
+      kind: 'habit', key: image.habit, title: HABIT_NAMES[image.habit], figure: { value: image.monthly, unit: 'money' },
+      line: `Часть — в мечту «${image.action.goalName}»`, button: 'Перенести в мечту', target: { kind: 'image', image }, monthly: image.monthly,
+    })
+  }
+  // Мелочь: мелкие покупки месяца и свои утечки v3 — что больше; кнопка — «Сделать» из своего плана (`move`).
+  const small = smallBuys(ops, month, cats)
+  const leaks = findings.reduce((s, f) => s + (f.kind === 'leak' ? f.monthly : 0), 0)
+  const smallAmount = Math.max(small.amount, leaks)
+  const move = stepCandidates(state, ctx).find((c) => c.kind === 'move' && c.shift.from !== 'rest' && c.shift.from.spend === by)
+  const moveTo = move?.shift.to
+  const moveGoal = moveTo && moveTo !== 'debt' ? (state.goals ?? []).find((g) => g.id === moveTo.goalId) : undefined
+  if (share(smallAmount, SMALL_SHARE) && move && moveGoal) {
+    const effect = stepEffectText(move)
+    card({
+      kind: 'small', title: 'Мелочь', figure: { value: smallAmount, unit: 'money' },
+      line: effect ? `Мечта «${moveGoal.name}» — ${effect}` : `Часть плана — в мечту «${moveGoal.name}»`, button: 'Сделать', target: { kind: 'do', candidate: move }, monthly: smallAmount,
+    })
+  }
+  // Поставить план: свой раздел продавцов выше плана второй месяц подряд (или выше плана и «раздуло» v3), или плана нет,
+  // а факт — от `PLAN_CARD_SHARE` %; сумма плана — «обычно».
+  const prev = new Map(spendCompare(state, { ...ctx, key: addMonths(month, -1) }, by).rows.map((r) => [r.categoryId, r]))
+  const grew = new Set(findings.flatMap((f) => (f.kind === 'grew' ? [f.categoryId] : [])))
+  const plans = spendCompare(state, mctx, by)
+    .rows.filter((r) => !SPEND_LAST.includes(r.categoryId) && r.amount !== null && r.amount > 0)
+    .filter((r) => {
+      const over = (x?: SpendCompareRow) => !!x && x.plan !== null && x.plan > 0 && x.amount !== null && x.amount > x.plan
+      if (!r.plan) return share(r.amount!, PLAN_CARD_SHARE)
+      return over(r) && (over(prev.get(r.categoryId)) || grew.has(r.categoryId))
+    })
+    .map((r) => ({ r, monthly: r.amount! - (r.plan ?? 0) }))
+    .sort((a, b) => b.monthly - a.monthly || a.r.categoryId.localeCompare(b.r.categoryId))
+    .slice(0, PLAN_CARDS_MAX)
+  for (const { r, monthly } of plans) {
+    card({
+      kind: 'plan', key: r.categoryId, title: r.name, figure: { value: monthly, unit: 'money' },
+      line: r.plan ? 'Выше плана' : 'Плана нет', button: 'Поставить план', target: { kind: 'plan', categoryId: r.categoryId, amount: r.usual || r.amount! }, monthly,
+    })
+  }
+
+  const first = out.filter((c) => c.kind === 'unknown')
+  const rest = out.filter((c) => c.kind !== 'unknown').sort((a, b) => b.monthly - a.monthly || a.id.localeCompare(b.id))
+  return [...first, ...rest].slice(0, REVIEW_CARDS_MAX)
+}
+
+/** Часть «Куда ушло» v4 (Р-25): продавцы (с «не разобрано»), переводы людям, наличные, платежи без отметки. */
+export type WherePart = { key: 'sellers' | 'people' | 'cash' | 'payments'; amount: number }
+
+/**
+ * «Куда ушло» на всю сумму (Р-25): свои траты месяца находок четырьмя частями по итогам участника — та же правда, что
+ * `PlanSpend.fact` (с разовыми и «не разобрано»; платежи — неотмеченная часть разделов платежей, `spentOf`): Σ частей =
+ * факт. Выписок за месяц нет — null.
+ */
+export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonId): { month: string; total: number; parts: WherePart[] } | null {
+  const month = findMonth(ctx)
+  if (!peopleOf(state.people ?? [], by).length || !uploadedBy(by, month, ctx.uploads)) return null
+  const live = ctx.spendCategories.filter(alive)
+  const sums: Record<WherePart['key'], number> = { sellers: 0, people: 0, cash: 0, payments: 0 }
+  for (const t of ctx.totals) {
+    if (t.deletedAt || t.by !== by || t.kind !== 'month' || t.period !== month || t.amount <= 0) continue
+    const key = t.categoryId === 'sc_people' ? 'people' : t.categoryId === 'sc_cash' ? 'cash' : plannedElsewhere(t.categoryId, live) ? 'payments' : 'sellers'
+    sums[key] += factOf(t, live)
+  }
+  const parts = (Object.keys(sums) as WherePart['key'][]).map((key) => ({ key, amount: sums[key] }))
+  return { month, total: amountTotal(parts), parts }
 }
 
 /** Итог прошлого месяца (Р-10, Р-20): советы «Сделать» — сделан / нет, разделы советов к «обычно», срок главной мечты. */
