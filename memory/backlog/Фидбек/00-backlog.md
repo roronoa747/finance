@@ -7,8 +7,7 @@
 > **Блок 3 — 🔄: исполнитель сделал FB-11, FB-12 (2026-10-22, ветка `fb-block-3-partner`, worktree
 > `C:\Users\ASUS\Documents\finance\fb3`); критик ✅ 2026-10-22 (правок кода нет, тест + доки, хвост Х-8); приёмка ✅
 > принят 2026-10-22 (стенд с нуля, e2e `fb-block3-accept`); 🏁 на проде 2026-10-22 (мёрж
-> `e8797c28`, Production `dpl_H6wPmjMo3WRUZY7maBBE7kgNe3NP`; откат — promote `dpl_7p25nczX3JAgS2fvREazhjC2Xvzi`); дальше FB-22 (ошибка «Назад» по кругу, владелец 2026-10-22): исполнитель ✅ 2026-10-22 (ветка `fb-block-4c-back-loop`, worktree `C:\Users\ASUS\Documents\finance\fb4c`); критик ✅ 2026-10-22 (правок кода нет, +6 e2e, хвост Х-9); приёмка ✅ принят 2026-10-22 (стенд Go с `ADMIN_EMAILS` + Chrome 390, e2e `fb-block4c-accept`); 🏁 4в на проде 2026-10-22 (мёрж `a8cae3d3`, Production `dpl_bELeR9h2RFGs4FswNijy4y63bFi9`; откат — promote `dpl_4d5sGsdohGvddAvci7HEJeKTFe8G`) → FB-14 исследование ✅ 2026-10-22 (артефакт https://claude.ai/artifact/GhFNHfvcyEW1oiLeAvPnY1, рекомендация — вариант Г + отчёт свой у каждого) → решение владельца ✅ 2026-10-22 «по рекомендациям» (`memory/decisions/fb-review-v4.md`) → Блок 4б дозаполнен составителем 2026-10-22 (Р-23…Р-29; FB-15, FB-16, FB-17, FB-23) → дальше `/worker Фидбек 4
-> ultrathink`.** Блок 5 — сначала исследование артефактом, потом задачи (в §4 — заглушки).
+> `e8797c28`, Production `dpl_H6wPmjMo3WRUZY7maBBE7kgNe3NP`; откат — promote `dpl_7p25nczX3JAgS2fvREazhjC2Xvzi`); дальше FB-22 (ошибка «Назад» по кругу, владелец 2026-10-22): исполнитель ✅ 2026-10-22 (ветка `fb-block-4c-back-loop`, worktree `C:\Users\ASUS\Documents\finance\fb4c`); критик ✅ 2026-10-22 (правок кода нет, +6 e2e, хвост Х-9); приёмка ✅ принят 2026-10-22 (стенд Go с `ADMIN_EMAILS` + Chrome 390, e2e `fb-block4c-accept`); 🏁 4в на проде 2026-10-22 (мёрж `a8cae3d3`, Production `dpl_bELeR9h2RFGs4FswNijy4y63bFi9`; откат — promote `dpl_4d5sGsdohGvddAvci7HEJeKTFe8G`) → FB-14 исследование ✅ 2026-10-22 (артефакт https://claude.ai/artifact/GhFNHfvcyEW1oiLeAvPnY1, рекомендация — вариант Г + отчёт свой у каждого) → решение владельца ✅ 2026-10-22 «по рекомендациям» (`memory/decisions/fb-review-v4.md`) → Блок 4б дозаполнен составителем 2026-10-22 (Р-23…Р-29; FB-15, FB-16, FB-17, FB-23) → исполнитель 4б ✅ 2026-10-22 (ветка `fb-block-4-review-v4`, worktree `C:\Users\ASUS\Documents\finance\fb4b`; замер моделей — в Handoff, выбор модели — владелец) → дальше `/critic Фидбек 4 ultracode`.** Блок 5 — сначала исследование артефактом, потом задачи (в §4 — заглушки).
 
 Источник: `Фидбек-brief.md` (резюме интервью подтверждено владельцем 2026-10-21, 2 раунда, без правок; Р-9 принято).
 Формат — `memory/process/BACKLOG-GUIDE.md`. **Решения §2 зафиксированы — рабочие сессии их не пересматривают.**
@@ -215,12 +214,12 @@
 | | FB-10 e2e и доки Блока 2; проверка Р-9 | `block-2-oneoff-subs/FB-10-e2e-docs.md` | FB-07…FB-09 | ✅ |
 | 3. Партнёр: план · факт 🏁 *(S)* | FB-11 Расчёты по одному участнику: `by` у `spendCompare` / `usualSpend` / `monthSpendByCategory` / `rkShare`; строки участников (фронт, lib) | `block-3-partner/FB-11-partner-lib.md` | Блок 2 | ✅ |
 | | FB-12 Экраны: «Месяц → Траты», лист раздела, `MonthPast`, viewer; DESIGN.md (фронт) | `block-3-partner/FB-12-partner-screens.md` | FB-11 | ✅ |
-| 4. Разбор ИИ v4 ⬜ *(4а — M без `/ux`, деплой раньше; 4б — L)* | FB-13 Месяц вместо года: `monthly` у находок, факты, счётчик, Go-инструкция, демо (фронт + Go) | `block-4-review-v4/FB-13-monthly-figures.md` | — (можно параллельно Блоку 1) | ✅ |
+| 4. Разбор ИИ v4 🔄 *(4а — M без `/ux`, деплой раньше; 4б — L)* | FB-13 Месяц вместо года: `monthly` у находок, факты, счётчик, Go-инструкция, демо (фронт + Go) | `block-4-review-v4/FB-13-monthly-figures.md` | — (можно параллельно Блоку 1) | ✅ |
 | | FB-14 Исследование: какие инсайты и действия с призывом — варианты артефактом на данных владельца → решение владельца | `block-4-review-v4/FB-14-insights-research.md` | FB-13, Блок 3 | ✅ (решение владельца 2026-10-22 — Г + свой у каждого, `memory/decisions/fb-review-v4.md`) |
 | | FB-15 Карточки v4 считает код: новые находки, выбор и кнопки, «Куда ушло» на всю сумму, `by`, Х-8 (фронт, lib) | `block-4-review-v4/FB-15-insights-code.md` | решение по FB-14 | ✅ |
 | | FB-16 Модель v4: одна мысль, ручка v4, разбор свой в личном документе (фронт + Go) | `block-4-review-v4/FB-16-model-v4.md` | FB-15 | ✅ |
 | | FB-17 Экран отчёта v4: карточки с кнопкой, мысль модели, «Куда ушло», лист «Не разобрано», демо (фронт) | `block-4-review-v4/FB-17-report-screen.md` | FB-15, FB-16 | ✅ |
-| | FB-23 Живой замер на 2–3 моделях (цена владельцу), e2e двух телефонов, доки | `block-4-review-v4/FB-23-measure-e2e-docs.md` | FB-17 | ⬜ |
+| | FB-23 Живой замер на 2–3 моделях (цена владельцу), e2e двух телефонов, доки | `block-4-review-v4/FB-23-measure-e2e-docs.md` | FB-17 | ✅ |
 | | FB-22 *(4в — ошибка от владельца 2026-10-22, M без `/ux`, деплой раньше)* «Назад» гоняет по кругу «Цифры» ↔ «Настройки» (фронт) | `block-4-review-v4/FB-22-back-loop.md` | — (до FB-14) | 🏁 |
 | 5. Вид ⬜ *(исследование → режим по решению)* | FB-18 Исследование: экраны «до \| после» артефактом («Неделя», «Месяц», «Деньги», заметки, первый запуск) → решение владельца | `block-5-look/FB-18-screens-research.md` | Блок 3 (можно раньше, если владелец ждёт) | ⬜ |
 | | FB-19 *(заглушка)* «Неделя» и «Месяц» по решению | `block-5-look/FB-19-week-month.md` | решение по FB-18 | ⬜ |
@@ -424,6 +423,31 @@ FB-10 (проверка); «Переделать» экраны → FB-18…FB-2
 `router.replace` к корню (`/admin`, `/settings/me` → `/settings`, остальное → `/`); новый «Назад» к родителю — тоже
 `replace`, не `push` (иначе круг). Тесты «Назад» — только на `createWebHistory` (memory-история `history.state` не пишет):
 `AppShell.dom.test.ts` (`shellAt`, `backTrail`), `e2e/fb-block4-back-loop.test.ts` (`openCold`, `pressBack`).
+
+**После 4б (FB-15…FB-17, FB-23, исполнитель 2026-10-22; критик дополнит).**
+- Находки v4 по своим операциям — `finds.ts`: `peopleShare` (`top` — имя получателя, только для строки карточки),
+  `cashShare` (`bare` — без заметки), `unknownShare`, `oneOffLike` (без раздела — мимо), `dearerWeek`, `smallBuys`,
+  `weekendShare`; пороги — константы там же. В документ не пишутся.
+- `finance.ts`: `reviewCards(state, ctx, ops, by, {recurringFor})` → `ReviewCard {id: kind:key, kind, title, figure
+  {value, unit}, line, button, target, monthly, subject?}` (Р-24; «Не разобрано» первой, ≤ `REVIEW_CARDS_MAX`, неделя не
+  дублирует разовую); `reviewCardOrder(cards, next)`; `whereSplit(state, ctx, by)` → 4 части с `share` (Σ = `PlanSpend.fact`);
+  `by` последним у `reviewFindings`, `reviewWork` (принимает `{monthly}[]`), `whereRows`, `habitImages`, `dreamShift` (Х-8:
+  имя раздела — только если выше плана у `by`). Экраны «Мечты» и цель зовут `dreamShift` с `by: me` (viewer — без).
+- Тело v4 — `aiFacts.buildReviewFactsV4(doc, input, ops, by, reason, opts)` → `{payload {v: 4, facts, cards}, cards,
+  cardById, labels}`; `baseFacts(…, by)`. Ручка Go: `v: 4` — `reviewSystemV4`, `reviewSchemaV4`, `ReviewLead {title, text,
+  figure, next}`, общий цикл `answerReview[A]`; v3-тело — как было. Живой тест — `TestLiveReviewV4` (`AI_LIVE_MODEL`).
+- Хранение: `AiReview.v: 4`, `lead`, `next` — в `privateDoc.aiReviews` (`mergePrivateDocs` `known`); `finance.myAiReviews`;
+  `aiReviewOf` — свой v4, иначе общий v1–v3. Повод — `autoReason` по своим (`month:<key>`, `salary:<key>`), попытка
+  `v4:<повод>`; без своих карточек — ни запроса, ни попытки. ✦ у предметов v4 — по карточкам (`cat`, `plan`, `image`,
+  `obligation`), номер — место в отчёте.
+- Экран: `AiReport` с пропом `cards` (v4 — свой v4 или разбора нет), событие `act(card)` → «Месяц» открывает лист поверх
+  отчёта (`sheetZ` 60, лист операции +10, «В платежи» +20); `components/ai/WhereSplit.vue`; лист «Не разобрано»
+  (`useQuerySheet('unknown')`, `data-unknown-amount`) и нажимаемая строка `data-spend-unknown`; `SpendCategorySheet` и
+  `ImageMoveSheet` — проп `z`. DOM: `data-review-lead`, `data-review-card="<kind>"`, `data-review-card-button`,
+  `data-review-card-done`, `data-review-sparkle`, `data-where-split`, `data-split-part`.
+- Тесты: помощники `src/test/reviewV4.ts` (`leadFor`, `seedOwnMonth`), `e2e/support/reviewV3.ts` (`saveV3` — разбор
+  прошлой сборки в общий документ); e2e `fb-block4-review-v4.test.ts`. Два телефона в одном тестовом `localStorage` —
+  попытки `ff_ai_auto` общие: второму телефону их стирать.
 
 **Команды и среда.**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт `src/**` и `e2e/**`; на `main` 2026-10-20 — 267
