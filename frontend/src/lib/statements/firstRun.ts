@@ -230,7 +230,8 @@ export type RecurringPrefill = { name: string; amount: number; day: number; kind
  * «В платежи» у своей траты (FB-09, Р-6, Р-17): повтор продавца — кандидат `detectRecurring` по своим операциям за 3
  * месяца, в чью группу (`groupKey`) входит `op`; или `op` — списание словарного вида (подписки, связь, коммуналка, кредит,
  * аренда — с одного; по своему разделу операции тоже). null — продавец уже платёж (правило `payment`) или эта строка уже
- * отметка платежа (`payments.opId`). Сумма и день — медианы группы, целые.
+ * отметка платежа (`payments.opId`). Сумма и день — медианы строк группы в допуске суммы `op` (±5 %, как повтор): у
+ * продавца с несколькими подписками разной цены форма — той, у которой нажали (возврат приёмки Блока 2), целые.
  */
 export function recurringOf(
   op: Operation,
@@ -243,10 +244,11 @@ export function recurringOf(
   if (ctx.payments.some((p) => !p.deletedAt && p.opId === op.id)) return null
   const from = `${addMonths(ctx.today.slice(0, 7), -RECURRING_OF_MONTHS)}-01`
   const key = groupKey(op)
-  const mine = ops.filter((o) => o.date >= from && groupKey(o) === key)
+  const spent = -op.amount
+  const mine = ops.filter((o) => o.date >= from && groupKey(o) === key && Math.abs(-o.amount - spent) <= spent * RECURRING_TOLERANCE)
   const found = detectRecurring(mine.some((o) => o.id === op.id) ? mine : [...mine, op]).find((c) => c.opIds.includes(op.id))
   const name = shortMerchant(op.merchant)
   if (found) return { name, amount: found.amount, day: found.day, kind: found.kind }
   const kind = op.categoryId ? KIND_BY_CATEGORY[op.categoryId] : undefined
-  return kind ? { name, amount: -op.amount, day: Number(op.date.slice(8, 10)) || 1, kind } : null
+  return kind ? { name, amount: spent, day: Number(op.date.slice(8, 10)) || 1, kind } : null
 }

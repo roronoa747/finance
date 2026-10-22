@@ -172,6 +172,16 @@ describe('recurringOf — «В платежи» у повтора продавц
   it('три строки ±3 дня — кандидат: имя коротко, сумма и день — медианы', () => {
     expect(recurringOf(APPLE[2], APPLE, NONE)).toEqual({ name: 'APPLE.COM BILL', amount: 4_990, day: 14, kind: 'subscription' })
   })
+  // Возврат приёмки Блока 2: у продавца несколько подписок разной цены каждый месяц — форма той, у которой нажали.
+  it('несколько подписок одного продавца — сумма и день строк в допуске суммы нажатой, не медиана всех', () => {
+    const ops = ['08', '09', '10'].flatMap((m) => [
+      at(`x${m}`, `2026-${m}-03`, -990, 'APPLE.COM BILL'),
+      at(`y${m}`, `2026-${m}-11`, -2_490, 'APPLE.COM BILL'),
+      at(`z${m}`, `2026-${m}-20`, -5_500, 'APPLE.COM BILL'),
+    ])
+    expect(recurringOf(ops.find((o) => o.id === 'z10')!, ops, NONE)).toMatchObject({ amount: 5_500, day: 20 })
+    expect(recurringOf(ops.find((o) => o.id === 'x09')!, ops, NONE)).toMatchObject({ amount: 990, day: 3 })
+  })
   it('одна строка словарного вида (свой раздел «Подписки») — кандидат; одна обычная — нет', () => {
     const one = at('k1', '2026-10-05', -2_990, 'KINOPOISK', { categoryId: 'sc_subscriptions' })
     expect(recurringOf(one, [one], NONE)).toMatchObject({ amount: 2_990, day: 5, kind: 'subscription' })
