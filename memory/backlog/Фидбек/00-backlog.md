@@ -7,7 +7,7 @@
 > **Блок 3 — 🔄: исполнитель сделал FB-11, FB-12 (2026-10-22, ветка `fb-block-3-partner`, worktree
 > `C:\Users\ASUS\Documents\finance\fb3`); критик ✅ 2026-10-22 (правок кода нет, тест + доки, хвост Х-8); приёмка ✅
 > принят 2026-10-22 (стенд с нуля, e2e `fb-block3-accept`); 🏁 на проде 2026-10-22 (мёрж
-> `e8797c28`, Production `dpl_H6wPmjMo3WRUZY7maBBE7kgNe3NP`; откат — promote `dpl_7p25nczX3JAgS2fvREazhjC2Xvzi`); дальше FB-22 (ошибка «Назад» по кругу, владелец 2026-10-22): исполнитель ✅ 2026-10-22 (ветка `fb-block-4c-back-loop`, worktree `C:\Users\ASUS\Documents\finance\fb4c`); критик ✅ 2026-10-22 (правок кода нет, +6 e2e, хвост Х-9) → `/accept Фидбек 4 FB-22`, затем FB-14.** Блоки 4–5 — сначала исследование
+> `e8797c28`, Production `dpl_H6wPmjMo3WRUZY7maBBE7kgNe3NP`; откат — promote `dpl_7p25nczX3JAgS2fvREazhjC2Xvzi`); дальше FB-22 (ошибка «Назад» по кругу, владелец 2026-10-22): исполнитель ✅ 2026-10-22 (ветка `fb-block-4c-back-loop`, worktree `C:\Users\ASUS\Documents\finance\fb4c`); критик ✅ 2026-10-22 (правок кода нет, +6 e2e, хвост Х-9); приёмка ✅ принят 2026-10-22 (стенд Go с `ADMIN_EMAILS` + Chrome 390, e2e `fb-block4c-accept`) → деплой 4в — оркестратор после «да» владельца (только фронт, откат — promote `dpl_H6wPmjMo3WRUZY7maBBE7kgNe3NP`), затем `/worker Фидбек 4 FB-14 ultrathink`.** Блоки 4–5 — сначала исследование
 > артефактом, потом задачи (в §4 — заглушки).
 
 Источник: `Фидбек-brief.md` (резюме интервью подтверждено владельцем 2026-10-21, 2 раунда, без правок; Р-9 принято).
