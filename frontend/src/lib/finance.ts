@@ -5289,8 +5289,6 @@ export function sectionMonth(
     /** Раздел; не нужен при `oneOff`. */
     categoryId?: string
     oneOff?: boolean
-    /** «В платежи» (FB-09): повтор продавца строки (`recurringOf`); строка получает `recurring`, когда он есть. */
-    recurring?: (op: Operation) => RecurringPrefill | null
     limit?: number
     marked?: ReadonlySet<string>
     categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]
@@ -5310,13 +5308,13 @@ export function sectionMonth(
             !isOneOff(op) &&
             (!planned || (!!where.marked && !where.marked.has(op.id)))),
     )
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
   const shown = list.slice(0, where.limit ?? SECTION_OPS)
   const days: SectionMonth['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}), ...(op.recurring ? { recurring: op.recurring } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }

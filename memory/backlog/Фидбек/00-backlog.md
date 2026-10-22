@@ -4,8 +4,8 @@
 > неясное решено дефолтом с пометкой «решение составителя» в §2, владельцу посмотреть Р-10…Р-22). В работе — Блок 1:
 > исполнитель ✅ 2026-10-21, критик ✅ 2026-10-22, `/ux` ✅ 2026-10-22 — крупного нет, приёмка ✅ 2026-10-22 — **принят**
 > (ветка `fb-block-1-operations`, `origin/main` влит; хвост Х-4 — владельцу), следующий шаг — оркестратор мёржит и
-> деплоит после «да» владельца. Блок 2: исполнитель ✅ 2026-10-22 (ветка `fb-block-2-oneoff-subs` — от
-> `origin/fb-block-1-operations`, Блок 1 в `main` ещё не влит), следующий шаг — `/critic Фидбек 2`. FB-13 (4а) — на проде. Блоки 1–3 строятся сразу; Блоки 4–5 — сначала исследование артефактом, потом
+> деплоит после «да» владельца. Блок 2: исполнитель ✅ 2026-10-22, критик ✅ 2026-10-22 (ветка `fb-block-2-oneoff-subs` — от
+> `origin/fb-block-1-operations`, Блок 1 в `main` ещё не влит), следующий шаг — `/ux Фидбек 2`. FB-13 (4а) — на проде. Блоки 1–3 строятся сразу; Блоки 4–5 — сначала исследование артефактом, потом
 > задачи (в §4 — заглушки).
 
 Источник: `Фидбек-brief.md` (резюме интервью подтверждено владельцем 2026-10-21, 2 раунда, без правок; Р-9 принято).
@@ -324,6 +324,22 @@
   (`created(id)`; он же в `HandSpendSheet`); `finance.addSpendCategory(name) → id | null`. `week/SectionSheet` — события
   `open(id)` / `edit(id)`; `money/SpendCategorySheet` — проп `ops?: SectionMonth`, события `open` / `hand` / `more`;
   `sectionMonth(ops, {month, categoryId, limit?, marked?, categories?})`. `OpRow` — проп `refund`; `WeekFeedOp.refund`.
+
+**После Блока 2 (FB-07…FB-10, критик 2026-10-22).**
+- Итоги: `SpendTotal.oneOff` — разовые (по `spendOf`) внутри `amount`; обнулённый итог поле теряет, `sameTotal` сравнивает.
+  `finance.ts`: `spentOf` — без разовых (строка раздела, «обычно», `spendCompare.rows`, «раздуло», `spendSlack`,
+  `whereRows`), `oneOffOf` (в разделах платежей 0 — там разовая обычная строка `unmarked`), `factOf` = сумма — факт
+  участника (`PlanSpend.fact`), `monthPlanPast.spent`, `mySpendOf` («Неделя»), `monthSpentByFact`. `monthSpendByCategory`
+  и `spendCompare` отдают `oneOff`; `rkShare` — `t.amount − oneOffOf`. «потрачено» = Σ строк + `unknown` + `oneOff`.
+- Операции: `sellerOk` (и всё, что через него: утечки, `dueFinds`), `topFinds`, `habitTotals` — без `op.oneOff`.
+  `sectionWeek`/`sectionMonth`/`weekFeed` отдают `oneOff` (метка); `sectionMonth({oneOff: true})` — все свои разовые
+  месяца, без него — раздел без разовых. `sectionWeek({recurring})` — строка получает `recurring` (кнопка «В платежи»).
+- «В платежи»: `recurringOf(op, ops, {rules, payments, today})` (`firstRun.ts`, тип `RecurringPrefill`), стор
+  `recurringFor(op)` (viewer — null) и `addToPayments(opId, obligationId)`; `components/AddPaymentSheet.vue` — вход с
+  `prefill`; `NewObligationSheet` — пропы `prefill`, `z`, событие `created(id)`. `saveHand(op, edit, client)`.
+- Экраны: «Месяц → Траты» — `data-spend-oneoff` и лист «Разовые» (`useQuerySheet('oneoff')`); `money/SectionOpsList.vue`
+  — список операций листа раздела «Месяца» и «Разовых»; `OpSheet` — чипы `data-op-oneoff`, `data-op-pay`; «Трата» —
+  `data-hand-oneoff`; `week/SectionSheet` — `data-section-pay`.
 
 **Команды и среда.**
 - Фронт: `cd frontend && npm run build && npx vitest run` (Vitest берёт `src/**` и `e2e/**`; на `main` 2026-10-20 — 267

@@ -1366,4 +1366,21 @@ describe('stores/operations — «В платежи» (FB-09, Р-17)', () => {
     expect(store.lastAutoMarked).toBe(1)
     expect(marks().map((p) => p.period)).toEqual(['2026-09', '2026-10'])
   })
+
+  it('viewer: повтора нет, «В платежи» ничего не пишет (критик Блока 2)', async () => {
+    signIn('a')
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(planFamilyDoc(), 1)
+    const id = finance.addObligation({ name: 'Apple Music', note: 'ежемесячно', day: 14, category: 'd4', amount: 4_990 })
+    signIn('a', 'viewer')
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const store = useOperationsStore()
+    const line: Operation = { id: 'ap000001', ...op('2026-09-14', -4_990, 'APPLE.COM BILL'), categoryId: 'sc_subscriptions' }
+    store.ops[line.id] = line
+    expect(store.all.some((o) => o.id === line.id)).toBe(true)
+    expect(store.recurringFor(line)).toBeNull()
+    await store.addToPayments(line.id, id, fakeServer().client)
+    expect(finance.payments.filter((p) => p.targetId === id)).toEqual([])
+    expect(finance.merchantRules).toEqual([])
+  })
 })

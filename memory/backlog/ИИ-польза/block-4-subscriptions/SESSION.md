@@ -29,6 +29,11 @@
   - Разбор v2 (AU-11) фактов о подписках не берёт; «подорожала» / «нашли новую» в разбор — только новым фактом в
     `lib/aiFacts.ts` (`buildReviewFacts`, `about` без цифр и имён — тест-сито `aiFacts.test.ts`), если ТЗ попросит.
   - Точка «издалека» — образцы Блока 3: `TabItem.dot` (`kit/Tabs.vue`) и проп `dot` у `PlanSwitch`.
+- **AU-17 «Добавить» = «В платежи» бэклога «Фидбек» (FB-09, Р-17; критик Фидбек Блока 2, 2026-10-22) — не дублировать:**
+  `components/AddPaymentSheet.vue` (`NewObligationSheet` с `prefill {name, amount, day, kind}` + `created(id)` →
+  `useOperationsStore().addToPayments(opId, id)`: отметка месяца строкой, правило по продавцу, тост); повтор продавца —
+  `recurringOf` (`firstRun.ts`) / `store.recurringFor(op)`. Здесь остаются только «Нашли · K», «подорожала» и имена от ИИ
+  (имя ИИ — в `prefill.name`).
 - Следующий шаг — `/critic ИИ-польза 4`.
 
 ---
