@@ -1016,6 +1016,7 @@ describe('FB-17: отчёт разбора v4', () => {
     expect(txt(link)).toBe('Загрузить выписку')
     expect(link.getAttribute('href')).toBe('/week?upload=1')
     expect(link.className).toContain('w-full')
+    expect(q('[data-review-month]')).toBeNull()
     expect(document.querySelectorAll('[data-report] button:not([data-report-close]), [data-report] a')).toHaveLength(1)
   })
 

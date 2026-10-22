@@ -189,7 +189,8 @@ const by = computed(() => auth.slot ?? 'a')
 /** Месяц карточек v4 — по своим выпискам (`findMonth(…, by)`, как `reviewCards`); в первые дни — прошлый. */
 const cardMonth = computed(() => findMonth(input.value.ctx, by.value))
 /** Карточки не за открытый месяц (первые дни) — его имя в шапке отчёта: «Выше плана» иначе читается про этот (`/ux` 4б). */
-const pastMonth = computed(() => (v4.value && !props.example && cardMonth.value !== props.monthKey ? monthTitle(cardMonth.value).replace(/ \d{4}$/, '') : ''))
+// Карточек нет («Нужна выписка») — месяца в шапке тоже нет: он ни к чему не относится.
+const pastMonth = computed(() => (v4.value && !props.example && props.cards?.length && cardMonth.value !== props.monthKey ? monthTitle(cardMonth.value).replace(/ \d{4}$/, '') : ''))
 /** «Куда ушло» v4: на всю сумму (`whereSplit`), выходные — по своим операциям, разделы продавцов — свои (`whereRows`). */
 const split = computed(() => (v4.value ? whereSplit(input.value.state, input.value.ctx, by.value) : null))
 const weekend = computed(() => (split.value ? weekendShare(useOperationsStore().all, split.value.month, input.value.ctx.spendCategories) : null))
