@@ -292,7 +292,7 @@ const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.month
  */
 const v4Cards = computed<ReviewCard[] | null>(() =>
   canEdit.value && props.monthKey === monthNow()
-    ? reviewCards({ ...finance.householdDoc, ...state.value }, ctx.value, ops.all, me.value, { recurringFor: ops.recurringFor })
+    ? reviewCards({ ...finance.householdDoc, ...state.value }, ctx.value, ops.all, me.value, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
     : null,
 )
 /** ИИ разбора: участник с ИИ, не сказавший «Не надо» (Р-9), или демо — пилюля «✦ Разбор»; без ИИ — «Разбор» (только карточки). */

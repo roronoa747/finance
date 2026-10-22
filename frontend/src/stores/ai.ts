@@ -132,10 +132,10 @@ export const useAiStore = defineStore('ai', () => {
   const reasonKeyOf = (reason: ReviewReason, key: string): string | undefined =>
     reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${key}` : undefined
 
-  /** Свои операции, правила «В платежи» — для карточек кода (FB-15); стор операций — лениво (он тяжёлый). */
+  /** Свои операции, правила «В платежи» и ответы «Кому → что» — для карточек кода (FB-15); стор операций — лениво (он тяжёлый). */
   const cardsInput = () => {
     const ops = useOperationsStore()
-    return { ops: ops.all, opts: { recurringFor: ops.recurringFor } }
+    return { ops: ops.all, opts: { recurringFor: ops.recurringFor, rules: finance.merchantRules } }
   }
 
   /**

@@ -12,7 +12,8 @@ import {
   weekendShare,
 } from './finds'
 import { UNKNOWN_CATEGORY } from './dictionary'
-import type { Operation, SpendCategory } from './types'
+import { normalizeCounterparty } from './model'
+import type { MerchantRule, Operation, SpendCategory } from './types'
 
 // Находки разбора v4 по своим операциям (бэклог «Фидбек», Р-24, FB-15): считаются на телефоне, в документ не пишутся;
 // разовые и возвращённое целиком — мимо; имя человека — только в `top` переводов людям.
@@ -44,6 +45,15 @@ describe('доли разделов месяца — люди, наличные,
   it('ответ «Кому → что» перенёс перевод в другой раздел — не люди', () => {
     const gift = person(-20_000, '2026-09-03', { categoryId: 'sc_gifts' })
     expect(peopleShare([gift], SEP)).toEqual({ amount: 0, count: 0, opIds: [], top: null })
+  })
+
+  it('ответ «Кому → что» (правило `person`) оставляет перевод в разделе, но не в людях: мимо суммы, числа и `top` (приёмка 4б)', () => {
+    const ops = [person(-60_000, '2026-09-03'), op('Дана К.', -5_000, 'sc_people', '2026-09-08', { kind: 'transfer-out', counterparty: 'Дана К.' })]
+    const rule: MerchantRule = { id: 'r1', match: { counterparty: normalizeCounterparty(NAME) }, to: { person: 'долг' }, by: 'a', updatedAt: '2026-09-10T00:00:00Z' }
+    expect(peopleShare(ops, SEP)).toMatchObject({ amount: 65_000, count: 2, top: NAME })
+    expect(peopleShare(ops, SEP, [rule])).toEqual({ amount: 5_000, count: 1, opIds: [ops[1].id], top: 'Дана К.' })
+    // Снятое правило — перевод снова ждёт ответа.
+    expect(peopleShare(ops, SEP, [{ ...rule, deletedAt: '2026-09-11T00:00:00Z' }]).amount).toBe(65_000)
   })
 
   it('наличные: `bare` — снятия без заметки', () => {

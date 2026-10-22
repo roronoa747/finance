@@ -141,7 +141,7 @@ describe('e2e / Фидбек Блок 4б — разбор v4 свой у каж
   const cardsOf = (p: Phone) => {
     const { ops, finance } = on(p)
     const { state, ctx } = finance.planInput(K)
-    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, useAuthStore().slot!, { recurringFor: ops.recurringFor })
+    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, useAuthStore().slot!, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
   }
   const report = (p: Phone) => screen(p.pinia, Month, '/month?review=1')
   const codeKinds = (html: string) => [...html.matchAll(/data-review-card="([^"]+)"/g)].map((m) => m[1])
@@ -204,10 +204,16 @@ describe('e2e / Фидбек Блок 4б — разбор v4 свой у каж
     const before = cardsOf(A)
     const people = before.find((c) => c.kind === 'people')!
     expect(people).toMatchObject({ figure: { value: 60_000 }, line: `Больше всех — ${NAME}`, target: { kind: 'cat', categoryId: 'sc_people' } })
-    // Лист раздела → лист операции → «Кому → что»: это возврат долга — в «Подарки» нет, в «Прочее».
-    await a.ops.recategorize({ counterparty: 'замира ш.' }, { categoryId: 'sc_other' }, A.client)
+    // Лист раздела → лист операции → «Кому → что» → «долг» → «Запомнить» (`CategoryChips` → `{ person }`): перевод остаётся
+    // в «Переводах людям», но разобран (приёмка 4б: подмена сменой раздела прятала, что карточка не уходила).
+    await a.ops.recategorize({ counterparty: 'замира ш.' }, { person: 'долг' }, A.client)
+    expect(a.ops.all.find((o) => o.counterparty === NAME)!.categoryId).toBe('sc_people')
     // Единственный перевод разобран — карточки людей больше нет (✓ в отчёте ставится по её уходу, критик 4б).
     expect(cardsOf(A).find((c) => c.kind === 'people')).toBeUndefined()
+    expect(codeKinds(await report(A))).not.toContain('people')
+    // Модель видит те же карточки, что экран: разобранного перевода нет и в теле запроса.
+    expect(await a.ai.autoReview(A.client)).not.toBeNull()
+    expect((A.aiReview.mock.calls[0][0] as ReviewPayloadV4).cards.map((c) => c.kind)).not.toContain('people')
 
     // «Отметить разовой» у Sulpak: карточки больше нет; «обычно» раздела не меняется (разовые туда не входят).
     const oneoff = cardsOf(A).find((c) => c.kind === 'oneoff')!

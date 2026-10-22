@@ -3,7 +3,7 @@ import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
 import type { RecurringPrefill } from '@/lib/statements/firstRun'
-import type { HabitId, HabitTotal, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
+import type { HabitId, HabitTotal, MerchantRule, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import {
   CASH_SHARE,
@@ -6332,6 +6332,8 @@ export type ReviewCard = {
 export type ReviewCardsOpts = {
   /** «В платежи» у своей траты (стор `recurringFor`); нет — нет карточки «Не в платежах». */
   recurringFor?: (op: Operation) => RecurringPrefill | null
+  /** Правила «куда отнести?» (личный документ): отвеченные «Кому → что» переводы — не в карточке людей. */
+  rules?: MerchantRule[]
 }
 
 /** Свой факт месяца участника — `PlanSpend.fact` (с разовыми); выписок нет — 0. */
@@ -6370,7 +6372,7 @@ export function reviewCards(
       line: `${unknown.count} ${plural(unknown.count, 'трата', 'траты', 'трат')} без раздела`, button: 'Разобрать', target: { kind: 'unknown' }, monthly: unknown.amount,
     })
   }
-  const people = peopleShare(ops, month)
+  const people = peopleShare(ops, month, opts.rules)
   if (share(people.amount, PEOPLE_SHARE)) {
     card({
       kind: 'people', title: 'Переводы людям', figure: { value: people.amount, unit: 'money' },

@@ -167,7 +167,7 @@ describe('e2e / приёмка Фидбек Блок 4б — разбор v4 п�
   const cardsOf = (p: Phone) => {
     const { ops, finance } = on(p)
     const { state, ctx } = finance.planInput(K)
-    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, useAuthStore().slot!, { recurringFor: ops.recurringFor })
+    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, useAuthStore().slot!, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
   }
   const factOf = (p: Phone, by: 'a' | 'b') => {
     const { finance } = on(p)

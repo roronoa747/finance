@@ -269,13 +269,15 @@ function shareIn(ops: Operation[], period: string, categoryId: string): ShareFin
 }
 
 /**
- * Переводы людям месяца — раздел `sc_people` (ответ «Кому → что» перенёс перевод в другой раздел — уже не здесь); `top` —
- * получатель с наибольшей суммой (имя только для строки карточки на телефоне хозяина).
+ * Переводы людям месяца — раздел `sc_people` без отвеченных: ответ «Кому → что» (правило `person` в `rules`) оставляет
+ * перевод в разделе, но он уже разобран — мимо суммы, числа и `top` (возврат приёмки 4б); перенос в другой раздел — тоже
+ * не здесь. `top` — получатель с наибольшей суммой (имя только для строки карточки на телефоне хозяина).
  */
-export function peopleShare(ops: Operation[], period: string): ShareFind & { top: string | null } {
-  const share = shareIn(ops, period, 'sc_people')
+export function peopleShare(ops: Operation[], period: string, rules: MerchantRule[] = []): ShareFind & { top: string | null } {
+  const open = ops.filter((op) => op.categoryId !== 'sc_people' || !('person' in (ruleFor(op, rules)?.to ?? {})))
+  const share = shareIn(open, period, 'sc_people')
   const sums = new Map<string, number>()
-  for (const op of spendIn(ops, period)) {
+  for (const op of spendIn(open, period)) {
     if (op.categoryId !== 'sc_people' || !op.counterparty) continue
     sums.set(op.counterparty, (sums.get(op.counterparty) ?? 0) + spendOf(op))
   }
