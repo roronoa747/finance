@@ -70,6 +70,24 @@ describe('e2e / FB-22 — «Назад» без круга', () => {
     expect(await pressBack(router)).toEqual(['/settings/me', '/settings', '/'])
   })
 
+  it.each(['/goals/new', '/goals/nope', '/wishes', '/people/a', '/money/debts/faster'])(
+    'остальные вложенные экраны в новой вкладке: %s → «Назад» → «Мечты», записей не прибавилось',
+    async (start) => {
+      const router = await openCold(start)
+      const length = window.history.length
+      expect(await pressBack(router)).toEqual([start, '/'])
+      expect(window.history.length).toBe(length)
+    },
+  )
+
+  it('история, испорченная прежним «Назад» («Настройки» с `back` на «Цифры»), выходит на «Мечты»', async () => {
+    const router = await openCold('/admin')
+    await router.push('/settings')
+    await nextTick()
+    expect(window.history.state?.back).toBe('/admin')
+    expect(await pressBack(router)).toEqual(['/settings', '/admin', '/settings', '/'])
+  })
+
   it('обычный путь «Мечты» → шестерёнка → «Свой кружок»: «Назад» по истории, как был', async () => {
     const router = await openCold('/')
     ;(document.querySelector('header a[aria-label="Настройки"]') as HTMLAnchorElement).click()
