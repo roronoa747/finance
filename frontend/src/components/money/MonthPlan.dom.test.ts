@@ -555,13 +555,15 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
 
   it('RZ-13: прошлый месяц планом — лист раздела по `?month=&cat=` с названием месяца, без «Изменить»; текущий — с ним (критик Блока 3)', async () => {
     const august = paid('salary', 'a', '2026-08', 700_000, { id: 'sal-a-08', accountId: null, at: '2026-08-10T05:00:00.000Z' })
-    const doc = familyDoc()
+    // У Ильяса — свой план «Продуктов» (FB-12: лист раздела — только свой план).
+    const doc = familyDoc({ spendPlans: [...familyDoc().spendPlans!, { id: 'a:sc_food', by: 'a', categoryId: 'sc_food', amount: 40_000, updatedAt: T0 }] })
     await open('member', { ...doc, payments: [...(doc.payments ?? []), august] }, '/month?month=2026-08&cat=sc_food')
     await flush()
     expect(q('[data-month-past]')).toBeNull()
     expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
     expect(txt(q('[role="dialog"] [data-cat-month]'))).toBe('август')
-    expect(q('[role="dialog"] [data-cat-person="b"]')).not.toBeNull()
+    expect(q('[role="dialog"] [data-cat-person="a"]')).not.toBeNull()
+    expect(q('[role="dialog"] [data-cat-person="b"]')).toBeNull()
     // План раздела общий на будущее — из прошлого месяца не правится.
     expect(q('[role="dialog"] [data-cat-edit]')).toBeNull()
 
@@ -981,7 +983,7 @@ describe('PN-20: строка «Подушки» в «Цели и фонды» �
  * Кафе: июнь–август по 30 000 → обычно 30 000; сентябрь 50 000 → точка; план 20 000 → «до плана: +10 000».
  * Продукты: по 100 000 → обычно 100 000; сентябрь 90 000 — без точки. План Аруны — продукты 150 000.
  */
-describe('AU-02: траты на «Месяце» — разделы семьи, точка, лист раздела', () => {
+describe('AU-02: траты на «Месяце» — свои разделы (FB-12), точка, лист раздела', () => {
   const total = (period: string, categoryId: string, amount: number): SpendTotal => ({
     id: `a:month:${period}:${categoryId}`, by: 'a', kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T0,
   })
@@ -994,20 +996,21 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     { id: 'b:sc_food', by: 'b' as const, categoryId: 'sc_food', amount: 150_000, updatedAt: T0 },
   ]
   const fullUploads = [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 40, created_at: T0 }]
-  async function openSpend(role: 'member' | 'viewer' = 'member', uploads = fullUploads) {
+  async function openSpend(role: 'member' | 'viewer' = 'member', uploads = fullUploads, path = '/month', slot: 'a' | 'b' = 'a') {
     vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
     vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads } as never)
-    const finance = await open(role, planFamilyDoc({ spendTotals: totals, spendPlans }))
+    // Копии: стор правит массивы документа на месте («+ Раздел» дописал бы план в общий `spendPlans` следующим тестам).
+    const finance = await open(role, planFamilyDoc({ spendTotals: [...totals], spendPlans: [...spendPlans] }), path, slot)
     await useOperationsStore().loadUploads()
     await flush()
     return finance
   }
   const compareOf = (finance: ReturnType<typeof useFinanceStore>) => {
     const { state, ctx } = finance.planInput(KEY)
-    return spendCompare(state, ctx)
+    return spendCompare(state, ctx, 'a')
   }
 
-  it('строки — разделы семьи из spendCompare; точка у кафе и у заголовка «Траты»', async () => {
+  it('строки — свои разделы из spendCompare(…, by); точка у кафе и у заголовка «Траты»', async () => {
     const finance = await openSpend()
     const rows = compareOf(finance).rows
     expect(rows.map((r) => [r.categoryId, r.amount, r.over])).toEqual([['sc_food', 90_000, false], ['sc_cafe', 50_000, true]])
@@ -1081,23 +1084,24 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     expect(q<HTMLInputElement>('[role="dialog"] input[inputmode]')!.value).toBe(plain(20_000))
   })
 
-  it('без выписок — план строкой, точек нет', async () => {
+  it('без выписок — план строкой, точек нет; план партнёра — не мой раздел', async () => {
     await openSpend('member', [])
     expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
     await press(section('spend'))
     expect(q('[data-spend-dot]')).toBeNull()
-    expect(txt(q('[data-spend-row="sc_food"] [data-spend-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(`план ${plain(20_000)}`))
+    // «Продукты» — только план Аруны: у Ильяса без выписок раздела нет.
+    expect(q('[data-spend-row="sc_food"]')).toBeNull()
   })
 
-  it('viewer — строки и лист без «Изменить» и «+ Раздел»', async () => {
+  it('viewer — только строки участников: разделов, листа и «+ Раздел» нет', async () => {
     await openSpend('viewer')
     await press(section('spend'))
-    expect(all('[data-spend-row]').length).toBe(2)
+    expect(all('[data-spend-person]').map((el) => el.dataset.spendPerson)).toEqual(['a', 'b'])
+    expect(all('[data-spend-row]')).toHaveLength(0)
+    expect(q('[data-spend-mine]')).toBeNull()
     expect(q('[data-spend-add]')).toBeNull()
-    await press(q('[data-spend-row="sc_food"]'))
-    expect(txt(q('[role="dialog"] h3'))).toBe('Продукты')
-    expect(q('[role="dialog"] [data-cat-person="b"]')).not.toBeNull()
-    expect(q('[role="dialog"] [data-cat-edit]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
   })
 
   it('«+ Раздел» — лист «Траты на месяц»; сохранённый план — строкой раздела', async () => {
@@ -1114,6 +1118,51 @@ describe('AU-02: траты на «Месяце» — разделы семьи,
     await press(dialogButton('Готово'))
     expect(finance.householdDoc.spendPlans?.find((x) => x.id === 'a:sc_transport')?.amount).toBe(25_000)
     expect(q('[data-spend-row="sc_transport"]')).not.toBeNull()
+  })
+
+  /*
+   * FB-12 (Р-7, Р-18): Ильяс (a) — выписка с июня, сентябрь: продукты 90 000 + кафе 50 000 = 140 000, план кафе 20 000;
+   * Аруна (b) — выписок нет, план продуктов 150 000. Строки участников — «140 000 / 20 000» и «план 150 000».
+   */
+  it('FB-12: строки участников «факт / план», свой первым; ниже — «Мои разделы»', async () => {
+    await openSpend()
+    await press(section('spend'))
+    expect(all('[data-spend-person]').map((el) => el.dataset.spendPerson)).toEqual(['a', 'b'])
+    expect(txt(q('[data-spend-person="a"] [data-person-amount]'))).toBe(norm(`${plain(140_000)} / ${plain(20_000)}`))
+    expect(txt(q('[data-spend-person="b"] [data-person-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+    // Строки участников — без кнопок (правило 12).
+    expect(q('[data-spend-person] button')).toBeNull()
+    expect(q('[data-spend-person]')!.tagName).toBe('DIV')
+    expect(txt(q('[data-spend-mine]'))).toBe('Мои разделы')
+    // Заголовок — общее «потрачено» семьи, как было.
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(140_000)}`))
+  })
+
+  it('FB-12: партнёр — своя строка первой, свои разделы; разделов Ильяса нет; лист — «План» только свой', async () => {
+    await openSpend('member', fullUploads, '/month', 'b')
+    await press(section('spend'))
+    expect(all('[data-spend-person]').map((el) => el.dataset.spendPerson)).toEqual(['b', 'a'])
+    expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food'])
+    expect(txt(q('[data-spend-row="sc_food"] [data-spend-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+    expect(q('[data-spend-row="sc_cafe"]')).toBeNull()
+    await press(q('[data-spend-row="sc_food"]'))
+    expect(txt(q('[role="dialog"] [data-cat-plans-title]'))).toBe('План')
+    expect(all('[role="dialog"] [data-cat-person]').map((el) => el.dataset.catPerson)).toEqual(['b'])
+    expect(q('[role="dialog"] [data-cat-edit]')).not.toBeNull()
+  })
+
+  it('FB-12: `?cat=` чужого раздела — лист «—» и «нет трат», без цифр Ильяса; неизвестный раздел — ничего', async () => {
+    await openSpend('member', fullUploads, '/month?cat=sc_cafe', 'b')
+    expect(txt(q('[role="dialog"] h3'))).toBe('Кафе и рестораны')
+    expect(txt(q('[role="dialog"] [data-cat-amount]'))).toBe('—')
+    expect(txt(q('[role="dialog"] [data-cat-none]'))).toBe('У вас трат в этом разделе нет')
+    expect(q('[role="dialog"] [data-cat-person]')).toBeNull()
+    expect(q('[role="dialog"] [data-cat-usual]')).toBeNull()
+    expect(txt(q('[role="dialog"]'))).not.toContain(plain(50_000))
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openSpend('member', fullUploads, '/month?cat=sc_nope', 'b')
+    expect(q('[data-cat-amount]')).toBeNull()
   })
 })
 
@@ -1160,11 +1209,11 @@ describe('RZ-16: одна метка у заголовка раздела', () =
   const open1 = (target: { kind: 'goal' | 'cat'; id: string; name: string }): AiAdvice => ({
     title: `Совет ${target.name}`, text: 'Текст.', figure: null, action: { kind: 'open', target },
   })
-  /** Разбор v3 сентября: 1 — мечта «Отпуск» (в «Цели и фонды»), 2 — раздел «Продукты» (в «Тратах»). */
+  /** Разбор v3 сентября: 1 — мечта «Отпуск» (в «Цели и фонды»), 2 — свой раздел Ильяса «Такси» (в «Тратах», FB-12). */
   const review: AiReview = {
     id: 'r1', month: KEY, at: '2026-09-12T06:00:00.000Z', by: 'b', good: '', risk: '', steps: [], sent: null, updatedAt: T0,
     v: 3, reason: 'month', where: '', work: { ops: 10, found: 2, yearly: 0 },
-    advices: [open1({ kind: 'goal', id: 'trip', name: 'Отпуск' }), open1({ kind: 'cat', id: 'sc_food', name: 'Продукты' })],
+    advices: [open1({ kind: 'goal', id: 'trip', name: 'Отпуск' }), open1({ kind: 'cat', id: 'sc_taxi', name: 'Такси' })],
   }
 
   it('точка и совет — у заголовка только точка, ✦ у строки; точки нет — ✦ у заголовка', async () => {
@@ -1176,7 +1225,7 @@ describe('RZ-16: одна метка у заголовка раздела', () =
     expect(q('[data-section="queue"] [data-section-mark]')).toBeNull()
     expect(txt(section('queue'))).toContain('есть что сделать')
     expect(txt(section('queue'))).not.toContain('есть совет ИИ')
-    // «Траты»: выше обычного нет — точки нет, совет про «Продукты» — ✦ у заголовка.
+    // «Траты»: выше обычного нет — точки нет, совет про «Такси» — ✦ у заголовка.
     expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
     expect(q('[data-section="spend"] [data-section-mark]')).not.toBeNull()
     expect(txt(section('spend'))).toContain('есть совет ИИ')
@@ -1219,9 +1268,9 @@ describe('FB-05: свои операции в листе раздела «Мес
     expect(q('[data-hand-sheet]')).not.toBeNull()
   })
 
-  it('viewer — операций в листе нет', async () => {
+  it('viewer — листа раздела нет (FB-12: разделов у viewer нет), операций тоже', async () => {
     await openCat('viewer')
-    expect(q('[data-cat-amount]')).not.toBeNull()
+    expect(q('[data-cat-amount]')).toBeNull()
     expect(q('[data-cat-ops]')).toBeNull()
   })
 })
@@ -1262,15 +1311,13 @@ describe('FB-07: «Разовые» на «Месяце» — тихая стр�
     expect(txt(dialogs[1])).toContain('COFFEE BOOM')
   })
 
-  it('без разовых — строки нет; viewer — строка без листа', async () => {
+  it('без разовых — строки нет; viewer — строки нет (разделов у него нет, FB-12)', async () => {
     await openMonth('member', false)
     expect(q('[data-spend-oneoff]')).toBeNull()
     app?.unmount()
     document.body.innerHTML = ''
     await openMonth('viewer', true)
-    const row = q('[data-spend-oneoff]')
-    expect(row?.tagName).toBe('DIV')
-    await press(row)
+    expect(q('[data-spend-oneoff]')).toBeNull()
     expect(q('[data-oneoff-amount]')).toBeNull()
   })
 })

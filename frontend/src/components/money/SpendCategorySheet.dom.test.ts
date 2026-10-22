@@ -21,15 +21,18 @@ const ROW: SpendCompareRow = {
 const PLANS = [{ by: 'a' as PersonId, name: 'Ильяс', amount: 20_000 }, { by: 'b' as PersonId, name: 'Аруна', amount: 0 }]
 
 const events: [string, string][] = []
-async function mount(row: Partial<SpendCompareRow> = {}, extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string; ops?: SectionMonth | null } = {}) {
+async function mount(
+  row: Partial<SpendCompareRow> = {},
+  extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string; ops?: SectionMonth | null; plans?: typeof PLANS; none?: string } = {},
+) {
   const edits: [PersonId, number][] = []
   events.length = 0
   const root = document.createElement('div')
   document.body.appendChild(root)
   app = createApp({
     render: () => h(SpendCategorySheet, {
-      row: { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
-      ops: extra.ops ?? null,
+      row: extra.none ? null : { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: extra.plans ?? PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
+      ops: extra.ops ?? null, none: extra.none ?? null,
       onEdit: (by: PersonId, amount: number) => edits.push([by, amount]),
       onOpen: (id: string) => events.push(['open', id]),
       onHand: (id: string) => events.push(['hand', id]),
@@ -133,6 +136,22 @@ describe('SpendCategorySheet', () => {
     await mount({}, { canEdit: false })
     expect(q('[data-cat-person="a"]')).not.toBeNull()
     expect(q('[data-cat-edit]')).toBeNull()
+  })
+
+  it('FB-12: свой план одной строкой — «План», без «каждого»; «Изменить» — свой', async () => {
+    const edits = await mount({}, { plans: [PLANS[0]] })
+    expect(txt(q('[data-cat-plans-title]'))).toBe('План')
+    expect([...document.querySelectorAll<HTMLElement>('[data-cat-person]')].map((el) => el.dataset.catPerson)).toEqual(['a'])
+    q('[data-cat-person="a"] [data-cat-edit]')!.click()
+    expect(edits).toEqual([['a', 20_000]])
+  })
+
+  it('FB-12: раздел без моих трат (`none`) — «—» и одна строка, без цифр, плана и операций', async () => {
+    await mount({}, { none: 'Кафе и рестораны' })
+    expect(txt(q('[role="dialog"] h3'))).toBe('Кафе и рестораны')
+    expect(txt(q('[data-cat-amount]'))).toBe('—')
+    expect(txt(q('[data-cat-none]'))).toBe('У вас трат в этом разделе нет')
+    for (const sel of ['[data-cat-usual]', '[data-cat-plan]', '[data-cat-rk]', '[data-cat-person]', '[data-cat-ops]']) expect(q(sel), sel).toBeNull()
   })
 
   it('RZ-13: месяц листа — над цифрой: этого года — «январь», другого — с годом; текущий и без месяца — строки нет (критик, `/ux` Блока 3)', async () => {

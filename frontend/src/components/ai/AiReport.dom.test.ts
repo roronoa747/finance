@@ -578,13 +578,14 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(q('[data-do-toast]')).not.toBeNull()
   })
 
-  it('«Открыть» ведёт на экран предмета, отчёт закрыт, параметр снят', async () => {
+  it('«Открыть» ведёт на экран предмета, отчёт закрыт, параметр снят; своих трат в разделе нет — лист «нет трат» (FB-12)', async () => {
     await openV3()
     await press(q('[data-review-link]'))
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/month?month=2026-08&cat=sc_cafe'), { timeout: 5000 })
     await flush()
     expect(dialog()).toBeNull()
-    expect(document.documentElement.hasAttribute('data-sheet-open')).toBe(false)
+    // Разбор семейный (Р-18), а лист раздела — свой: у меня в августе кафе нет — одна строка, без цифр семьи.
+    expect(txt(q('[role="dialog"] [data-cat-none]'))).toBe('У вас трат в этом разделе нет')
   })
 
   it('нажатие по правой трети — следующая карточка, по левой — предыдущая, по середине — ничего', async () => {

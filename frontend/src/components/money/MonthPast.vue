@@ -5,7 +5,9 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money, plain } from '@/lib/money'
-import { monthPlan, monthPlanPast, rkShare, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
+import { liveSpendCategories, monthPlan, monthPlanPast, rkShare, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
+import { plannedElsewhere } from '@/lib/statements/dictionary'
+import type { PersonId } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
@@ -33,17 +35,27 @@ const income = computed(() => past.value.cameBy.map((x) => ({ ...x, came: true }
 
 /*
  * Лист раздела прошлого месяца по адресу `?month=<месяц>&cat=<id>` — строка «Куда ушло» и «Открыть» отчёта за месяц
- * находок (Х-9, владелец 2026-10-19, RZ-13): цифры того месяца, только чтение (закрытый месяц — без «Изменить»).
+ * находок (Х-9, владелец 2026-10-19, RZ-13): цифры того месяца, только чтение (закрытый месяц — без «Изменить»). Свои
+ * (FB-12, Р-18): факт и план — мои; раздел без моих трат и плана — «нет трат»; viewer — листа нет. Карточка «Траты» —
+ * семья, как была.
  */
+const auth = useAuthStore()
+const me = computed<PersonId>(() => auth.slot ?? 'a')
 const { value: catFor, close: closeCat } = useQueryValue('cat')
 const input = computed(() => finance.planInput(props.monthKey))
-const catRow = computed(() => (catFor.value ? (spendCompare(input.value.state, input.value.ctx).rows.find((r) => r.categoryId === catFor.value) ?? null) : null))
-const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, input.value.ctx, catRow.value.group) : null))
+const catRow = computed(() =>
+  catFor.value && !auth.isViewer ? (spendCompare(input.value.state, input.value.ctx, me.value).rows.find((r) => r.categoryId === catFor.value) ?? null) : null,
+)
+const catNone = computed(() => {
+  const all = finance.householdDoc.spendCategories ?? []
+  const c = catFor.value && !auth.isViewer && !catRow.value && !plannedElsewhere(catFor.value, all) ? liveSpendCategories(all).find((x) => x.id === catFor.value) : null
+  return c?.name ?? null
+})
+const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, input.value.ctx, catRow.value.group, me.value) : null))
 const catPlans = computed(() =>
-  catRow.value ? spendPlansBy(monthPlan(input.value.state, input.value.ctx), finance.people.filter((p) => !p.deletedAt), catRow.value.categoryId) : [],
+  catRow.value ? spendPlansBy(monthPlan(input.value.state, input.value.ctx), finance.people.filter((p) => !p.deletedAt && p.id === me.value), catRow.value.categoryId) : [],
 )
 /** Свои операции раздела за тот месяц (FB-05, Р-14) — как на «Месяце»; viewer — нет. */
-const auth = useAuthStore()
 const ops = useOperationsStore()
 const catAll = ref(false)
 watch(catFor, () => (catAll.value = false))
@@ -94,6 +106,7 @@ function openCatHand(id: string) {
       :can-edit="false"
       :month="monthKey"
       :ops="catOps"
+      :none="catNone"
       @close="closeCat"
       @more="catAll = true"
       @open="(id) => (catOp = id)"

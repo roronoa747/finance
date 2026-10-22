@@ -173,10 +173,13 @@ describe('RZ-10: ✦ у предметов на «Месяце» и «Деньг
     expect(q('[data-report]')).toBeNull()
   })
 
-  it('viewer — те же ✦; разбора нет — ✦ нет ни у строк, ни у разделов', async () => {
+  it('viewer — те же ✦ у платежей; разделов трат нет (FB-12) — и ✦ у них нет; разбора нет — ✦ нет ни у строк, ни у разделов', async () => {
     await mount({ role: 'viewer' })
+    expect(q('[data-section="spend"] [data-section-mark]')).toBeNull()
     await press(q('[data-section="spend"]'))
-    expect(mark('[data-spend-row="sc_cafe"]')!.dataset.adviceCard).toBe('1')
+    expect(q('[data-spend-row]')).toBeNull()
+    await press(q('[data-section="dues"]'))
+    expect(mark('[data-due-id="obligation:rent"]')!.dataset.adviceCard).toBe('2')
     app!.unmount()
     document.body.innerHTML = ''
 

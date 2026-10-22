@@ -266,10 +266,12 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(weekB).toMatch(/data-uploaded="true" data-partner="a"/)
     expect(weekB).toContain('data-upload="lead"')
     for (const n of [22_500, 12_000, 7_000, 40_000]) expect(text(weekB)).not.toContain(sp(plain(n)))
-    // Его траты она видит в «Месяце» — в разделе семьи (AU-02: строки — разделы, не участники): продукты — факт 42 000.
-    // До суммы строки (`</b>`): кнопка строки — только название (RZ-10, ✦ рядом с ней), сумма — после неё.
-    const spendB = text(between(await month(B, { opened: 'spend' }), 'data-spend-row="sc_food"', '</b>'))
-    expect(spendB).toContain(sp(plain(42_000)))
+    // Его траты она видит в «Месяце» одной строкой «факт / план» (FB-12, Р-7): продукты 42 000 + кафе 13 500 + без
+    // раздела 7 000 = 62 500 из плана 150 000 + 40 000 = 190 000; его разделов у неё нет — её «Продукты» только план.
+    const monthB = await month(B, { opened: 'spend' })
+    expect(text(between(monthB, 'data-spend-person="a"', '</div>'))).toContain(sp(`${plain(62_500)} / ${plain(190_000)}`))
+    expect(monthB).not.toContain('data-spend-row="sc_cafe"')
+    expect(text(between(monthB, 'data-spend-row="sc_food"', '</div>'))).toContain(sp(`план ${plain(100_000)}`))
   })
 
   it('часть 3 — загрузка «сразу готово»: тост «Загружено N · Отменить», неделя уже с выпиской; «Отменить» — как было; без отмены — записано и видно партнёру', async () => {

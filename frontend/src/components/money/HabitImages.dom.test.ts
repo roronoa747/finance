@@ -125,17 +125,16 @@ describe('строка-образ в листе раздела', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(`/goals/${car.id}`))
   })
 
-  it('viewer — строка и «?» без кнопки', async () => {
+  it('viewer — разделов и листа раздела нет (FB-12), образа тоже', async () => {
     await open('viewer')
-    await openCategory('sc_transport')
-    expect(q('[role="dialog"] [data-image-line]')).not.toBeNull()
-    expect(q('[data-image-act]')).toBeNull()
-    await press(q('[role="dialog"] [data-image] button[aria-label="Как посчитали"]'))
-    expect(all('[data-image-calc]').length).toBe(2)
+    await press(q('[data-section="spend"]'))
+    expect(q('[data-spend-row]')).toBeNull()
+    expect(q('[data-image]')).toBeNull()
   })
 
   it('нет образа — строки нет («Продукты»)', async () => {
-    await open()
+    // Свой раздел «Продукты» у Ильяса — FB-12: лист открывается только у своего раздела.
+    await open('member', familyDoc({ spendPlans: [...familyDoc().spendPlans!, plan('a', 'sc_food', 100_000)] }))
     await openCategory('sc_food')
     expect(q('[role="dialog"] [data-cat-amount]')).not.toBeNull()
     expect(q('[data-image]')).toBeNull()
@@ -167,9 +166,9 @@ describe('строка-образ в листе раздела', () => {
     expect(q('[data-image-moved]')).toBeNull()
   })
 
-  it('перенос уже сделан (Х-9): «✓ 20 000 в мечту» вместо кнопки — и у viewer', async () => {
+  it('перенос уже сделан (Х-9): «✓ 20 000 в мечту» вместо кнопки', async () => {
     const move = { id: 'm1', categoryId: 'sc_cafe', goalId: 'trip', amount: 20_000, by: 'a' as const, at: T0, updatedAt: T0 }
-    await open('viewer', { ...familyDoc(), imageMoves: [move] })
+    await open('member', { ...familyDoc(), imageMoves: [move] })
     await openCategory('sc_cafe')
     expect(txt(q('[data-image-moved]'))).toBe(norm('✓ 20 000 в мечту'))
     expect(q('[data-image-act]')).toBeNull()

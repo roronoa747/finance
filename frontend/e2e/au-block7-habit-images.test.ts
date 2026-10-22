@@ -19,7 +19,8 @@ import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type Fa
  *
  * Выписка Ильяса (телефон 1) — июль, август, сентябрь: по 20 поездок Yandex Go в месяц по 2 500 ₸ (50 000) и обеды в
  * кафе в будни — по 10 по 4 000 ₸ (40 000). В общий документ уходят только итоги привычек: такси и обеды — счётчик и
- * сумма за месяц. Телефон 2 (Аруна) и viewer видят образы в листах «Транспорт» и «Кафе»: такси → своя машина
+ * сумма за месяц. Итоги видит и Аруна, а образы — в листах своих разделов Ильяса «Транспорт» и «Кафе» (с FB-12 лист
+ * раздела — только у своего: у Аруны и viewer этих листов нет; «телефон 2» ниже — второй телефон Ильяса): такси → своя машина
  * (4 750 000 ÷ 50 000 = 95 месяцев), обеды за год 480 000 → доля мечты «Отпуск» (первая в очереди); «Перенести в мечту»
  * — 40 % обедов = 16 000: план кафе Ильяса 50 000 → 34 000, взнос «Отпуска» 40 000 → 56 000; «Отменить» — прежние.
  */
@@ -142,29 +143,34 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     for (const t of server.data.habitTotals ?? []) expect(Object.keys(t).filter((k) => k !== 'deletedAt').sort()).toEqual(['amount', 'by', 'count', 'habit', 'id', 'period', 'updatedAt'])
   })
 
-  it('три месяца — образ в листе «Транспорт» у обоих и у viewer (без кнопки); «?» — цена с источником и датой и расчёт', async () => {
+  it('три месяца — образ в листе своего «Транспорта» с кнопкой; «?» — цена с источником и датой и расчёт; у партнёра и viewer листа раздела Ильяса нет (FB-12)', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
     const B = await phone(server, st, 'b')
     const V = await phone(server, st, 'b', 'viewer')
     const taxi = habitImages(on(B).planInput(K).state, K).find((i) => i.habit === 'taxi')!
     expect(taxi).toMatchObject({ monthly: 50_000, months: 95 })
-    for (const p of [A, B, V]) expect(part(await month(p, 'sc_transport'), 'data-image-line')).toBe(sp(imageLine(taxi)))
-    expect(await month(B, 'sc_transport')).toContain('data-image-act')
-    const viewer = await month(V, 'sc_transport', HINT)
-    expect(viewer).not.toContain('data-image-act')
-    // Р-31: «Как посчитали» — видно и viewer.
+    const mine = await month(A, 'sc_transport', HINT)
+    expect(part(mine, 'data-image-line')).toBe(sp(imageLine(taxi)))
+    expect(mine).toContain('data-image-act')
+    // Р-31: «Как посчитали».
     const m = imageMath(taxi)
-    expect(part(viewer, 'data-image-item')).toBe(sp(m.item))
-    expect(viewer).toContain(`href="${PRICES.car_used.url.replace(/&/g, '&amp;')}"`)
-    expect(part(viewer, 'data-image-source')).toContain('17 октября 2026')
-    expect(text(viewer)).toContain(sp(m.lines[1]))
+    expect(part(mine, 'data-image-item')).toBe(sp(m.item))
+    expect(mine).toContain(`href="${PRICES.car_used.url.replace(/&/g, '&amp;')}"`)
+    expect(part(mine, 'data-image-source')).toContain('17 октября 2026')
+    expect(text(mine)).toContain(sp(m.lines[1]))
+    // Раздел Ильяса у Аруны — «нет трат» без образа; у viewer листа нет.
+    const partner = await month(B, 'sc_transport')
+    expect(partner).toContain('data-cat-none')
+    expect(partner).not.toContain('data-image')
+    expect(await month(V, 'sc_transport')).not.toContain('data-cat-amount')
   })
 
   it('«Перенести в мечту» на телефоне 1 → план и взнос у телефона 2; «Отменить» возвращает оба', async () => {
     const A = await phone(server, st, 'a')
     await uploadA(A)
-    const B = await phone(server, st, 'b')
+    // Телефон 2 — второй телефон Ильяса: лист «Кафе» — его раздел (FB-12).
+    const B = await phone(server, st, 'a')
     const lunch = habitImages(on(A).planInput(K).state, K).find((i) => i.categoryId === 'sc_cafe')!
     expect(lunch.habit).toBe('lunch')
     expect(lunch.action).toMatchObject({ kind: 'move', amount: 16_000, goalId: 'trip' })
@@ -204,7 +210,8 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     server.data.spendPlans = [plan('a', 'sc_transport', 30_000), plan('a', 'sc_cafe', 30_000), plan('b', 'sc_food', 300_000)]
     const A = await phone(server, st, 'a')
     await uploadA(A)
-    const B = await phone(server, st, 'b')
+    // Телефон 2 — второй телефон Ильяса (FB-12: лист раздела — только у своего).
+    const B = await phone(server, st, 'a')
     const lunch = habitImages(on(A).planInput(K).state, K).find((i) => i.categoryId === 'sc_cafe')!
     const before = await month(B, 'sc_cafe')
     expect(before).toMatch(/data-cat-advice[\s>]/)

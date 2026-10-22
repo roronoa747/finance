@@ -111,7 +111,7 @@ function tryDemo() {
         <div class="rounded-card bg-surface p-6">
           <h2 class="font-display text-[22px] font-semibold">Для двоих. Или для одного.</h2>
           <p class="mt-2 text-[15px] text-ink-2">
-            Партнёр видит итоги по разделам — до тенге. Ваши операции остаются у вас. Один человек — тоже семья.
+            Партнёр видит план и факт трат. Ваши разделы и операции остаются у вас. Один человек — тоже семья.
           </p>
         </div>
         <div class="rounded-card bg-surface p-6">

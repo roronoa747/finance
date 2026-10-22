@@ -180,11 +180,11 @@ describe('e2e / Разбор Блок 3 — ✦ у предметов', { timeou
     expect((html.match(/data-active/g) ?? []).length).toBe(1)
   })
 
-  it('(в) телефон 2 (партнёр) и viewer — те же ✦', async () => {
+  it('(в) телефон 2 (партнёр) и viewer — те же ✦, кроме разделов трат Ильяса (их у них на экране нет, FB-12)', async () => {
     withReview()
     const want = await everywhere(await as('member', 'a'))
-    expect(await everywhere(await as('member', 'b'))).toEqual(want)
-    expect(await everywhere(await as('viewer', 'b'))).toEqual(want)
+    expect(await everywhere(await as('member', 'b'))).toEqual({ ...want, cat: null })
+    expect(await everywhere(await as('viewer', 'b'))).toEqual({ ...want, cat: null })
     expect(aiReview).not.toHaveBeenCalled()
   })
 
