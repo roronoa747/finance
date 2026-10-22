@@ -6388,8 +6388,9 @@ export function reviewCards(
       line: `${o.name} — впервые за 3 месяца`, button: 'Отметить разовой', target: { kind: 'op', opId: o.opId }, monthly: o.amount, subject: o.name,
     })
   }
+  // Самая крупная трата недели уже в карточке «Похоже на разовую» — одна покупка, одна карточка.
   const week = dearerWeek(ops, month, cats)
-  if (week) {
+  if (week && !out.some((c) => c.target.kind === 'op' && c.target.opId === week.opId)) {
     card({
       kind: 'week', key: week.week, title: 'Дорогая неделя', figure: { value: week.pct, unit: 'pct' },
       line: `${weekRangeLabel(weekRange(week.week))} — дороже обычной`, button: 'Отметить разовой', target: { kind: 'op', opId: week.opId }, monthly: week.amount - week.usual,

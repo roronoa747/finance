@@ -496,10 +496,12 @@ export function openPath(target: OpenTarget, month?: string): string {
 }
 
 /** «Что ушло» (Р-9) — читаемый список, не JSON: «доход месяца: 1 200 000 ₸»; шаги — с суммой и эффектом; «открыть — …». */
-export function factsLines(payload: ReviewPayload | ReviewPayloadV3): string[] {
+export function factsLines(payload: ReviewPayload | ReviewPayloadV3 | ReviewPayloadV4): string[] {
   const step = (c: { about: string; value: string; effect: string }) => `шаг — ${c.about}: ${c.value}${c.effect ? ` · ${c.effect}` : ''}`
   const rest =
-    'actions' in payload
+    'cards' in payload
+      ? payload.cards.map((c) => `карточка — ${c.about}`)
+      : 'actions' in payload
       ? payload.actions.map((a) => (a.kind === 'do' ? step(a) : `открыть — ${a.about.replace(/^открыть /, '')}`))
       : payload.candidates.map(step)
   return [...payload.facts.map((f) => `${f.about}: ${f.value}`), ...rest]

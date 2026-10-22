@@ -129,12 +129,16 @@ describe('autoReview — повод «месяц», свой у каждого',
     expect(finance.aiReviewOf('2026-10')!.reasonKey).toBe('month:2026-10')
   })
 
-  it('своих карточек нет (выписок нет) — запроса нет, ничего не сохранено', async () => {
+  it('своих карточек нет (выписок нет) — запроса нет, ничего не сохранено, попытка не тратится: выписка того же дня — разбор сразу', async () => {
     const { ai, finance } = await family({ own: false })
     const { client, aiReview } = fakeClient()
     expect(await ai.autoReview(client)).toBeNull()
     expect(aiReview).not.toHaveBeenCalled()
     expect(finance.myAiReviews).toEqual([])
+    expect(localStorage.getItem('ff_ai_auto')).toBeNull()
+    await seedOwnMonth(KEY)
+    expect(await ai.autoReview(client)).not.toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
   it('попытки v3 того же утра (прошлая сборка) не держат попытку v4', async () => {

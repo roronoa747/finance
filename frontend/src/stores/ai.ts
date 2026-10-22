@@ -244,6 +244,11 @@ export const useAiStore = defineStore('ai', () => {
     const key = monthKey()
     const reason = autoReason(key)
     if (!reason) return null
+    // Своих карточек нет (выписка ещё не загружена или не подтянулась) — спрашивать не о чем, и попытку не пишем: иначе
+    // выписка того же дня ждала бы разбора сутки.
+    const { ops, opts } = cardsInput()
+    const { state, ctx } = finance.planInput(key)
+    if (!reviewCards({ ...finance.householdDoc, ...state }, ctx, ops, auth.slot ?? 'a', opts).length) return null
     // Попытка v4 — своя (`v4:month:<key>`): попытка v3 того же утра (прошлая сборка) не держит её сутки.
     const rk = `v4:${reasonKeyOf(reason, key)!}`
     // Попытки — только этого месяца: прошлые поводы не копятся.
@@ -305,7 +310,7 @@ export const useAiStore = defineStore('ai', () => {
     const out = new Map<string, number>()
     if (!auth.ai && !auth.isDemo) return out
     const key = monthKey()
-    const review = auth.isDemo ? demoReview(finance.householdDoc, finance.planInput(key)) : finance.aiReviewOf(key)
+    const review = auth.isDemo ? demoReview(finance.householdDoc, finance.planInput(key), useOperationsStore().all) : finance.aiReviewOf(key)
     const put = (k: string, n: number) => {
       if (!out.has(k)) out.set(k, n)
     }

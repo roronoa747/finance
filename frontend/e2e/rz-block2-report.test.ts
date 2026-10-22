@@ -12,6 +12,8 @@ import type { MeResponse } from '../src/types/api'
 import type { AiReview, Goal, PersonId, ReviewPayloadV3, SyncDoc } from '../src/types/finance'
 import type { ReviewFind, SpendTotal } from '../src/lib/statements/types'
 import Month from '../src/views/Month.vue'
+import { saveV3 } from './support/reviewV3'
+import { leadFor } from '../src/test/reviewV4'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -127,13 +129,12 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
   }
   const report = (p: Phone, query = '?review=1') => screen(p.pinia, Month, `/month${query}`)
 
-  it('(а) разбор сам → отчёт по адресу: работа ИИ, куда ушло полосами, три совета — у каждого одна кнопка', async () => {
+  it('(а) v3 месяца в документе → отчёт по адресу: работа ИИ, куда ушло полосами, три совета — у каждого одна кнопка; свой v4 сменяет его', async () => {
     const one = await as('member', 'a')
-    const r = await one.ai.autoReview(one.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    const r = saveV3(one.store, K, answerFor)
     expect(r).toMatchObject({ v: 3, month: K })
     // Х-2: продавец в словах модели — коротко, без города и страны.
-    expect(JSON.stringify(aiReview.mock.calls[0][0])).not.toContain('ALMATY')
+    expect(JSON.stringify(r.sent)).not.toContain('ALMATY')
     const html = await report(one)
     expect(html).toContain('data-report')
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
@@ -156,11 +157,22 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
     for (const a of advices) expect((a.match(/<(a|button)\b/g) ?? []).length).toBe(1)
     // Крупная цифра кафе — прирост к обычному (90 000 − 30 000).
     expect(visible(advices[1])).toContain('60 000 ₸')
+
+    // Новая сборка: v3 месяца — не свой v4, повод открыт (бэклог «Фидбек», Р-27) — один запрос v4 (карточки кода
+    // из итогов: кафе без плана); дальше отчёт — свой v4 с мыслью и карточками, без советов v3.
+    aiReview.mockImplementation(async (body: unknown) => leadFor(body))
+    expect(await one.ai.autoReview(one.aiClient)).toMatchObject({ v: 4, month: K })
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview.mock.calls[0][0]).toMatchObject({ v: 4, reason: 'month' })
+    const own = await report(one)
+    expect(own).toContain('data-review-lead')
+    expect(own).toContain('data-review-card="plan"')
+    expect(own).not.toMatch(/data-review-advice(?=[\s=>])/)
   })
 
   it('(б) «Сделать» → «✓ Сделано», сдвиг месяца у обоих телефонов', async () => {
     const one = await as('member', 'a')
-    const r = await one.ai.autoReview(one.aiClient)
+    const r = saveV3(one.store, K, answerFor)
     const a = r!.advices![0].action
     if (a.kind !== 'do') throw new Error('первый совет — «Сделать»')
     one.store.addPlanShift(a.candidate.shift)
@@ -175,7 +187,7 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
 
   it('(в) «Открыть» раздела → `/month?cat=sc_cafe`: лист раздела открыт, отчёта нет', async () => {
     const one = await as('member', 'a')
-    await one.ai.autoReview(one.aiClient)
+    saveV3(one.store, K, answerFor)
     const html = await screen(one.pinia, Month, '/month?cat=sc_cafe')
     expect(html).not.toContain('data-report')
     expect(html).toContain('data-cat-amount')
@@ -184,11 +196,11 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
 
   it('(г) телефон 2 — тот же отчёт без запроса; точка «новый» гаснет после открытия', async () => {
     const one = await as('member', 'a')
-    await one.ai.autoReview(one.aiClient)
+    saveV3(one.store, K, answerFor)
     await sync(one)
     const two = await as('member', 'b')
     await two.ai.autoReview(two.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview).not.toHaveBeenCalled()
     expect(await screen(two.pinia, Month, '/month')).toContain('data-review-dot')
     const html = await report(two)
     expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
@@ -197,11 +209,11 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
 
   it('(д) viewer: «Открыть» есть, «Сделать» и «Обновить» нет; сам не разбирает', async () => {
     const one = await as('member', 'a')
-    await one.ai.autoReview(one.aiClient)
+    saveV3(one.store, K, answerFor)
     await sync(one)
     const viewer = await as('viewer', 'b')
     await viewer.ai.autoReview(viewer.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview).not.toHaveBeenCalled()
     const html = await report(viewer)
     expect(html).toContain('data-review-link')
     expect(html).not.toMatch(doBtn)
@@ -210,7 +222,7 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
 
   it('(е) v3-разбор прошлого месяца в документе → «Итог прошлого месяца»: «Сделать» сделан, раздел совета к «обычно»', async () => {
     const one = await as('member', 'a')
-    const r = (await one.ai.autoReview(one.aiClient))!
+    const r = saveV3(one.store, K, answerFor)
     const a = r.advices![0].action
     if (a.kind !== 'do') throw new Error('первый совет — «Сделать»')
     const prev: AiReview = { ...r, id: 'r-sep', month: '2026-09', at: '2026-09-01T04:00:00.000Z', reasonKey: 'month:2026-09' }
@@ -226,32 +238,29 @@ describe('e2e / Разбор Блок 2 — отчёт', () => {
     expect(outcome).toContain('Кафе и рестораны')
   })
 
-  it('(ж) демо: «Пример» — карточки, три совета, «Сделать» → «✓ Сделано»; запросов к ручке нет', async () => {
+  // v4 (бэклог «Фидбек», FB-17): заготовка демо — мысль поверх карточек кода демо-операций; советов v3 нет.
+  it('(ж) демо: «Пример» — работа ИИ, мысль, карточки кода с кнопкой, «Куда ушло»; без дня и «Обновить»; запросов к ручке нет', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     expect(startDemo()).toBe(true)
     await nextTick()
     await nextTick()
-    let html = await screen(pinia, Month, '/month?review=1')
+    const html = await screen(pinia, Month, '/month?review=1')
     expect(html).toContain('data-review-example')
-    expect(cards(html)).toEqual(['work', 'where', 'advice', 'advice', 'advice'])
-    expect(visible(html)).toContain('Магазин у дома')
-    expect(html).toMatch(doBtn)
+    const list = cards(html)
+    expect(list.slice(0, 2)).toEqual(['work', 'lead'])
+    expect(list.at(-1)).toBe('where4')
+    expect(list.filter((c) => c === 'code').length).toBeGreaterThan(0)
+    expect(html).toContain('data-review-card-button')
+    expect(html).toContain('data-where-split')
     expect(html).not.toContain('data-review-day')
     expect(html).not.toContain('data-review-refresh')
-    setActivePinia(pinia)
-    const finance = useFinanceStore()
-    const { state, ctx } = finance.planInput(K)
-    const { stepCandidates } = await import('../src/lib/finance')
-    finance.addPlanShift(stepCandidates(state, ctx).find((c) => c.id === 'cushion')!.shift)
-    html = await screen(pinia, Month, '/month?review=1')
-    expect(html).toContain('data-review-done')
     expect(aiReview).not.toHaveBeenCalled()
   })
 
   it('(з) `card=2` — отчёт стартует со второго совета', async () => {
     const one = await as('member', 'a')
-    await one.ai.autoReview(one.aiClient)
+    saveV3(one.store, K, answerFor)
     const html = await report(one, '?review=1&card=2')
     const active = html.slice(html.indexOf('data-active'))
     expect(active.slice(0, active.indexOf('</section>'))).toContain('Один вечер раздул раздел.')

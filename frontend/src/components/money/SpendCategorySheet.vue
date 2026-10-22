@@ -36,6 +36,8 @@ const props = defineProps<{
    * строка, без цифр партнёра. Работает, когда `row` нет.
    */
   none?: string | null
+  /** Слой листа: поверх отчёта разбора — выше (FB-17). */
+  z?: number
 }>()
 /** «сентябрь»; другого года — с годом; текущий месяц не называется — он и так на экране (`/ux` «Разбор» 3). */
 const monthName = computed(() => {
@@ -73,7 +75,7 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
 </script>
 
 <template>
-  <Sheet :open="!!row || !!none" :title="row?.name ?? none ?? ''" @close="$emit('close')">
+  <Sheet :open="!!row || !!none" :title="row?.name ?? none ?? ''" :z="z ?? 50" @close="$emit('close')">
     <template v-if="!row && none">
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-cat-amount>—</p>
       <p class="mt-1 text-[14px] text-ink-2" data-cat-none>У вас трат в этом разделе нет</p>

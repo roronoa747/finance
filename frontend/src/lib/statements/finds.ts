@@ -296,6 +296,7 @@ export const unknownShare = (ops: Operation[], period: string): ShareFind => sha
 /**
  * Похоже на разовую: свободная покупка от `ONE_OFF_MIN` и от `ONE_OFF_SHARE` % факта `fact`, у продавца без операций за
  * 3 прошлых месяца; до `ONE_OFF_MAX` по сумме. Без своих операций раньше месяца — пусто: «новым» был бы каждый продавец.
+ * Трата без раздела — мимо: её сначала разбирают карточкой «Не разобрано» (одна операция — одна карточка).
  */
 export function oneOffLike(ops: Operation[], period: string, fact: number, categories: Categories = []): { opId: string; name: string; amount: number }[] {
   const from = addMonths(period, -ONE_OFF_MONTHS)
@@ -303,7 +304,7 @@ export function oneOffLike(ops: Operation[], period: string, fact: number, categ
   if (!before.length || fact <= 0) return []
   const seen = new Set(before.map(keyOf))
   return ops
-    .filter((op) => inMonth(op, period) && freeOk(op, categories) && sellerOk(op) && !seen.has(keyOf(op)))
+    .filter((op) => inMonth(op, period) && !!op.categoryId && op.categoryId !== UNKNOWN_CATEGORY && freeOk(op, categories) && sellerOk(op) && !seen.has(keyOf(op)))
     .filter((op) => spendOf(op) >= ONE_OFF_MIN && spendOf(op) * 100 >= fact * ONE_OFF_SHARE)
     .sort((a, b) => spendOf(b) - spendOf(a) || a.id.localeCompare(b.id))
     .slice(0, ONE_OFF_MAX)

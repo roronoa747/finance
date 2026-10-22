@@ -96,10 +96,16 @@ describe('reviewCards — виды таблицы Р-24', () => {
     expect(kind(cardsOf(family({ ops: [{ ...school, oneOff: true }] })), 'oneoff')).toEqual([])
   })
 
-  it('дорогая неделя — % сверху, кнопка — на самую крупную трату недели', () => {
-    // Неделя 5–11 октября: 25 000 + 30 000 = 55 000 при обычных 25 000 → +120 %; самая крупная — диван.
-    const sofa = op('SULPAK', -30_000, 'sc_home', '2026-10-07')
-    expect(kind(cardsOf(family({ ops: [sofa] })), 'week')[0]).toMatchObject({ title: 'Дорогая неделя', figure: { value: 120, unit: 'pct' }, target: { kind: 'op', opId: sofa.id } })
+  it('дорогая неделя — % сверху, кнопка — на самую крупную трату недели; она же «разовая» — недели нет', () => {
+    // Неделя 5–11 октября: 25 000 + 19 000 = 44 000 при обычных 25 000 → +76 %; самая крупная — «Магнум» (диван дешевле разовой).
+    const sofa = op('SULPAK', -19_000, 'sc_home', '2026-10-07')
+    const [week] = kind(cardsOf(family({ ops: [sofa] })), 'week')
+    expect(week).toMatchObject({ title: 'Дорогая неделя', figure: { value: 76, unit: 'pct' }, target: { kind: 'op' } })
+    // Самая крупная трата недели — уже «Похоже на разовую» (новый продавец, 60 000): недели нет, одна покупка — одна карточка.
+    const tv = op('TECHNODOM', -60_000, 'sc_home', '2026-10-07')
+    const both = cardsOf(family({ ops: [tv] }))
+    expect(kind(both, 'oneoff').map((c) => c.target)).toEqual([{ kind: 'op', opId: tv.id }])
+    expect(kind(both, 'week')).toEqual([])
   })
 
   it('не в платежах — регулярное v3 и «В платежи» у своей строки; `recurringFor` null — нет карточки', () => {

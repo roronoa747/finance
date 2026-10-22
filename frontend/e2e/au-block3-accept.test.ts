@@ -4,6 +4,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { useAiStore } from '../src/stores/ai'
 import { useFinanceStore } from '../src/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import { leadFor, seedOwnMonth } from '../src/test/reviewV4'
 import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
@@ -19,8 +20,6 @@ import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivat
  * «›»): не только 1-го, а весь месяц, пока своя зарплата прошлого месяца не разложена.
  * (б) — расхождение приёмки, закрыто возвратом AU-33: пока точка нового разбора есть, «Месяц» ведёт в этот месяц.
  */
-/** Ответ ручки v3 (RZ-05): совет «Сделать» на первое действие семьи (`a1`). */
-const ANSWER = { where: 'Копим на «Машину».', advices: [{ title: 'Отложим в подушку', text: 'Подушки мало.', figure: null as string | null, action: 'a1' }] }
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
 /** Сентябрьская зарплата a пришла в евро («Пришла», ручная валютная) и не разложена — `salaryToAllocate` → сентябрь. */
 const septSalary: Payment = {
@@ -53,7 +52,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     server = fakeServer(familyDoc())
     pv = fakePrivate()
     pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
-    aiReview = vi.fn(async (_body: unknown) => ANSWER)
+    aiReview = vi.fn(async (body: unknown) => leadFor(body))
   })
 
   afterEach(() => {
@@ -70,6 +69,8 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     await auth.fetchMe()
     const priv = privateFor(pv, 'u-a')
     await useFinanceStore().pullPrivateDoc(priv as unknown as ApiClient)
+    // Свой месяц на телефоне (бэклог «Фидбек», Р-27): без своих карточек разбор v4 не спрашивается.
+    await seedOwnMonth('2026-10', 'a')
     const ai = useAiStore()
     ai.sheetMounted = true
     const run = ai.autoReview({ ...priv, aiReview } as unknown as ApiClient)
@@ -127,12 +128,12 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
    * назавтра повод закрыт документом — не платим.
    */
   it('(г) закрыли телефон посреди запроса — в окне ответа перезапуск молчит, позже повтор один раз; назавтра — 0', async () => {
-    aiReview = vi.fn(() => new Promise<typeof ANSWER>(() => {}))
+    aiReview = vi.fn(() => new Promise(() => {}))
     const one = await member({ waitReview: false })
     await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     expect(one.store.aiReviewOf('2026-10')).toBeFalsy()
 
-    aiReview = vi.fn(async (_body: unknown) => ANSWER)
+    aiReview = vi.fn(async (body: unknown) => leadFor(body))
     at('2026-10-01T04:01:00Z')
     const soon = await member()
     expect(aiReview).not.toHaveBeenCalled()

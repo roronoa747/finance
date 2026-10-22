@@ -14,6 +14,9 @@ import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
+import { reviewCardOrder, reviewCards } from '../src/lib/finance'
+import { leadFor } from '../src/test/reviewV4'
+import { saveV3 } from './support/reviewV3'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -23,7 +26,8 @@ import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, scree
  * (а) ✦ у предметов советов старого разбора — раздел продавца, подушка в «Цели и фонды» и на её экране; ✦ ведёт на
  * карточку совета, подпись крупной цифры — `about` как сохранено; партнёр и viewer — те же ✦; запросов к ручке нет;
  * (б) новее v3 — v2 или v1 октября — ✦ нет нигде, отчёт — одна карточка «Разбор»;
- * (в) «Обновить» новой сборкой поверх старого — ✦ переезжают к предметам нового разбора, подпись — кодом; партнёр видит то же.
+ * (в) «Обновить» новой сборкой поверх старого — свой разбор v4 (бэклог «Фидбек», Р-27): ✦ телефона a переезжают к
+ * разделам карточек кода, у партнёра — старый общий разбор и его ✦ («партнёр видит то же» отменено Р-27).
  */
 const K = '2026-10'
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
@@ -85,14 +89,6 @@ const answerOld = (body: ReviewPayloadV3) => ({
     { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — в месяц$/), action: act(body, /^открыть покупки у/) },
   ],
 })
-/** Ответ «Обновить» новой сборкой: «Кафе» (open раздела), аптека (open продавца, крупная цифра — в месяц). */
-const answerNew = (body: ReviewPayloadV3) => ({
-  where: 'Кафе выросло из-за одного вечера.',
-  advices: [
-    { title: 'Вечер в кафе', text: 'Раздел раздул один ужин.', figure: null, action: act(body, /^открыть .*Кафе/) },
-    { title: 'Аптека у дома', text: 'Мелкие покупки складываются.', figure: fact(body, /^частые траты у .* — в месяц$/), action: act(body, /^открыть покупки у/) },
-  ],
-})
 /** Разбор v3 так, как его сохранила старая сборка: подписи крупной цифры нет; у Блока 1 — ещё и имя продавца как у банка. */
 const oldBuild = (block: 1 | 2) => (r: AiReview): AiReview => {
   const copy: AiReview = JSON.parse(block === 1 ? JSON.stringify(r).replaceAll('APTEKA PLUS', 'APTEKA PLUS ALMATY KZ') : JSON.stringify(r))
@@ -123,7 +119,8 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     st.uploads.push(upload('a', '2026-07-01', '2026-10-12'), upload('b', '2026-07-01', '2026-09-30'))
     pv = fakePrivate()
     for (const slot of ['a', 'b']) pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
-    aiReview = vi.fn(async (body: ReviewPayloadV3) => answerOld(body))
+    // Новая сборка спрашивает только v4 (бэклог «Фидбек», Р-26); v3 «старой сборки» пишет `saveV3` с `answerOld`.
+    aiReview = vi.fn(async (body: unknown) => leadFor(body))
   })
 
   afterEach(() => {
@@ -174,12 +171,12 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
   }
 
   /**
-   * Прод до обновления: старый v2 октября → разбор сам v3 один раз (RZ-HF1), в документе — v3 старой сборки (`block`);
+   * Прод до обновления: старый v2 октября → разбор v3 старой сборки (`block`, `saveV3`) в документе;
    * телефон a его открыл. Возвращает тот же телефон a уже новой сборкой (свежий стор, `localStorage` прежний).
    */
   async function updated(block: 1 | 2, extra?: (d: SyncDoc) => void) {
     const prod = await as('member', 'a')
-    const fresh = (await prod.ai.autoReview(prod.aiClient))!
+    const fresh = saveV3(prod.store, K, answerOld)
     expect(fresh).toMatchObject({ v: 3, month: K })
     const old = oldBuild(block)(fresh)
     prod.store.mutateHouseholdDoc((d) => {
@@ -194,7 +191,6 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
 
   it.each([1, 2] as const)('(а) v3 сборки Блока %s: ✦ у раздела продавца и подушки, карточка совета, подпись — `about`; партнёр и viewer — те же', async (block) => {
     const { phone, old } = await updated(block)
-    expect(await phone.ai.autoReview(phone.aiClient)).toBeNull()
     const want = { health: '2', cafe: null, food: null, queue: '1', goal: '1', dreams: [], debts: [] }
     expect(await everywhere(phone)).toEqual(want)
     // ✦ раздела аптеки ведёт на вторую карточку — совет про продавца; подпись крупной цифры — служебная строка как сохранена.
@@ -225,29 +221,33 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
     expect(aiReview).not.toHaveBeenCalled()
   })
 
-  it('(в) «Обновить» новой сборкой поверх старого: ✦ переезжают к новому разбору, подпись — кодом; партнёр — то же', async () => {
+  it('(в) «Обновить» новой сборкой поверх старого: свой разбор v4 — ✦ телефона a у разделов карточек кода; у партнёра — старый общий', async () => {
     const { phone, old } = await updated(1)
-    aiReview.mockImplementation(async (body: ReviewPayloadV3) => answerNew(body))
     // «Обновить» — не раньше суток после разбора (Р-12).
     at('2026-10-13T05:00:00Z')
     setActivePinia(phone.pinia)
     const fresh = (await phone.ai.runReview(K, 'refresh', phone.aiClient))!
     expect(aiReview).toHaveBeenCalledTimes(1)
-    expect(fresh).toMatchObject({ v: 3, month: K, reason: 'refresh' })
+    expect(fresh).toMatchObject({ v: 4, month: K, reason: 'refresh' })
     expect(fresh.id).not.toBe(old.id)
-    const label = fresh.advices![1].figure!.label!
-    expect(label).toMatch(/^в месяц · /)
-    expect(label).not.toContain('ALMATY')
-    const want = { health: '2', cafe: '1', food: null, queue: null, goal: null, dreams: [], debts: [] }
-    expect(await everywhere(phone)).toEqual(want)
-    const html = await screen(phone.pinia, Month, '/month?review=1&card=2')
-    // Заголовок «Аптека у дома» не содержит имени из подписи — подпись целиком («в месяц · APTEKA PLUS»).
-    expect(figureLabels(html)).toEqual([label])
+    expect(phone.store.householdDoc.aiReviews?.some((r) => r.id === fresh.id)).toBe(false)
+    // ✦ — номер карточки кода у её раздела (`next` — первой); у подушки и целей ✦ нет.
+    const { state, ctx } = phone.store.planInput(K)
+    const ordered = reviewCardOrder(reviewCards({ ...phone.store.householdDoc, ...state }, ctx, useOperationsStore().all, 'a'), fresh.next)
+    const markOf = (cat: string) => {
+      const i = ordered.findIndex((c) => (c.target.kind === 'cat' || c.target.kind === 'plan' ? c.target.categoryId : c.target.kind === 'image' ? c.target.image.categoryId : null) === cat)
+      return i < 0 ? null : String(i + 1)
+    }
+    expect(ordered.length).toBeGreaterThan(0)
+    expect(await everywhere(phone)).toEqual({ health: markOf('sc_health'), cafe: markOf('sc_cafe'), food: markOf('sc_food'), queue: null, goal: null, dreams: [], debts: [] })
+    const html = await screen(phone.pinia, Month, '/month?review=1')
+    expect(html).toContain('data-review-lead')
+    expect(html).not.toMatch(/data-review-advice(?=[\s=>])/)
     await sync(phone)
+    // Партнёр: мой разбор — в моём личном документе; у него — старый общий v3 и его ✦ (кроме раздела Ильяса, FB-12).
     const two = await as('member', 'b')
-    // Разделы Ильяса (аптека, кафе) у партнёра не показываются — и ✦ у них нет (FB-12, Р-18).
-    expect(await everywhere(two)).toEqual({ ...want, health: null, cafe: null })
-    expect(figureLabels(await screen(two.pinia, Month, '/month?review=1&card=2'))).toEqual([label])
+    expect(await everywhere(two)).toEqual({ health: null, cafe: null, food: null, queue: '1', goal: '1', dreams: [], debts: [] })
+    expect(figureLabels(await screen(two.pinia, Month, '/month?review=1&card=2'))).toEqual([old.advices![1].figure!.about])
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 })

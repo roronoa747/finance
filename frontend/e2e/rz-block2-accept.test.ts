@@ -10,6 +10,8 @@ import type { MeResponse } from '../src/types/api'
 import type { AiReview, Goal, PersonId, ReviewPayload, ReviewPayloadV3, SyncDoc } from '../src/types/finance'
 import type { ReviewFind, SpendTotal } from '../src/lib/statements/types'
 import Month from '../src/views/Month.vue'
+import { leadFor } from '../src/test/reviewV4'
+import { saveV3 } from './support/reviewV3'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -105,7 +107,8 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     st.uploads.push(upload('a', '2026-07-01', '2026-10-12'), upload('b', '2026-07-01', '2026-09-30'))
     pv = fakePrivate()
     for (const slot of ['a', 'b']) pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
-    aiReview = vi.fn(async (body: ReviewPayloadV3) => answerFor(body))
+    // Новая сборка спрашивает только v4 (бэклог «Фидбек», Р-26); v3 «старой сборки» пишет `saveV3` с `answerFor`.
+    aiReview = vi.fn(async (body: unknown) => leadFor(body))
   })
 
   afterEach(() => {
@@ -147,7 +150,7 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
    */
   async function updated(extra?: (d: SyncDoc, old: AiReview) => void) {
     const prod = await as('member', 'a')
-    const fresh = (await prod.ai.autoReview(prod.aiClient))!
+    const fresh = saveV3(prod.store, K, answerFor)
     expect(fresh).toMatchObject({ v: 3, month: K })
     const dream = (fresh.sent as ReviewPayloadV3).facts.find((f) => f.about.startsWith('главная мечта'))
     expect(dream).toBeTruthy()
@@ -164,9 +167,8 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     return { phone: await as('member', 'a', true), old }
   }
 
-  it('(а) тот же телефон новой сборкой: пилюля без точки, отчёт v3 старой сборки, итога нет (сентябрь — v2), запросов нет', async () => {
+  it('(а) тот же телефон новой сборкой: пилюля без точки, отчёт v3 старой сборки, итога нет (сентябрь — v2); затем свой первый v4 (Р-27)', async () => {
     const { phone, old } = await updated()
-    expect(await phone.ai.autoReview(phone.aiClient)).toBeNull()
     const month = await screen(phone.pinia, Month, '/month')
     expect(month).toContain('data-review-open')
     expect(month).not.toContain('data-review-dot')
@@ -183,12 +185,23 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     expect(html).toContain('href="/money/history?cat=sc_health"')
     expect(html).toMatch(/data-review-do(?=[\s=>])/)
     expect(old.v).toBe(3)
-    // Партнёр — тот же отчёт без запроса; у него разбор новый — точка есть.
+    // Партнёр — тот же старый общий отчёт без запроса (своих трат октября нет — карточек нет); разбор новый — точка есть.
     const two = await as('member', 'b')
     expect(await two.ai.autoReview(two.aiClient)).toBeNull()
     expect(await screen(two.pinia, Month, '/month')).toContain('data-review-dot')
     expect(cards(await screen(two.pinia, Month, '/month?review=1'))).toEqual(['work', 'where', 'advice', 'advice'])
     expect(aiReview).not.toHaveBeenCalled()
+
+    // Телефон a новой сборки: общий v3 не свой v4 — повод открыт (бэклог «Фидбек», Р-27): один запрос v4 (карточки кода
+    // из итогов — кафе без плана), дальше отчёт — свой v4.
+    setActivePinia(phone.pinia)
+    // Телефоны в тесте делят одно хранилище: попытку повода (без карточек — исход без запроса) записал телефон партнёра.
+    storage.delete('ff_ai_auto')
+    expect(await phone.ai.autoReview(phone.aiClient)).toMatchObject({ v: 4, month: K })
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(await phone.ai.autoReview(phone.aiClient)).toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(await screen(phone.pinia, Month, '/month?review=1')).toContain('data-review-lead')
   })
 
   it('(б) v3 старой сборки за сентябрь → «Итог прошлого месяца» новой сборкой', async () => {
@@ -206,11 +219,10 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
   it.each([
     ['v2', () => v2(K, '2026-10-12T04:00:30.000Z'), 'Кафе обгоняет план.'],
     ['v1', () => ({ ...v1, id: 'r-v1-oct', month: K, at: '2026-10-12T04:00:30.000Z' }), 'Отложить часть зарплаты.'],
-  ])('(в) новее v3 — %s: одна карточка «Разбор», без запроса', async (_v, late, text) => {
+  ])('(в) новее v3 — %s: одна карточка «Разбор»; затем свой первый v4', async (_v, late, text) => {
     const { phone } = await updated((d) => {
       d.aiReviews = [...(d.aiReviews ?? []), { ...late(), id: 'r-late' }]
     })
-    expect(await phone.ai.autoReview(phone.aiClient)).toBeNull()
     // Разбор месяца другой (последний по `at`) — точка «новый» есть; открыли — гаснет.
     expect(await screen(phone.pinia, Month, '/month')).toContain('data-review-dot')
     const html = await screen(phone.pinia, Month, '/month?review=1')
@@ -218,5 +230,9 @@ describe('e2e / Разбор Блок 2 — приёмка: обновление
     expect(visible(html)).toContain(text)
     expect(await screen(phone.pinia, Month, '/month')).not.toContain('data-review-dot')
     expect(aiReview).not.toHaveBeenCalled()
+    // «Замена старого — один раз на семью» (RZ-HF1) отменено Р-27 (бэклог «Фидбек»): старый общий разбор повод v4 не
+    // закрывает — свой первый v4 приходит сам, один запрос.
+    expect(await phone.ai.autoReview(phone.aiClient)).toMatchObject({ v: 4 })
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 })

@@ -7,6 +7,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { useAiStore } from '../src/stores/ai'
 import { useFinanceStore } from '../src/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import { leadFor, seedOwnMonth } from '../src/test/reviewV4'
 import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { SyncDoc } from '../src/types/finance'
@@ -44,7 +45,7 @@ function familyDoc(): SyncDoc {
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 /** Текст листа разбора — от его диалога (SSR рисует лист на месте, без Teleport); пусто — лист закрыт. */
 const sheet = (html: string) => {
-  const i = html.search(/data-review-(example|good|where|state)/)
+  const i = html.search(/data-review-(example|good|where|state|lead|card)/)
   if (i < 0) return ''
   const d = html.lastIndexOf('role="dialog"', i)
   return visible(html.slice(d < 0 ? i : d))
@@ -100,35 +101,38 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
   }
   const opened = (p: Phone) => screen(p.pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })])
 
-  it('(а) телефон 1 разбирает месяц → партнёр после синка видит тот же текст, своих запросов — 0; ушла только сводка', async () => {
-    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer)
+  // v4 (бэклог «Фидбек», Р-27): разбор — в личном документе; «партнёр видит тот же текст» отменено — у него свой.
+  it('(а) телефон 1 разбирает месяц → разбор в его личном документе, в общий не уходит; партнёр его не видит; ушли только факты и карточки', async () => {
+    const review = vi.spyOn(apiClient, 'aiReview').mockImplementation(async (body: unknown) => leadFor(body) as never)
     const one = await as('member', 'a')
+    await seedOwnMonth('2026-10', 'a')
     useAiStore().setConsent(true)
     await tapReview(one)
     expect(review).toHaveBeenCalledTimes(1)
-    expect(one.store.householdDoc.aiReviews).toHaveLength(1)
+    expect(one.store.myAiReviews).toHaveLength(1)
+    expect(one.store.householdDoc.aiReviews ?? []).toHaveLength(0)
 
-    // Исходящее тело: факты разбора v3 (AU-11, RZ-03) — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
+    // Исходящее тело v4: факты и карточки кода — ни имён, ни заметок, ни причины версии, ни желаний, ни личного документа.
     const body = JSON.stringify(review.mock.calls[0][0])
     for (const bad of ['Ильяс', 'Аруна', 'секрет', 'Галина', 'кольцо', 'Депозит']) expect(body, bad).not.toContain(bad)
     expect(body).toContain('"facts"')
+    expect(body).toContain('"cards"')
 
     let html = sheet(await opened(one))
-    expect(html).toContain(answer.where)
-    expect(html).toContain(answer.advices[0].text)
+    expect(html).toContain('Разберём траты без раздела.')
 
     setActivePinia(one.pinia)
     await one.store.syncHousehold(one.client)
-    expect(JSON.stringify(server.data.aiReviews)).toContain(answer.advices[0].text)
+    await one.store.syncPrivate(one.priv)
+    expect(JSON.stringify(server.data.aiReviews ?? [])).not.toContain('Разберём траты')
+    expect(JSON.stringify(pv.docs.get('u-a')!.data.aiReviews)).toContain('Разберём траты без раздела.')
 
-    // Партнёр — другой телефон: тот же разбор из документа, без запроса.
+    // Партнёр — другой телефон: моего разбора нет; своих операций нет — запроса нет.
     storage.clear()
     review.mockClear()
     const two = await as('member', 'b')
     html = sheet(await opened(two))
-    expect(html).toContain(answer.where)
-    expect(html).toContain(answer.advices[0].text)
-    // Открытие сохранённого — без запроса (кнопка у остатка открывает лист с ним).
+    expect(html).not.toContain('Разберём траты без раздела.')
     await tapReview(two)
     expect(review).not.toHaveBeenCalled()
   })
@@ -156,10 +160,12 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
   it('(в) лимит семьи (429 ai_limit) — «ИИ вернётся 1 ноября», в документе ничего', async () => {
     vi.spyOn(apiClient, 'aiReview').mockRejectedValue(new ApiError('ai_limit', 429, { error: 'ai_limit' }))
     const one = await as('member', 'a')
+    await seedOwnMonth('2026-10', 'a')
     useAiStore().setConsent(true)
     await tapReview(one)
     expect(useAiStore().reviewState).toBe('limit')
     expect(one.store.householdDoc.aiReviews ?? []).toHaveLength(0)
+    expect(one.store.myAiReviews).toHaveLength(0)
     expect(sheet(await opened(one))).toContain('ИИ вернётся 1 ноября')
   })
 
@@ -173,8 +179,8 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     const html = await screen(pinia, Month, '/month', undefined, [screenMixin({ reviewOpen: true })])
     const text = sheet(html)
     expect(text).toContain('Пример')
-    // Разбор демо v3 (бэклог «Разбор», RZ-09): «Куда ушло» — строка заготовки.
-    expect(text).toContain(visible(DEMO_REVIEW.where))
+    // Разбор демо v4 (бэклог «Фидбек», FB-17): мысль заготовки.
+    expect(text).toContain(visible(DEMO_REVIEW.text))
     expect(html).not.toContain('data-review-refresh')
     setActivePinia(pinia)
     expect(useFinanceStore().householdDoc.aiReviews ?? []).toHaveLength(0)

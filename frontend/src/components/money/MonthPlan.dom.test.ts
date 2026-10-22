@@ -1023,7 +1023,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(q('[data-spend-unknown]')).toBeNull()
   })
 
-  it('Х-1, Х-3: «Не разобрано · N» внизу без листа и точки; переводы людям — после трат, без точки', async () => {
+  it('Х-1, Х-3: «Не разобрано · N» внизу без точки (тихой строкой-кнопкой листа, FB-17); переводы людям — после трат, без точки', async () => {
     // «Не разобрано» 12 000; переводы: обычно 0, сентябрь 300 000 — крупнейшие, но последними и без точки.
     totals.push(total(KEY, '_unknown', 12_000), total(KEY, 'sc_people', 300_000))
     try {
@@ -1033,7 +1033,9 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
       expect(q('[data-spend-row="sc_people"] [data-spend-dot]')).toBeNull()
       const unknown = q('[data-spend-unknown]')!
       expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(plain(12_000))])
-      expect(unknown.tagName).not.toBe('BUTTON')
+      // FB-17: строка нажимается — лист «Не разобрано» (тест ниже); точки у неё нет.
+      expect(unknown.tagName).toBe('BUTTON')
+      expect(unknown.querySelector('[data-spend-dot]')).toBeNull()
       expect(unknown.nextElementSibling?.hasAttribute('data-spend-add')).toBe(true)
     } finally {
       totals.splice(-2)
@@ -1319,5 +1321,33 @@ describe('FB-07: «Разовые» на «Месяце» — тихая стр�
     await openMonth('viewer', true)
     expect(q('[data-spend-oneoff]')).toBeNull()
     expect(q('[data-oneoff-amount]')).toBeNull()
+  })
+})
+
+describe('FB-17: «Не разобрано» на «Месяце» — тихая строка и лист своих трат без раздела', () => {
+  const OPS: Operation[] = [
+    { id: 'c0000011', bank: 'kaspi', date: '2026-09-12', amount: -6_000, kind: 'purchase', merchant: 'SHOP X', categoryId: null, internal: false },
+    { id: 'c0000012', bank: 'kaspi', date: '2026-09-14', amount: -2_500, kind: 'purchase', merchant: 'Starbucks', categoryId: 'sc_cafe', internal: false },
+  ]
+  const totals: SpendTotal[] = [
+    { id: 'a:month:2026-09:_unknown', by: 'a', kind: 'month', period: '2026-09', categoryId: '_unknown', amount: 6_000, ops: 1, updatedAt: T0 },
+    { id: 'a:month:2026-09:sc_cafe', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_cafe', amount: 2_500, ops: 1, updatedAt: T0 },
+  ]
+  it('строка «Не разобрано» → лист с суммой и операциями → лист операции поверх', async () => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 2, created_at: T0 }] } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals }))
+    const ops = useOperationsStore()
+    for (const o of OPS) ops.ops[o.id] = o
+    await ops.loadUploads()
+    await flush()
+    await press(section('spend'))
+    await press(q('[data-spend-unknown]'))
+    expect(txt(q('[data-unknown-amount]'))).toBe(norm(money(6_000)))
+    expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 1')
+    await press(q('[data-cat-op="c0000011"]'))
+    const dialogs = all('[role="dialog"]')
+    expect(dialogs).toHaveLength(2)
+    expect(txt(dialogs[1])).toContain('SHOP X')
   })
 })

@@ -69,13 +69,15 @@ describe('oneOffLike — похоже на разовую', () => {
     expect(oneOffLike([...before, at], SEP, fact + 1)).toEqual([])
   })
 
-  it('продавец был в 3 прошлых месяцах — не новый; своих операций раньше нет — пусто; разовая, люди, платежи — мимо', () => {
+  it('продавец был в 3 прошлых месяцах — не новый; своих операций раньше нет — пусто; разовая, люди, платежи, без раздела — мимо', () => {
     const seen = op('KAFE', -30_000, 'sc_cafe', '2026-09-12')
     expect(oneOffLike([...before, seen], SEP, fact)).toEqual([])
     expect(oneOffLike([op('DIVAN', -90_000, 'sc_home', '2026-09-12')], SEP, fact)).toEqual([])
     const marked = op('DIVAN', -90_000, 'sc_home', '2026-09-12', { oneOff: true })
     const subs = op('NEW SUB', -30_000, 'sc_subs', '2026-09-12')
     expect(oneOffLike([...before, marked, person(-90_000, '2026-09-12'), subs], SEP, fact, CATS)).toEqual([])
+    // Без раздела — сначала «Не разобрано».
+    expect(oneOffLike([...before, op('NEW SHOP', -90_000, null, '2026-09-12'), op('NEW SHOP 2', -90_000, UNKNOWN_CATEGORY, '2026-09-12')], SEP, fact)).toEqual([])
   })
 
   it('до двух — самые крупные', () => {

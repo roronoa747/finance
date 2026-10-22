@@ -7,6 +7,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { useAiStore } from '../src/stores/ai'
 import { useFinanceStore } from '../src/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import { leadFor, seedOwnMonth } from '../src/test/reviewV4'
 import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { AiReview, SyncDoc } from '../src/types/finance'
@@ -44,11 +45,12 @@ function namedDoc(): SyncDoc {
 
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 const sheet = (html: string) => {
-  const i = html.search(/data-review-(example|good|where|state)/)
+  const i = html.search(/data-review-(example|good|where|state|lead|card)/)
   if (i < 0) return ''
   const d = html.lastIndexOf('role="dialog"', i)
   return visible(html.slice(d < 0 ? i : d))
 }
+const K = '2026-10'
 const canon = (v: unknown): unknown =>
   Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v
 
@@ -117,7 +119,8 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     consent('a')
     vi.spyOn(apiClient, 'aiReview').mockRejectedValue(new ApiError('ai_off', 503, { error: 'ai_off' }))
     const one = await as('member', 'a')
-    expect(await screen(one.pinia, Month, '/month')).toContain('data-review-open')
+    await seedOwnMonth(K, 'a')
+    expect(await screen(one.pinia, Month, '/month')).toContain('data-review-sparkle')
     const me = vi.spyOn(apiClient, 'me').mockResolvedValue({ ...(authAs('member', 'a') as unknown as MeResponse), ai: false })
     await tap(one)
     await vi.waitFor(() => expect(me).toHaveBeenCalled())
@@ -125,10 +128,14 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     await vi.waitFor(() => expect(useAuthStore().ai).toBe(false))
     expect(useAiStore().reviewState).toBe('failed')
     expect(one.store.householdDoc.aiReviews ?? []).toHaveLength(0)
-    expect(await screen(one.pinia, Month, '/month')).not.toContain('data-review-open')
+    expect(one.store.myAiReviews).toHaveLength(0)
+    // Без ИИ — «Разбор» без ✦ (карточки кода, бэклог «Фидбек», Р-27).
+    const html = await screen(one.pinia, Month, '/month')
+    expect(html).toContain('data-review-open')
+    expect(html).not.toContain('data-review-sparkle')
   })
 
-  it('(ж) флаг снят в админке: ✦ нет и при сохранённом разборе — у участника и у viewer', async () => {
+  it('(ж) флаг снят в админке: ✦ нет и при сохранённом разборе — у участника «Разбор» без ✦ (Р-27), у viewer пилюли нет', async () => {
     server.data.aiReviews = [saved('Платежи и траты покрыты.', '2026-10-12T06:00:00.000Z')]
     consent('a')
     const review = vi.spyOn(apiClient, 'aiReview')
@@ -136,23 +143,27 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
       const p = await as(role, slot, false)
       const html = await screen(p.pinia, Month, '/month')
       expect(html, role).toContain('data-afford-open')
-      expect(html, role).not.toContain('data-review-open')
+      expect(html, role).not.toContain('data-review-sparkle')
+      if (role === 'member') expect(html, role).toContain('data-review-open')
+      else expect(html, role).not.toContain('data-review-open')
     }
     expect(review).not.toHaveBeenCalled()
   })
 
-  it('(з) «Обновить» через сутки: новый разбор в документе рядом со старым, показан последний; партнёр видит новый', async () => {
+  // v4 (бэклог «Фидбек», Р-27): новый разбор — свой в личном документе; «партнёр видит новый» отменено — видит старый общий.
+  it('(з) «Обновить» через сутки поверх старого общего: новый разбор — в личном, показан он; общий старый остаётся, партнёр видит старый', async () => {
     server.data.aiReviews = [saved('Старый разбор.', '2026-10-11T06:00:00.000Z')]
     consent('a')
-    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer('Новый разбор.'))
+    const review = vi.spyOn(apiClient, 'aiReview').mockImplementation(async (body: unknown) => ({ ...leadFor(body), text: 'Новый разбор.' }) as never)
     const one = await as('member', 'a')
+    await seedOwnMonth(K, 'a')
     expect(await opened(one)).toContain('data-review-refresh')
     await tap(one, 'refreshReview')
     expect(review).toHaveBeenCalledTimes(1)
     setActivePinia(one.pinia)
-    const live = (one.store.householdDoc.aiReviews ?? []).filter((r) => !r.deletedAt)
-    expect(live).toHaveLength(2)
-    expect(one.store.aiReviewOf('2026-10')?.where).toBe('Новый разбор.')
+    expect((one.store.householdDoc.aiReviews ?? []).filter((r) => !r.deletedAt)).toHaveLength(1)
+    expect(one.store.myAiReviews).toHaveLength(1)
+    expect(one.store.aiReviewOf(K)?.lead?.text).toBe('Новый разбор.')
     const html = await opened(one)
     expect(sheet(html)).toContain('Новый разбор.')
     expect(html).not.toContain('data-review-refresh')
@@ -160,7 +171,9 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
 
     review.mockClear()
     const two = await as('member', 'b')
-    expect(sheet(await opened(two))).toContain('Новый разбор.')
+    const partner = sheet(await opened(two))
+    expect(partner).toContain('Старый разбор.')
+    expect(partner).not.toContain('Новый разбор.')
     expect(review).not.toHaveBeenCalled()
   })
 
@@ -184,11 +197,12 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     expect(demoSheet).not.toContain('data-review-day')
   })
 
-  it('(к) имена в падежах в названиях статьи, кредита и цели не уходят; `sent` в общем документе = ушедшая сводка', async () => {
+  it('(к) имена в падежах в названиях статьи, кредита и цели не уходят; `sent` в личном документе = ушедшие факты и карточки', async () => {
     server = fakeServer(namedDoc())
     consent('a')
-    const review = vi.spyOn(apiClient, 'aiReview').mockResolvedValue(answer('Платежи и траты покрыты.'))
+    const review = vi.spyOn(apiClient, 'aiReview').mockImplementation(async (body: unknown) => leadFor(body) as never)
     const one = await as('member', 'a')
+    await seedOwnMonth(K, 'a')
     await tap(one)
     expect(review).toHaveBeenCalledTimes(1)
     const body = review.mock.calls[0][0]
@@ -199,9 +213,11 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
 
     setActivePinia(one.pinia)
     await one.store.syncHousehold(one.client)
-    const stored = (server.data.aiReviews ?? []).find((r) => !r.deletedAt)
-    const { reason: _reason, ...payload } = body
+    await one.store.syncPrivate(privateFor(pv, 'u-a') as unknown as ApiClient)
+    expect(server.data.aiReviews ?? []).toHaveLength(0)
+    const stored = (pv.docs.get('u-a')!.data.aiReviews as AiReview[]).find((r) => !r.deletedAt)
+    const { reason: _reason, ...payload } = body as unknown as Record<string, unknown>
     expect(canon(stored?.sent)).toEqual(canon(payload))
-    expect(JSON.stringify(server.data.aiReviews)).not.toMatch(/Ильяс|Арун/)
+    expect(JSON.stringify(pv.docs.get('u-a')!.data.aiReviews)).not.toMatch(/Ильяс|Арун/)
   })
 })
