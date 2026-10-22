@@ -15,9 +15,10 @@ import type {
   AiCheck,
   WalletStatus,
   AiReviewAnswer,
+  AiReviewLead,
   AiSellersAnswer,
 } from '@/types/api'
-import type { ReviewPayloadV3, ReviewReason, SyncDoc } from '@/types/finance'
+import type { ReviewPayloadV3, ReviewPayloadV4, ReviewReason, SyncDoc } from '@/types/finance'
 
 export class ApiError<T = unknown> extends Error {
   status: number
@@ -191,10 +192,13 @@ export class ApiClient {
   /**
    * Разбор месяца ИИ v3 (бэклог «Разбор», RZ-04/RZ-05; v2 — «ИИ-польза», AU-12): уходят только повод, факты и действия
    * `buildReviewFacts` — без имён, заметок, дат операций и людей. Ошибки — `ApiError` с кодом ручки: `ai_limit` (429),
-   * `ai_off` (503), `ai_failed` (502), 403.
+   * `ai_off` (503), `ai_failed` (502), 403. v4 (бэклог «Фидбек», Р-26) — факты и карточки кода `buildReviewFactsV4`
+   * (людей и участников без имён), ответ — одна мысль и следующая карточка.
    */
-  async aiReview(body: { reason: ReviewReason } & ReviewPayloadV3): Promise<AiReviewAnswer> {
-    return this.request<AiReviewAnswer>('/ai/review', { method: 'POST', body: JSON.stringify(body) })
+  async aiReview(body: { reason: ReviewReason } & ReviewPayloadV4): Promise<AiReviewLead>
+  async aiReview(body: { reason: ReviewReason } & ReviewPayloadV3): Promise<AiReviewAnswer>
+  async aiReview(body: { reason: ReviewReason } & (ReviewPayloadV3 | ReviewPayloadV4)): Promise<AiReviewAnswer | AiReviewLead> {
+    return this.request<AiReviewAnswer | AiReviewLead>('/ai/review', { method: 'POST', body: JSON.stringify(body) })
   }
 
   /**

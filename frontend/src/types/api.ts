@@ -51,6 +51,17 @@ export interface AiReviewAnswer {
   advices: { title: string; text: string; figure: string | null; action: string }[]
 }
 
+/**
+ * Ответ `POST /api/ai/review` v4 (бэклог «Фидбек», Р-26): одна главная мысль месяца — заголовок и текст (значения фактов
+ * подставлены сервером), id факта крупной цифры или null и id карточки из присланных, которую показать второй.
+ */
+export interface AiReviewLead {
+  title: string
+  text: string
+  figure: string | null
+  next: string
+}
+
 /** Ответ `POST /api/ai/sellers` (AI-11): по названию — id раздела из присланных или null; порядок — как ушло. */
 export interface AiSellersAnswer {
   items: { name: string; categoryId: string | null }[]

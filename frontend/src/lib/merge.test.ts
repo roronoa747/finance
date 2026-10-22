@@ -929,7 +929,7 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [] })
   })
 
   it('FB-02: правки операций (opEdits) — по id операции, позднее побеждает; снятая заметка (null) не воскресает', () => {
@@ -941,6 +941,16 @@ describe('B2C-05: личный документ с двух устройств �
     // Порядок устройств не важен.
     const back = mergePrivateDocs(laptop, phone).opEdits as typeof merged
     expect(back.find((e) => e.id === 'op1')).toEqual(merged.find((e) => e.id === 'op1'))
+  })
+
+  it('FB-16: свои разборы v4 (aiReviews) — по id; надгробие обрезки побеждает позднюю правку', () => {
+    const phone = { aiReviews: [{ id: 'r1', month: '2026-09', v: 4, updatedAt: T1 }, { id: 'r2', month: '2026-09', v: 4, updatedAt: T1 }] }
+    const laptop = { aiReviews: [{ id: 'r1', month: '2026-09', v: 4, deletedAt: T1, updatedAt: T1 }, { id: 'r3', month: '2026-10', v: 4, updatedAt: T2 }] }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const list = merged.aiReviews as { id: string; deletedAt?: string }[]
+      expect(list.map((r) => r.id).sort()).toEqual(['r1', 'r2', 'r3'])
+      expect(list.find((r) => r.id === 'r1')!.deletedAt).toBe(T1)
+    }
   })
 })
 

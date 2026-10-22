@@ -4,23 +4,23 @@ import { ApiError, type ApiClient } from '@/api/client'
 import { DEMO_TOKEN, useAuthStore } from './auth'
 import { useAiStore } from './ai'
 import { useFinanceStore } from './finance'
+import { useOperationsStore } from './operations'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import type { AiReview, ReviewPayloadV3, SyncDoc } from '@/types/finance'
-import type { ReviewFind } from '@/lib/statements/types'
-import { money } from '@/lib/money'
+import { leadFor, seedOwnMonth } from '@/test/reviewV4'
+import type { AiReview, ReviewPayloadV4, SyncDoc } from '@/types/finance'
 
 /**
- * AU-13 (бэклог «ИИ-польза», Р-4, Р-20): разбор сам — повод `month` (первый вход в месяце) и `salary` (своя первая
- * «Пришла»), один на повод на семью по документу, молча при «Не надо», без сети, при 429; согласие v1 — лист один раз.
- * Ручка — фейковый клиент со счётчиком запросов.
+ * Разбор сам (бэклог «ИИ-польза», Р-4, Р-20, AU-13) — v4 (бэклог «Фидбек», Р-23, Р-27, FB-16): повод `month` (первый вход
+ * в месяце) и `salary` (своя первая «Пришла») — **свой у каждого** по своим разборам личного документа; разбор партнёра
+ * и общий v1–v3 месяца повод не закрывают. Молча при «Не надо», без сети, при 429; согласие v1 — лист один раз. Ручка —
+ * фейковый клиент со счётчиком запросов; свой месяц — `seedOwnMonth` (карточка «Не разобрано»).
  */
 const NOW = '2026-09-12T07:00:00Z'
 const KEY = '2026-09'
-/** Ответ ручки v3 (RZ-05): совет на первое действие семьи — «досрочно» (`stepCandidates` `planFamilyDoc`). */
-const ANSWER = { where: 'Хорошо.', advices: [{ title: 'Шаг', text: 'Риск.', figure: null, action: 'a1' }] }
+const ATTEMPT = `v4:month:${KEY}`
 
 function fakeClient(priv: Record<string, unknown> = {}) {
-  const aiReview = vi.fn(async (_body: unknown) => ANSWER)
+  const aiReview = vi.fn(async (body: unknown) => leadFor(body))
   const client = {
     aiReview,
     getPrivateDoc: vi.fn(async () => ({ rev: 1, data: priv })),
@@ -28,9 +28,10 @@ function fakeClient(priv: Record<string, unknown> = {}) {
   return { client, aiReview }
 }
 
-function family(opts: { role?: 'member' | 'viewer'; doc?: SyncDoc; consent?: 'v2' | 'v1' | 'off' | 'none' } = {}) {
-  // Новый «телефон»: своё хранилище (увиденный разбор, попытки) и свой стор.
-  localStorage.clear()
+type FamilyOpts = { role?: 'member' | 'viewer'; doc?: SyncDoc; consent?: 'v2' | 'v1' | 'off' | 'none'; mine?: AiReview[]; own?: boolean }
+
+/** Телефон участника: стор, согласие, свои разборы v4 (`mine`) и свой месяц (`own`, по умолчанию — есть). */
+async function phone(opts: FamilyOpts = {}) {
   setActivePinia(createPinia())
   const auth = useAuthStore()
   auth.setAuthData(authAs(opts.role ?? 'member', 'a'))
@@ -43,15 +44,28 @@ function family(opts: { role?: 'member' | 'viewer'; doc?: SyncDoc; consent?: 'v2
   if (c === 'v2') ai.setConsent(true)
   if (c === 'off') ai.setConsent(false)
   if (c === 'v1') finance.mutatePrivateDoc((d) => void (d.aiConsent = { on: true, at: T0 }))
+  if (opts.mine) finance.mutatePrivateDoc((d) => void (d.aiReviews = opts.mine))
+  if (opts.own !== false && (opts.role ?? 'member') === 'member') await seedOwnMonth(KEY)
   return { auth, finance, ai }
 }
 
-const review = (extra: Partial<AiReview>): AiReview => ({
-  id: 'r-b', month: KEY, at: '2026-09-01T03:00:00.000Z', by: 'b', good: 'Партнёр.', risk: 'Риск.', steps: [], sent: null,
-  v: 3, reason: 'month', reasonKey: `month:${KEY}`, updatedAt: T0, ...extra,
+/** Новый «телефон»: своё хранилище (увиденный разбор, попытки) и свой стор. */
+async function family(opts: FamilyOpts = {}) {
+  localStorage.clear()
+  return phone(opts)
+}
+
+/** Свой разбор v4 (личный документ). */
+const mine = (extra: Partial<AiReview> = {}): AiReview => ({
+  id: 'r-a', month: KEY, at: '2026-09-01T03:00:00.000Z', by: 'a', good: '', risk: '', steps: [], sent: null,
+  v: 4, reason: 'month', reasonKey: `month:${KEY}`, lead: { title: 'Главное', text: 'Текст.', figure: null }, next: 'unknown', updatedAt: T0, ...extra,
 })
-/** Разбор прошлой версии (v2 — «Хорошо · Риск · Шаг», до деплоя «Разбора»). */
-const reviewV2 = (extra: Partial<AiReview> = {}): AiReview => review({ v: 2, step: { text: 'Шаг', candidate: null }, ...extra })
+/** Разбор v3 партнёра в общем документе (сборка до v4). */
+const shared = (extra: Partial<AiReview> = {}): AiReview => ({
+  id: 'r-b', month: KEY, at: '2026-09-01T03:00:00.000Z', by: 'b', good: '', risk: '', steps: [], sent: null,
+  v: 3, reason: 'month', reasonKey: `month:${KEY}`, where: 'Где.', advices: [], updatedAt: T0, ...extra,
+})
+const attempt = () => JSON.parse(localStorage.getItem('ff_ai_auto')!)[ATTEMPT]
 
 beforeEach(() => {
   const map = new Map<string, string>()
@@ -72,152 +86,85 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('autoReview — повод «месяц»', () => {
-  it('месяц без разбора → один запрос `month`, разбор в документе с ключом повода; повторный вход — 0', async () => {
-    const { finance, ai } = family()
+describe('autoReview — повод «месяц», свой у каждого', () => {
+  it('месяц без своего разбора → один запрос v4 `month`; разбор — в личном документе с ключом повода; повторный вход — 0', async () => {
+    const { finance, ai } = await family()
     const { client, aiReview } = fakeClient()
     const r = await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
-    expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('month')
-    expect(r).toMatchObject({ v: 3, reason: 'month', reasonKey: `month:${KEY}`, by: 'a' })
+    expect(aiReview.mock.calls[0][0]).toMatchObject({ v: 4, reason: 'month' })
+    expect(r).toMatchObject({ v: 4, reason: 'month', reasonKey: `month:${KEY}`, by: 'a', next: 'unknown' })
     expect(finance.aiReviewOf(KEY)!.id).toBe(r!.id)
+    expect(finance.myAiReviews.map((x) => x.id)).toEqual([r!.id])
+    expect(finance.householdDoc.aiReviews ?? []).toEqual([])
     // Фоном — без «Думаю…» на экране.
     expect(ai.reviewState).toBe('idle')
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
-  it('разбор партнёра этого повода в документе → 0', async () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+  it('разбор партнёра (общий v3 этого повода) повод не закрывает — свой первый v4 сам; свой v4 — закрывает', async () => {
+    const { ai } = await family({ doc: planFamilyDoc({ aiReviews: [shared()] }) })
     const { client, aiReview } = fakeClient()
-    expect(await ai.autoReview(client)).toBeNull()
-    expect(aiReview).not.toHaveBeenCalled()
+    expect(await ai.autoReview(client)).not.toBeNull()
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    const done = await family({ mine: [mine()] })
+    await done.ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
   it('два вызова сразу (focus и visibility) — один запрос', async () => {
-    const { ai } = family()
+    const { ai } = await family()
     const { client, aiReview } = fakeClient()
     await Promise.all([ai.autoReview(client), ai.autoReview(client)])
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
-  it('прошлый месяц не повод: разбор сентября есть, а 1 октября — новый запрос', async () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+  it('прошлый месяц не повод: свой разбор сентября есть, а 1 октября — новый запрос', async () => {
+    const { ai, finance } = await family({ mine: [mine()] })
     const { client, aiReview } = fakeClient()
     vi.setSystemTime(new Date('2026-09-30T20:00:00Z')) // 1 октября 01:00 по Алматы
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
-    expect(useFinanceStore().aiReviewOf('2026-10')!.reasonKey).toBe('month:2026-10')
-  })
-})
-
-// RZ-HF1 (хотфикс после деплоя Блока 1, владелец 2026-10-18 «старый → новый сам»): разбор месяца v2/v1 — повод открыт.
-describe('autoReview — старый разбор месяца → v3 сам', () => {
-  it('утром был разбор v2 (и попытка v2 этого повода час назад) → один запрос v3; повторный вход — 0', async () => {
-    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [reviewV2({ at: '2026-09-12T06:00:00.000Z' })] }) })
-    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`month:${KEY}`]: { at: '2026-09-12T06:00:00.000Z' } }))
-    const { client, aiReview } = fakeClient()
-    const r = await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
-    expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('month')
-    expect(r).toMatchObject({ v: 3, reasonKey: `month:${KEY}` })
-    expect(finance.aiReviewOf(KEY)!.id).toBe(r!.id)
-    await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(finance.aiReviewOf('2026-10')!.reasonKey).toBe('month:2026-10')
   })
 
-  it('разбор v1 (без версии) — тоже старый → запрос', async () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ v: undefined, reason: undefined, reasonKey: undefined })] }) })
-    const { client, aiReview } = fakeClient()
-    await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
-  })
-
-  it('партнёр уже заменил старый разбор v3 (тот же документ) → 0: один разбор на семью', async () => {
-    const doc = planFamilyDoc({ aiReviews: [reviewV2({ id: 'old' }), review({ id: 'new', at: '2026-09-12T06:30:00.000Z' })] })
-    const { ai } = family({ doc })
+  it('своих карточек нет (выписок нет) — запроса нет, ничего не сохранено', async () => {
+    const { ai, finance } = await family({ own: false })
     const { client, aiReview } = fakeClient()
     expect(await ai.autoReview(client)).toBeNull()
     expect(aiReview).not.toHaveBeenCalled()
+    expect(finance.myAiReviews).toEqual([])
   })
 
-  it('часы телефона отстали: v3 вышел по `at` раньше v2 — замена уже была, 0 (не платим каждый день)', async () => {
-    const doc = planFamilyDoc({ aiReviews: [reviewV2({ id: 'old', at: '2026-09-12T06:00:00.000Z' }), review({ id: 'new', at: '2026-09-12T05:00:00.000Z' })] })
-    const { finance, ai } = family({ doc })
-    expect(finance.aiReviewOf(KEY)!.id).toBe('old')
-    const { client, aiReview } = fakeClient()
-    expect(await ai.autoReview(client)).toBeNull()
-    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
-    await ai.autoReview(client)
-    expect(aiReview).not.toHaveBeenCalled()
-  })
-
-  it('последний — v2 по зарплате: один запрос v3 `month`, и зарплата не повод снова', async () => {
-    vi.setSystemTime(new Date('2026-09-10T05:00:00Z'))
-    const { finance, ai } = family({
-      doc: planFamilyDoc({ aiReviews: [reviewV2({ id: 'm' }), reviewV2({ id: 's', by: 'a', reason: 'salary', reasonKey: `salary:a:${KEY}`, at: '2026-09-10T06:00:00.000Z' })] }),
-    })
-    finance.markSalary('a')
-    vi.setSystemTime(new Date(NOW))
+  it('попытки v3 того же утра (прошлая сборка) не держат попытку v4', async () => {
+    const { ai } = await family()
+    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`month:${KEY}`]: { at: '2026-09-12T06:00:00.000Z', done: true }, [`v3:month:${KEY}`]: { at: '2026-09-12T06:00:00.000Z', done: true } }))
     const { client, aiReview } = fakeClient()
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
-    expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('month')
-    vi.setSystemTime(new Date('2026-09-14T08:00:00Z'))
-    await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
-  it('«да» v2 + старый разбор → лист согласия v3 один раз (утренний `asked` повода v2 не мешает); закрыл — не всплывает', async () => {
-    const old = { on: true, at: T0, v: 2 }
-    const { ai, finance } = family({ consent: 'none', doc: planFamilyDoc({ aiReviews: [reviewV2()] }) })
-    finance.mutatePrivateDoc((d) => void (d.aiConsent = old))
-    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`month:${KEY}`]: { at: '2026-09-12T03:00:00.000Z', asked: true } }))
-    const { client, aiReview } = fakeClient({ aiConsent: old })
-    const run = ai.autoReview(client)
-    await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
-    ai.answer(null)
-    await run
-    vi.setSystemTime(new Date('2026-09-14T08:00:00Z'))
-    await ai.autoReview(client)
-    expect(ai.sheetOpen).toBe(false)
-    expect(aiReview).not.toHaveBeenCalled()
-  })
-
-  it('неудача замены → сутки молча (своя попытка `v3:month`)', async () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [reviewV2()] }) })
+  it('демо и viewer → 0', async () => {
     const { client, aiReview } = fakeClient()
-    aiReview.mockRejectedValueOnce(new ApiError('ai_failed', 502))
-    await ai.autoReview(client)
-    vi.setSystemTime(new Date('2026-09-12T15:00:00Z'))
-    await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
-    vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
-    await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(2)
-  })
-
-  it('демо и viewer со старым разбором → 0', async () => {
-    const { client, aiReview } = fakeClient()
-    const doc = () => planFamilyDoc({ aiReviews: [reviewV2()] })
-    const demo = family({ doc: doc() })
+    const demo = await family()
     demo.auth.setAuthData({ ...authAs('member'), token: DEMO_TOKEN })
     demo.auth.ai = true
     await demo.ai.autoReview(client)
-    await family({ role: 'viewer', doc: doc() }).ai.autoReview(client)
+    await (await family({ role: 'viewer', doc: planFamilyDoc({ aiReviews: [shared()] }) })).ai.autoReview(client)
     expect(aiReview).not.toHaveBeenCalled()
   })
 })
 
 describe('autoReview — повод «зарплата»', () => {
-  it('своя первая «Пришла» месяца → 1 запрос `salary`; вторая отметка (аванс) → 0', async () => {
-    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+  it('своя первая «Пришла» месяца → 1 запрос `salary`; вторая отметка (аванс) → 0; отметка партнёра → 0', async () => {
+    const { finance, ai } = await family({ mine: [mine()] })
     const { client, aiReview } = fakeClient()
     finance.markSalary('a')
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
     expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('salary')
-    expect(finance.aiReviewOf(KEY)!.reasonKey).toBe(`salary:a:${KEY}`)
+    expect(finance.aiReviewOf(KEY)!.reasonKey).toBe(`salary:${KEY}`)
     // Вторая своя отметка того же месяца (аванс — `period` днём, как пишет ритм) — тот же повод, нет.
     vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
     const first = finance.householdDoc.payments!.find((p) => p.kind === 'salary' && p.targetId === 'a')!
@@ -226,14 +173,13 @@ describe('autoReview — повод «зарплата»', () => {
     })
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
-    // Отметка партнёра — не мой повод.
     finance.markSalary('b')
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
   it('одна «Пришла» с двух телефонов офлайн — одна отметка (`salaryMarks` на `countedPayments`), повод один', async () => {
-    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+    const { finance, ai } = await family({ mine: [mine()] })
     const { client, aiReview } = fakeClient()
     finance.markSalary('a')
     const first = finance.householdDoc.payments!.find((p) => p.kind === 'salary' && p.targetId === 'a')!
@@ -245,7 +191,7 @@ describe('autoReview — повод «зарплата»', () => {
   })
 
   it('отметка задним числом (`at` — день аванса раньше разбора месяца) — всё равно повод: важен момент записи', async () => {
-    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ at: '2026-09-10T03:00:00.000Z' })] }) })
+    const { finance, ai } = await family({ mine: [mine({ at: '2026-09-10T03:00:00.000Z' })] })
     const { client, aiReview } = fakeClient()
     finance.markSalary('a', { at: '2026-09-05T03:00:00.000Z' })
     await ai.autoReview(client)
@@ -253,50 +199,39 @@ describe('autoReview — повод «зарплата»', () => {
     expect((aiReview.mock.calls[0][0] as { reason: string }).reason).toBe('salary')
   })
 
-  it('зарплата партнёра — не мой повод; разбор месяца позже моей отметки — зарплата уже учтена', async () => {
-    const { finance, ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+  it('свой разбор месяца позже моей отметки — зарплата уже учтена; общий разбор партнёра позже — не мой, повод есть', async () => {
     const { client, aiReview } = fakeClient()
-    finance.markSalary('b')
-    await ai.autoReview(client)
-    expect(aiReview).not.toHaveBeenCalled()
-
-    const later = family({ doc: planFamilyDoc({ aiReviews: [review({ at: '2026-09-12T09:00:00.000Z' })] }) })
+    const later = await family({ mine: [mine({ at: '2026-09-12T09:00:00.000Z' })] })
     later.finance.markSalary('a')
     await later.ai.autoReview(client)
     expect(aiReview).not.toHaveBeenCalled()
+    const partner = await family({ mine: [mine()], doc: planFamilyDoc({ aiReviews: [shared({ at: '2026-09-12T09:00:00.000Z' })] }) })
+    partner.finance.markSalary('a')
+    await partner.ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('autoReview — молча', () => {
   it('«Не надо» → 0; не спрошено никогда → 0 и без листа', async () => {
     const { client, aiReview } = fakeClient()
-    await family({ consent: 'off' }).ai.autoReview(client)
-    const none = family({ consent: 'none' })
+    await (await family({ consent: 'off' })).ai.autoReview(client)
+    const none = await family({ consent: 'none' })
     await none.ai.autoReview(client)
     expect(none.ai.sheetOpen).toBe(false)
     expect(aiReview).not.toHaveBeenCalled()
   })
 
   it('без сети → 0', async () => {
-    const { ai } = family()
+    const { ai } = await family()
     const { client, aiReview } = fakeClient()
     vi.stubGlobal('navigator', { onLine: false })
     await ai.autoReview(client)
     expect(aiReview).not.toHaveBeenCalled()
   })
 
-  it('демо и viewer → 0', async () => {
-    const { client, aiReview } = fakeClient()
-    const demo = family()
-    demo.auth.setAuthData({ ...authAs('member'), token: DEMO_TOKEN })
-    demo.auth.ai = true
-    await demo.ai.autoReview(client)
-    await family({ role: 'viewer' }).ai.autoReview(client)
-    expect(aiReview).not.toHaveBeenCalled()
-  })
-
   it('429 → тишина: разбора нет, состояние листа не меняется; тот же повод в тот же день — 0, через сутки — снова', async () => {
-    const { finance, ai } = family()
+    const { finance, ai } = await family()
     const { client, aiReview } = fakeClient()
     aiReview.mockRejectedValueOnce(new ApiError('ai_limit', 429))
     expect(await ai.autoReview(client)).toBeNull()
@@ -312,14 +247,13 @@ describe('autoReview — молча', () => {
   })
 
   it('502 — молча и сутки (каждый pull не платит заново); сеть — ответ мог потеряться: один повтор после окна, затем сутки', async () => {
-    const { ai } = family()
+    const { ai } = await family()
     const { client, aiReview } = fakeClient()
     aiReview
       .mockRejectedValueOnce(new ApiError('ai_failed', 502))
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
     await ai.autoReview(client)
-    // Тот же день: focus, visibility, круг синка — без запроса.
     vi.setSystemTime(new Date('2026-09-12T12:00:00Z'))
     await ai.autoReview(client)
     expect(aiReview).toHaveBeenCalledTimes(1)
@@ -340,71 +274,42 @@ describe('autoReview — молча', () => {
     expect(ai.reviewState).toBe('idle')
   })
 
-  // Перезапуск: новый стор, тот же localStorage (family() его чистит — собираем «телефон» руками).
-  const restart = (doc = planFamilyDoc()) => {
-    setActivePinia(createPinia())
-    const auth = useAuthStore()
-    auth.setAuthData(authAs('member', 'a'))
-    auth.ai = true
-    useFinanceStore().setHouseholdDoc(doc, 1)
-    const ai = useAiStore()
-    ai.sheetMounted = true
-    ai.setConsent(true)
-    return ai
-  }
+  // Перезапуск: новый стор, тот же localStorage.
+  const restart = async (opts: FamilyOpts = {}) => (await phone(opts)).ai
 
   it('закрыли PWA посреди запроса (RZ-HF2): в окне ответа — 0; после окна — повтор один раз; оборвался и он — сутки', async () => {
     const { client, aiReview } = fakeClient()
     aiReview.mockImplementation(() => new Promise(() => {}))
-    void family().ai.autoReview(client)
-    await Promise.resolve()
-    expect(aiReview).toHaveBeenCalledTimes(1)
-    // Через 30 с: запрос, возможно, ещё идёт (вторая вкладка) — не дублируем.
+    void (await family()).ai.autoReview(client)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     vi.setSystemTime(new Date('2026-09-12T07:00:30Z'))
-    expect(await restart().autoReview(client)).toBeNull()
+    expect(await (await restart()).autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(1)
-    // Через 4 минуты: ответ на мёртвую страницу потерян — повод повторяется сам (владелец 2026-10-18 ждал бы сутки).
     vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
-    void restart().autoReview(client)
-    await Promise.resolve()
-    expect(aiReview).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ retry: true })
-    // Повтор тоже оборвался — больше не платим до суток.
+    void (await restart()).autoReview(client)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(2))
+    expect(attempt()).toMatchObject({ retry: true })
     vi.setSystemTime(new Date('2026-09-12T07:10:00Z'))
-    expect(await restart().autoReview(client)).toBeNull()
+    expect(await (await restart()).autoReview(client)).toBeNull()
     vi.setSystemTime(new Date('2026-09-12T20:00:00Z'))
-    expect(await restart().autoReview(client)).toBeNull()
+    expect(await (await restart()).autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(2)
     // Через сутки — заново (и без `retry` прошлой попытки).
-    aiReview.mockImplementation(async () => ANSWER)
+    aiReview.mockImplementation(async (body: unknown) => leadFor(body))
     vi.setSystemTime(new Date('2026-09-13T08:00:00Z'))
-    expect(await restart().autoReview(client)).not.toBeNull()
+    expect(await (await restart()).autoReview(client)).not.toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(3)
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ done: true })
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`].retry).toBeUndefined()
+    expect(attempt()).toMatchObject({ done: true })
+    expect(attempt().retry).toBeUndefined()
   })
 
   it('исход дошёл до стора (502) → `done`: перезапуск через 4 минуты — 0, повтора оборванной нет', async () => {
     const { client, aiReview } = fakeClient()
     aiReview.mockRejectedValueOnce(new ApiError('ai_failed', 502))
-    await family().ai.autoReview(client)
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)[`month:${KEY}`]).toMatchObject({ done: true })
+    await (await family()).ai.autoReview(client)
+    expect(attempt()).toMatchObject({ done: true })
     vi.setSystemTime(new Date('2026-09-12T07:04:00Z'))
-    expect(await restart().autoReview(client)).toBeNull()
-    expect(aiReview).toHaveBeenCalledTimes(1)
-  })
-
-  it('телефон владельца 2026-10-18: запись `v3:month` без исхода (до RZ-HF2) и v2 месяца → один запрос v3 сразу после деплоя', async () => {
-    const doc = planFamilyDoc({ aiReviews: [reviewV2({ at: '2026-09-12T03:00:00.000Z' })] })
-    const { finance, ai } = family({ doc })
-    // Так писал код до хотфикса: попытка 2 часа назад, ответ пришёл на мёртвую страницу.
-    localStorage.setItem('ff_ai_auto', JSON.stringify({ [`v3:month:${KEY}`]: { at: '2026-09-12T05:00:00.000Z' } }))
-    const { client, aiReview } = fakeClient()
-    const r = await ai.autoReview(client)
-    expect(aiReview).toHaveBeenCalledTimes(1)
-    expect(r).toMatchObject({ v: 3, reasonKey: `month:${KEY}` })
-    expect(finance.aiReviewOf(KEY)!.v).toBe(3)
-    await restart(finance.householdDoc).autoReview(client)
+    expect(await (await restart()).autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(1)
   })
 
@@ -413,41 +318,34 @@ describe('autoReview — молча', () => {
     const { client, aiReview } = fakeClient()
     let fail!: (e: unknown) => void
     aiReview.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)))
-    const september = family().ai.autoReview(client)
-    await Promise.resolve()
-    // Полночь: вторая вкладка — повод октября; её запрос оборвали (страницу закрыли).
+    const september = (await family()).ai.autoReview(client)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     vi.setSystemTime(new Date('2026-09-30T19:00:10Z'))
     aiReview.mockImplementation(() => new Promise(() => {}))
-    void restart().autoReview(client)
-    await Promise.resolve()
-    expect(aiReview).toHaveBeenCalledTimes(2)
-    // Сентябрьский ответ (502) дошёл после полуночи — пишет свой исход, октябрьскую попытку не трогает.
+    void (await restart()).autoReview(client)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(2))
     fail(new ApiError('ai_failed', 502))
     await september
-    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)['month:2026-10']).toMatchObject({ at: '2026-09-30T19:00:10.000Z' })
-    // Октябрь: один повтор оборванной после окна, дальше — сутки.
+    expect(JSON.parse(localStorage.getItem('ff_ai_auto')!)['v4:month:2026-10']).toMatchObject({ at: '2026-09-30T19:00:10.000Z' })
     vi.setSystemTime(new Date('2026-09-30T19:02:00Z'))
-    void restart().autoReview(client)
-    await Promise.resolve()
+    void (await restart()).autoReview(client)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(3))
     vi.setSystemTime(new Date('2026-09-30T19:04:00Z'))
-    expect(await restart().autoReview(client)).toBeNull()
+    expect(await (await restart()).autoReview(client)).toBeNull()
     expect(aiReview).toHaveBeenCalledTimes(3)
   })
 
-  it('разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
+  it('свой разбор повода ушёл в надгробие обрезкой «живых ≤ 12» — повод всё равно был: 0', async () => {
+    const { ai } = await family({ mine: [mine({ deletedAt: '2026-09-11T10:00:00.000Z' })] })
     const { client, aiReview } = fakeClient()
     expect(await ai.autoReview(client)).toBeNull()
-    // Надгробие старой версии — не «старый разбор» (показывать нечего, RZ-HF1): тоже 0.
-    const old = family({ doc: planFamilyDoc({ aiReviews: [reviewV2({ deletedAt: '2026-09-11T10:00:00.000Z' })] }) })
-    expect(await old.ai.autoReview(client)).toBeNull()
     expect(aiReview).not.toHaveBeenCalled()
   })
 })
 
 describe('autoReview — согласие v1', () => {
-  it('«да» v1 → лист согласия v2 в этот момент; «Включить» → запрос', async () => {
-    const { ai, finance } = family({ consent: 'v1' })
+  it('«да» v1 → лист согласия в этот момент; «Включить» → запрос', async () => {
+    const { ai, finance } = await family({ consent: 'v1' })
     const { client, aiReview } = fakeClient({ aiConsent: { on: true, at: T0 } })
     const run = ai.autoReview(client)
     await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
@@ -459,7 +357,7 @@ describe('autoReview — согласие v1', () => {
   })
 
   it('личный документ не подтянулся — лист не показан, повод не «спрошен»: на следующем круге лист всплывает', async () => {
-    const { ai } = family({ consent: 'v1' })
+    const { ai } = await family({ consent: 'v1' })
     const { client, aiReview } = fakeClient({ aiConsent: { on: true, at: T0 } })
     const failing = { ...client, getPrivateDoc: vi.fn(async () => Promise.reject(new ApiError('server', 500))) } as unknown as ApiClient
     expect(await ai.autoReview(failing)).toBeNull()
@@ -472,7 +370,7 @@ describe('autoReview — согласие v1', () => {
   })
 
   it('листа нет (экран без оболочки) — повод не тратится; оболочка смонтирована — лист', async () => {
-    const { ai } = family({ consent: 'v1' })
+    const { ai } = await family({ consent: 'v1' })
     const { client } = fakeClient({ aiConsent: { on: true, at: T0 } })
     ai.sheetMounted = false
     expect(await ai.autoReview(client)).toBeNull()
@@ -484,9 +382,8 @@ describe('autoReview — согласие v1', () => {
   })
 
   it('закрыл лист без ответа — запроса нет, и до следующего повода лист не всплывает', async () => {
-    const { ai, finance } = family({ consent: 'v1', doc: planFamilyDoc({ aiReviews: [review({})] }) })
+    const { ai, finance } = await family({ consent: 'v1', mine: [mine()] })
     const { client, aiReview } = fakeClient({ aiConsent: { on: true, at: T0 } })
-    // Повод «зарплата»: своя «Пришла».
     finance.markSalary('a')
     const run = ai.autoReview(client)
     await vi.waitFor(() => expect(ai.sheetOpen).toBe(true))
@@ -501,81 +398,53 @@ describe('autoReview — согласие v1', () => {
 })
 
 describe('reviewUnseen — точка «новый разбор»', () => {
-  it('разбор месяца есть и не открыт → точка; открыли — нет; viewer — тоже точка', () => {
-    const { ai } = family({ doc: planFamilyDoc({ aiReviews: [review({})] }) })
+  it('свой разбор месяца не открыт → точка; открыли — нет; viewer — общий v3 месяца (читает старые) — точка', async () => {
+    const { ai } = await family({ mine: [mine()] })
     expect(ai.reviewUnseen).toBe(true)
-    ai.markReviewSeen('r-b')
+    ai.markReviewSeen('r-a')
     expect(ai.reviewUnseen).toBe(false)
-    expect(family({ role: 'viewer', doc: planFamilyDoc({ aiReviews: [review({})] }) }).ai.reviewUnseen).toBe(true)
-    expect(family().ai.reviewUnseen).toBe(false)
+    expect((await family({ role: 'viewer', doc: planFamilyDoc({ aiReviews: [shared()] }) })).ai.reviewUnseen).toBe(true)
+    expect((await family()).ai.reviewUnseen).toBe(false)
   })
 })
 
-// RZ-05 (бэклог «Разбор», Р-15, Р-19): что сохраняет разбор v3 — факт крупной цифры, кнопка по id, счётчик.
-describe('requestReview v3 — сохранение', () => {
-  const leak = (by: 'a' | 'b', period: string): ReviewFind => ({
-    id: `${by}:${period}:leak:apteka`, by, period, kind: 'leak', name: 'APTEKA', categoryId: 'sc_health', count: 8, amount: 12_000, updatedAt: T0,
-  })
-  // Двойное списание августа (месяц находок — прошлый: выписок сентября нет) — находка без совета: в K, но не в X.
-  const double: ReviewFind = { id: 'a:2026-08:double:sport club', by: 'a', period: '2026-08', kind: 'double', name: 'SPORT CLUB', categoryId: 'sc_fun', count: 2, amount: 5_000, updatedAt: T0 }
-  const doc = () => planFamilyDoc({ reviewFinds: [leak('a', '2026-07'), leak('b', '2026-08'), double] })
-
-  it('figure → факт {about, value}; «Сделать» → кандидат, «Открыть» → экран; совет на чужое действие отброшен; work — по советам', async () => {
-    const { ai } = family({ doc: doc() })
+// FB-16 (Р-26, Р-27): что сохраняет разбор v4 — мысль с фактом крупной цифры, следующая карточка, счётчик — в личном.
+describe('requestReview v4 — сохранение', () => {
+  it('figure → факт {about, value, label}; next → id карточки кода; work — свои операции и карточки; партнёр не видит', async () => {
+    const { ai, finance } = await family()
     const { client, aiReview } = fakeClient()
     aiReview.mockImplementation(async (body: unknown) => {
-      const b = body as ReviewPayloadV3
-      const open = b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!
-      const monthly = b.facts.find((f) => f.about === 'частые траты у «APTEKA» — в месяц')!
-      return {
-        where: 'Где.',
-        advices: [
-          { title: 'Досрочно', text: 'Текст.', figure: null, action: 'a1' },
-          { title: 'Чужое', text: 'Текст.', figure: null, action: 'a9' },
-          { title: 'Аптека', text: 'Текст.', figure: monthly.id, action: open.id },
-        ],
-      } as never
+      const b = body as ReviewPayloadV4
+      const share = b.facts.find((f) => f.about === 'траты без раздела — доля своих трат месяца')!
+      return { title: 'Без раздела', text: 'Разберём — и план станет честным.', figure: share.id, next: b.cards[0].id }
     })
     const r = await ai.runReview(KEY, 'month', client)
-    expect(r!.advices!.map((a) => a.title)).toEqual(['Досрочно', 'Аптека'])
-    expect(r!.advices![0].action).toMatchObject({ kind: 'do', candidate: { kind: 'prepay' } })
-    expect(r!.advices![1]).toMatchObject({
-      figure: { about: 'частые траты у «APTEKA» — в месяц', value: money(12_000), label: 'в месяц · APTEKA' },
-      action: { kind: 'open', target: { kind: 'seller', id: 'apteka' } },
+    expect(r).toMatchObject({
+      v: 4,
+      lead: { title: 'Без раздела', text: 'Разберём — и план станет честным.', figure: { about: 'траты без раздела — доля своих трат месяца', value: '30 %', label: 'своих трат без раздела' } },
+      next: 'unknown',
+      // Карточки: «Не разобрано» 30 000 и «Поставить план» продуктов (плана нет, 70 000).
+      work: { ops: 2, found: 2, monthly: 100_000 },
     })
-    // Утечка: 12 000 в месяц — только она в советах; «Сделать» находки не несёт; двойное (5 000 лишнего в месяц) нашли,
-    // но совета о нём нет — в X не входит (Р-19, критик Блока 1: без `used` X был бы 17 000). Годовой суммы нет.
-    expect(r!.work).toEqual({ ops: expect.any(Number), found: 2, monthly: 12_000 })
-    expect(r!.where).toBe('Где.')
+    // Партнёр: тот же общий документ, свой личный — моего разбора нет.
+    const partner = await family({ doc: finance.householdDoc, own: false })
+    expect(partner.finance.aiReviewOf(KEY)).toBeNull()
   })
 
-  // Ревью frontend Н-2: X — по находке крупной цифры совета, без цифры — по кнопке.
-  it('цифра утечки + «Сделать» — X = цена утечки в месяц; цифра двойного + «Открыть» аптеки — X = двойное', async () => {
-    const answerWith = (figureAbout: string, action: (b: ReviewPayloadV3) => string) => async (body: unknown) => {
-      const b = body as ReviewPayloadV3
-      return { where: 'Где.', advices: [{ title: 'Совет', text: 'Текст.', figure: b.facts.find((f) => f.about === figureAbout)!.id, action: action(b) }] } as never
-    }
-    let { ai } = family({ doc: doc() })
-    let { client, aiReview } = fakeClient()
-    aiReview.mockImplementation(answerWith('частые траты у «APTEKA» — в месяц', () => 'a1'))
-    let r = await ai.runReview(KEY, 'month', client)
-    expect(r!.advices![0].action).toMatchObject({ kind: 'do' })
-    expect(r!.work).toMatchObject({ found: 2, monthly: 12_000 })
-    ;({ ai } = family({ doc: doc() }))
-    ;({ client, aiReview } = fakeClient())
-    aiReview.mockImplementation(answerWith('списание «SPORT CLUB» прошло дважды одной суммой — лишнее в месяц', (b) => b.actions.find((a) => a.kind === 'open' && a.about.includes('APTEKA'))!.id))
-    r = await ai.runReview(KEY, 'month', client)
-    expect(r!.advices![0].action).toMatchObject({ kind: 'open', target: { id: 'apteka' } })
-    // Двойное: 5 000 лишнего в месяц; утечка кнопки (12 000) в X не идёт — на карточке число двойного.
-    expect(r!.work).toMatchObject({ found: 2, monthly: 5_000 })
-  })
-
-  it('все советы на чужие действия — разбор не сохраняется, «Не вышло»', async () => {
-    const { ai, finance } = family({ doc: doc() })
+  it('next не из присланных карточек — разбор не сохраняется, «Не вышло»', async () => {
+    const { ai, finance } = await family()
     const { client, aiReview } = fakeClient()
-    aiReview.mockResolvedValue({ where: 'Где.', advices: [{ title: 'Чужое', text: 'Текст.', figure: null, action: 'a9' }] } as never)
+    aiReview.mockResolvedValue({ title: 'Чужое', text: 'Текст.', figure: null, next: 'c9' })
     expect(await ai.runReview(KEY, 'month', client)).toBeNull()
     expect(ai.reviewState).toBe('failed')
-    expect(finance.householdDoc.aiReviews ?? []).toHaveLength(0)
+    expect(finance.myAiReviews).toHaveLength(0)
+  })
+
+  it('карточки — по своим операциям телефона: «Не разобрано» своих 30 из 100 и продукты без плана', async () => {
+    const { ai } = await family()
+    expect(useOperationsStore().all.every((o) => o.id.startsWith('aa'))).toBe(true)
+    const { client, aiReview } = fakeClient()
+    await ai.runReview(KEY, 'month', client)
+    expect((aiReview.mock.calls[0][0] as ReviewPayloadV4).cards.map((c) => c.kind)).toEqual(['unknown', 'plan'])
   })
 })

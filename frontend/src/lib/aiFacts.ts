@@ -1,6 +1,7 @@
-import type { OpenTarget, ReviewAction, ReviewFact, ReviewPayload, ReviewPayloadV3, ReviewReason, SyncDoc } from '@/types/finance'
+import type { OpenTarget, PersonId, ReviewAction, ReviewCardFact, ReviewFact, ReviewPayload, ReviewPayloadV3, ReviewPayloadV4, ReviewReason, SyncDoc } from '@/types/finance'
 import {
   HABIT_NAMES,
+  PLAN_LINE,
   SHIFT_REASON_TEXT,
   activePlan,
   cushionCover,
@@ -19,6 +20,7 @@ import {
   monthPlan,
   monthsLabel,
   planForecast,
+  reviewCards,
   reviewFindings,
   reviewScenario,
   reviewSpendRows,
@@ -29,14 +31,20 @@ import {
   stepCandidates,
   stepEffectText,
   usualMonths,
+  whereSplit,
   type MonthPlanCtx,
   type MonthPlanState,
+  type ReviewCard,
+  type ReviewCardsOpts,
   type ReviewFinding,
   type ReviewScenario,
   type StepCandidate,
+  type WherePart,
 } from '@/lib/finance'
 import { maskNames } from '@/lib/aiSummary'
+import { weekendShare } from '@/lib/statements/finds'
 import { shortMerchant } from '@/lib/statements/model'
+import type { Operation } from '@/lib/statements/types'
 import { addMonths, monthBy, monthKey } from '@/lib/dates'
 import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
@@ -168,8 +176,11 @@ function openOf(f: ReviewFinding): { target: OpenTarget; about: string } {
   }
 }
 
-/** Факты v2 месяца (AU-11) — состав тот же. */
-function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefined, plan: ReturnType<typeof monthPlan>): Draft[] {
+/**
+ * Факты v2 месяца (AU-11) — состав тот же. С `by` (разбор v4, бэклог «Фидбек», Р-23) — разделы трат, привычка и причина
+ * сдвига мечты — свои; доход, мечты, подушка и долги — семьи.
+ */
+function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefined, plan: ReturnType<typeof monthPlan>, by?: PersonId): Draft[] {
   const people = doc.people ?? []
   const { state, ctx } = input
   const key = ctx.key
@@ -197,7 +208,7 @@ function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefi
     const term = goalTerm(item, goal, key, forecast)
     const name = nm(goal.name)
     if (term.doneMonth) fact(`${i === 0 ? 'главная мечта' : 'мечта'} ${name} — срок`, monthBy(term.doneMonth, key), term.doneMonth)
-    const shift = dreamShift(state, ctx, snap, goal.id)
+    const shift = dreamShift(state, ctx, snap, goal.id, by)
     if (shift) {
       // Раздел — в «ёлочках», как пишет его модель: цифры названия («Кафе 24») сервер пропускает только внутри «».
       const why = shift.reason === 'spend' && shift.name ? `${nm(shift.name)} выше плана` : SHIFT_REASON_TEXT[shift.reason](shift.name && clip(shift.name, NAME_MAX))
@@ -221,7 +232,7 @@ function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefi
   if (first) fact(`первым закрываем ${nm(first.name)} — самая высокая ставка`, pctText(first.rate), first.rate)
 
   // 1–2 главных раздела трат: факт, обычно, план, % дохода.
-  for (const r of reviewSpendRows(spendCompare(state, ctx).rows)) {
+  for (const r of reviewSpendRows(spendCompare(state, ctx, by).rows)) {
     const cat = nm(r.name)
     if (r.amount !== null) fact(`траты на ${cat} в этом месяце`, money(r.amount), r.amount)
     if (r.usual !== null) fact(`обычно у вас на ${cat} в месяц`, money(r.usual), r.usual)
@@ -230,7 +241,7 @@ function baseFacts(doc: SyncDoc, input: PlanInput, reason: ReviewReason | undefi
   }
 
   // Главный образ месяца — крупнейший из привычки и процентов банку (оба — ₸ в месяц).
-  const habit = habitImages(state, key)[0] ?? null
+  const habit = habitImages(state, key, by)[0] ?? null
   const interest = interestImage(state)
   const image = habit && (!interest || habit.monthly >= interest.perMonth) ? habit : interest
   if (image && 'habit' in image) {
@@ -345,6 +356,127 @@ export function buildReviewFacts(doc: SyncDoc, input: PlanInput, reason?: Review
   }
 
   return { payload: { v: 3, facts, actions }, doById, openById, findings, byFact, byAction, labels }
+}
+
+/* ---------------- разбор v4 (бэклог «Фидбек», Р-23, Р-26, Р-28, FB-16) ---------------- */
+
+/** Факты, подписи и карточки разбора v4: `cardById` — карточка кода по id тела (`c1`…), `cards` — все карточки кода. */
+export type ReviewFactsV4 = {
+  payload: ReviewPayloadV4
+  cards: ReviewCard[]
+  cardById: Map<string, ReviewCard>
+  labels: Map<string, string>
+}
+
+/** Части «Куда ушло» словами модели (Р-25). */
+const WHERE_ABOUT: Record<WherePart['key'], string> = { sellers: 'траты у продавцов', people: 'переводы людям', cash: 'наличные', payments: 'платежи без отметки' }
+
+/** Предмет карточки словами разбора: продавец — коротко (`shortMerchant`), раздел, привычка и мечта — как есть. */
+const subjectOf = (c: ReviewCard) => (c.subject ? (c.kind === 'oneoff' || c.kind === 'recurring' || c.kind === 'double' ? shortMerchant(c.subject) : c.subject) : '')
+
+/**
+ * Что карточка значит для модели (Р-28): вид и предмет — продавец, раздел, привычка, мечта; люди и наличные — только
+ * «переводы людям» / «наличные», без имён (имя есть лишь в строке экрана `line`, сюда не идёт). Без цифр.
+ */
+function cardAbout(c: ReviewCard): string {
+  const s = nm(subjectOf(c))
+  switch (c.kind) {
+    case 'unknown':
+      return 'траты без раздела — разобрать'
+    case 'people':
+      return 'переводы людям — разобрать, кому и за что'
+    case 'cash':
+      return 'наличные без заметки — записать, на что'
+    case 'oneoff':
+      return `покупка у ${s} похожа на разовую — отметить`
+    case 'week':
+      return 'неделя дороже обычной — отметить разовую трату'
+    case 'recurring':
+      return `регулярное ${s} не в платежах — добавить в платежи`
+    case 'habit': {
+      const a = c.target.kind === 'image' ? c.target.image.action : null
+      return `привычка ${s} — перенести часть в мечту${a?.kind === 'move' ? ` ${nm(a.goalName)}` : ''}`
+    }
+    case 'small':
+      return `мелкие покупки — часть плана в мечту ${s}`
+    case 'plan':
+      return `раздел ${s} — поставить план`
+    case 'pricier':
+      return `подписка ${s} подорожала — обновить сумму`
+    case 'double':
+      return `списание ${s} прошло дважды — разобрать`
+  }
+}
+
+/** Факты одной карточки: её крупная цифра (у «Мелочи» — ещё на сколько раньше мечта), с подписью для экрана. */
+function cardFacts(c: ReviewCard): Draft[] {
+  const s = subjectOf(c)
+  const value = c.figure.unit === 'pct' ? pctText(c.figure.value) : money(c.figure.value)
+  const put = (about: string, label: string): Draft => ({ about, value, raw: c.figure.value, label })
+  switch (c.kind) {
+    case 'unknown':
+      return [put('траты без раздела — доля своих трат месяца', 'своих трат без раздела')]
+    case 'people':
+      return [put('переводы людям в этом месяце', 'в месяц · переводы людям')]
+    case 'cash':
+      return [put('наличные в этом месяце', 'в месяц · наличные')]
+    case 'oneoff':
+      return [put(`похоже на разовую покупку у ${nm(s)}`, `похоже на разовую · ${bare(s)}`)]
+    case 'week':
+      return [put('неделя месяца дороже обычной на', 'дороже обычной недели')]
+    case 'recurring':
+      return [put(`регулярное списание ${nm(s)} не в платежах — в месяц`, `в месяц · ${bare(s)}`)]
+    case 'habit':
+      return [put(`привычка ${nm(s)} — в месяц`, `в месяц · ${bare(s)}`)]
+    case 'small': {
+      const out = [put('мелкие покупки в этом месяце', 'в месяц · мелкие покупки')]
+      const days = c.target.kind === 'do' && c.target.candidate.kind === 'move' ? c.target.candidate.effect.days : null
+      if (days) out.push({ about: `если часть плана — в мечту ${nm(s)}, она раньше на`, value: shiftSpan(days), raw: days, label: `«${bare(s)}» раньше` })
+      return out
+    }
+    case 'plan':
+      return [c.line === PLAN_LINE.none ? put(`траты на ${nm(s)} без плана в этом месяце`, `без плана · ${bare(s)}`) : put(`траты на ${nm(s)} выше плана на`, `сверх плана · ${bare(s)}`)]
+    case 'pricier':
+      return [put(`подписка ${nm(s)} стала дороже на`, `дороже · ${bare(s)}`)]
+    case 'double':
+      return [put(`списание ${nm(s)} прошло дважды — лишнее`, `лишнее · ${bare(s)}`)]
+  }
+}
+
+/**
+ * Факты и карточки разбора v4 участника `by` (Р-23, Р-26): карточки кода (`reviewCards` по своим операциям `ops`) —
+ * их цифры фактами, «Куда ушло» долями (`whereSplit`, выходные — `weekendShare`), затем факты v2 месяца — разделы,
+ * привычка и сдвиг мечты свои, доход, мечты, подушка и долги — семьи; всего ≤ 40. В модель не уходят (Р-28): имена людей
+ * из переводов, имена участников (`maskNames`), даты операций, «ИП + фамилия» и 6+ цифр (продавцы — по `sellerOk`).
+ * Карточек нет — тело без карточек (ручка его не примет; стор не спрашивает).
+ */
+export function buildReviewFactsV4(
+  doc: SyncDoc,
+  input: PlanInput,
+  ops: Operation[],
+  by: PersonId,
+  reason?: ReviewReason,
+  opts: ReviewCardsOpts = {},
+): ReviewFactsV4 {
+  const people = doc.people ?? []
+  const mask = (s: string) => maskNames(s, people)
+  const { state, ctx } = input
+  const plan = monthPlan(state, ctx)
+  const cards = reviewCards({ ...doc, ...state }, ctx, ops, by, opts)
+  const own: Draft[] = cards.flatMap(cardFacts)
+  const split = whereSplit(state, ctx, by)
+  for (const p of split?.parts ?? []) if (p.amount > 0) own.push({ about: `${WHERE_ABOUT[p.key]} — доля своих трат месяца`, value: pctText(p.share), raw: p.share })
+  const weekend = split ? weekendShare(ops, split.month, ctx.spendCategories) : null
+  if (weekend) {
+    own.push({ about: 'траты по выходным — доля свободных трат месяца', value: pctText(weekend.share), raw: weekend.share })
+    own.push({ about: 'выходные — доля дней месяца', value: pctText(weekend.days), raw: weekend.days })
+  }
+  const drafts = [...own, ...baseFacts(doc, input, reason, plan, by)].slice(0, REVIEW_FACTS_MAX)
+  const facts: ReviewFact[] = drafts.map((d, i) => ({ id: `f${i + 1}`, about: clip(mask(d.about), REVIEW_TEXT_MAX), value: clip(d.value, REVIEW_TEXT_MAX), raw: d.raw }))
+  const labels = new Map(drafts.flatMap((d, i) => (d.label ? [[`f${i + 1}`, clip(mask(d.label), REVIEW_TEXT_MAX)] as const] : [])))
+  const cardById = new Map(cards.map((c, i) => [`c${i + 1}`, c]))
+  const sent: ReviewCardFact[] = cards.map((c, i) => ({ id: `c${i + 1}`, kind: c.kind, about: clip(mask(cardAbout(c)), REVIEW_TEXT_MAX) }))
+  return { payload: { v: 4, facts, cards: sent }, cards, cardById, labels }
 }
 
 /**

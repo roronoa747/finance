@@ -264,6 +264,7 @@ export function mergePrivateDocs(
   // gifts — подарки-сюрпризы (B2C-18): в личном документе, адресат их не видит.
   // tripExcluded — операции, снятые с поездки (PN-30): по id операции, «Вернуть» — надгробие.
   // opEdits — правки своих операций (FB-02, Р-11): заметка, «Мне вернули», «Разовая» — по id операции, LWW.
+  // aiReviews — свои разборы v4 (бэклог «Фидбек», Р-27): по id, надгробие обрезки побеждает.
   // aiConsent — согласие человека на ИИ (бэклог «ИИ», Р-9): позднее `at` побеждает.
   const consent = newerObject(
     local.aiConsent as AiConsent | undefined,
@@ -276,6 +277,7 @@ export function mergePrivateDocs(
     gifts: list('gifts'),
     tripExcluded: list('tripExcluded'),
     opEdits: list('opEdits'),
+    aiReviews: list('aiReviews'),
     ...(consent ? { aiConsent: consent } : {}),
   }
   return { ...mergeUnknownKeys(local, remote, { ...known, aiConsent: null }), ...known }

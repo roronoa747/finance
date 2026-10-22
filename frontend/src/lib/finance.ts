@@ -6221,13 +6221,13 @@ export function reviewScenario(state: MonthPlanState, ctx: MonthPlanCtx, finding
 /**
  * Счётчик работы ИИ (Р-8, Р-19): `ops` — операций всех участников за `ctx.key` и до 3 месяцев «обычно»; `found` — находок
  * семьи; `monthly` — сумма цен в месяц у находок советов (`used`, каждая один раз; бэклог «Фидбек», Р-19). С `by` — операции
- * одного участника по его месяцам «обычно» (FB-15).
+ * одного участника по его месяцам «обычно» (FB-15); у v4 находки — карточки кода (`ReviewCard.monthly`, FB-16).
  */
 export function reviewWork(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
-  findings: ReviewFinding[],
-  used: ReviewFinding[] = findings,
+  findings: Pick<ReviewFinding, 'monthly'>[],
+  used: Pick<ReviewFinding, 'monthly'>[] = findings,
   by?: PersonId,
 ): { ops: number; found: number; monthly: number } {
   const people = peopleOf(state.people ?? [], by)
@@ -6289,6 +6289,8 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5, by?: 
 
 /** Карточек в отчёте v4 — не больше (Р-24). */
 export const REVIEW_CARDS_MAX = 6
+/** Строка карточки «Поставить план»: раздел выше своего плана / плана нет. */
+export const PLAN_LINE = { over: 'Выше плана', none: 'Плана нет' } as const
 /** «Поставить план»: раздел без плана — от 10 % своего факта месяца; таких карточек — до 2. */
 export const PLAN_CARD_SHARE = 10
 export const PLAN_CARDS_MAX = 2
@@ -6308,7 +6310,8 @@ export type ReviewCardTarget =
 
 /**
  * Карточка разбора v4 (Р-24): заголовок 1–3 слова, одна крупная цифра (₸ или %), одна строка, одна кнопка с призывом и
- * её цель; `monthly` — ₸ в месяц для порядка. Имя человека бывает только в `line` карточки `people` (своя операция).
+ * её цель; `monthly` — ₸ в месяц для порядка. Имя человека бывает только в `line` карточки `people` (своя операция);
+ * `subject` — продавец, раздел, привычка или мечта карточки (никогда не человек) — для фактов модели (FB-16).
  */
 export type ReviewCard = {
   id: string
@@ -6319,6 +6322,7 @@ export type ReviewCard = {
   button: string
   target: ReviewCardTarget
   monthly: number
+  subject?: string
 }
 
 export type ReviewCardsOpts = {
@@ -6381,7 +6385,7 @@ export function reviewCards(
   for (const o of oneOffLike(ops, month, fact, cats)) {
     card({
       kind: 'oneoff', key: o.opId, title: 'Похоже на разовую', figure: { value: o.amount, unit: 'money' },
-      line: `${o.name} — впервые за 3 месяца`, button: 'Отметить разовой', target: { kind: 'op', opId: o.opId }, monthly: o.amount,
+      line: `${o.name} — впервые за 3 месяца`, button: 'Отметить разовой', target: { kind: 'op', opId: o.opId }, monthly: o.amount, subject: o.name,
     })
   }
   const week = dearerWeek(ops, month, cats)
@@ -6397,12 +6401,12 @@ export function reviewCards(
       if (!op || !opts.recurringFor?.(op)) continue
       card({
         kind: 'recurring', key: f.key, title: 'Не в платежах', figure: { value: f.amount, unit: 'money' },
-        line: `${f.name} — каждый месяц`, button: 'В платежи', target: { kind: 'pay', opId: op.id }, monthly: f.monthly,
+        line: `${f.name} — каждый месяц`, button: 'В платежи', target: { kind: 'pay', opId: op.id }, monthly: f.monthly, subject: f.name,
       })
     } else if (f.kind === 'pricier') {
       card({
         kind: 'pricier', key: f.key, title: 'Подорожало', figure: { value: f.amount - f.was, unit: 'money' },
-        line: `${f.name} — дороже, чем было`, button: 'Обновить сумму', target: { kind: 'obligation', obligationId: f.obligationId }, monthly: f.monthly,
+        line: `${f.name} — дороже, чем было`, button: 'Обновить сумму', target: { kind: 'obligation', obligationId: f.obligationId }, monthly: f.monthly, subject: f.name,
       })
     } else if (f.kind === 'double') {
       // Второе списание той же суммы — его и разбирают («Мне вернули»).
@@ -6410,7 +6414,7 @@ export function reviewCards(
       if (same.length < 2) continue
       card({
         kind: 'double', key: f.key, title: 'Дважды', figure: { value: f.monthly, unit: 'money' },
-        line: `${f.name} — списали дважды`, button: 'Разобрать', target: { kind: 'op', opId: same[same.length - 1].id }, monthly: f.monthly,
+        line: `${f.name} — списали дважды`, button: 'Разобрать', target: { kind: 'op', opId: same[same.length - 1].id }, monthly: f.monthly, subject: f.name,
       })
     }
   }
@@ -6418,7 +6422,7 @@ export function reviewCards(
     if (image.action?.kind !== 'move') continue
     card({
       kind: 'habit', key: image.habit, title: HABIT_NAMES[image.habit], figure: { value: image.monthly, unit: 'money' },
-      line: `Часть — в мечту «${image.action.goalName}»`, button: 'Перенести в мечту', target: { kind: 'image', image }, monthly: image.monthly,
+      line: `Часть — в мечту «${image.action.goalName}»`, button: 'Перенести в мечту', target: { kind: 'image', image }, monthly: image.monthly, subject: HABIT_NAMES[image.habit],
     })
   }
   // Мелочь: мелкие покупки месяца и свои утечки v3 — что больше; кнопка — «Сделать» из своего плана (`move`).
@@ -6432,7 +6436,7 @@ export function reviewCards(
     const effect = stepEffectText(move)
     card({
       kind: 'small', title: 'Мелочь', figure: { value: smallAmount, unit: 'money' },
-      line: effect ? `Мечта «${moveGoal.name}» — ${effect}` : `Часть плана — в мечту «${moveGoal.name}»`, button: 'Сделать', target: { kind: 'do', candidate: move }, monthly: smallAmount,
+      line: effect ? `Мечта «${moveGoal.name}» — ${effect}` : `Часть плана — в мечту «${moveGoal.name}»`, button: 'Сделать', target: { kind: 'do', candidate: move }, monthly: smallAmount, subject: moveGoal.name,
     })
   }
   // Поставить план: свой раздел продавцов выше плана второй месяц подряд (или выше плана и «раздуло» v3), или плана нет,
@@ -6452,7 +6456,7 @@ export function reviewCards(
   for (const { r, monthly } of plans) {
     card({
       kind: 'plan', key: r.categoryId, title: r.name, figure: { value: monthly, unit: 'money' },
-      line: r.plan ? 'Выше плана' : 'Плана нет', button: 'Поставить план', target: { kind: 'plan', categoryId: r.categoryId, amount: r.usual || r.amount! }, monthly,
+      line: r.plan ? PLAN_LINE.over : PLAN_LINE.none, subject: r.name, button: 'Поставить план', target: { kind: 'plan', categoryId: r.categoryId, amount: r.usual || r.amount! }, monthly,
     })
   }
 
@@ -6461,13 +6465,22 @@ export function reviewCards(
   return [...first, ...rest].slice(0, REVIEW_CARDS_MAX)
 }
 
+/**
+ * Порядок карточек кода в отчёте v4 (Р-23): карточка `next` мысли модели — первой, остальные — как посчитал
+ * `reviewCards`; `next` не нашлась (карточки свежие, разбор старше) — как есть.
+ */
+export function reviewCardOrder(cards: ReviewCard[], next?: string | null): ReviewCard[] {
+  const first = cards.find((c) => c.id === next)
+  return first ? [first, ...cards.filter((c) => c !== first)] : cards
+}
+
 /** Часть «Куда ушло» v4 (Р-25): продавцы (с «не разобрано»), переводы людям, наличные, платежи без отметки. */
-export type WherePart = { key: 'sellers' | 'people' | 'cash' | 'payments'; amount: number }
+export type WherePart = { key: 'sellers' | 'people' | 'cash' | 'payments'; amount: number; share: number }
 
 /**
  * «Куда ушло» на всю сумму (Р-25): свои траты месяца находок четырьмя частями по итогам участника — та же правда, что
  * `PlanSpend.fact` (с разовыми и «не разобрано»; платежи — неотмеченная часть разделов платежей, `spentOf`): Σ частей =
- * факт. Выписок за месяц нет — null.
+ * факт; `share` — целые % от факта (подпись полосы и факт модели). Выписок за месяц нет — null.
  */
 export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonId): { month: string; total: number; parts: WherePart[] } | null {
   const month = findMonth(ctx)
@@ -6479,8 +6492,9 @@ export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonI
     const key = t.categoryId === 'sc_people' ? 'people' : t.categoryId === 'sc_cash' ? 'cash' : plannedElsewhere(t.categoryId, live) ? 'payments' : 'sellers'
     sums[key] += factOf(t, live)
   }
-  const parts = (Object.keys(sums) as WherePart['key'][]).map((key) => ({ key, amount: sums[key] }))
-  return { month, total: amountTotal(parts), parts }
+  const total = amountTotal(Object.values(sums).map((amount) => ({ amount })))
+  const parts = (Object.keys(sums) as WherePart['key'][]).map((key) => ({ key, amount: sums[key], share: total > 0 ? Math.round((sums[key] * 100) / total) : 0 }))
+  return { month, total, parts }
 }
 
 /** Итог прошлого месяца (Р-10, Р-20): советы «Сделать» — сделан / нет, разделы советов к «обычно», срок главной мечты. */

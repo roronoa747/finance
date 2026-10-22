@@ -911,3 +911,223 @@ func TestLiveSellers(t *testing.T) {
 	u := f.usage()
 	t.Logf("usage: %d requests, %d in, %d out, %d µ$", u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
 }
+
+// ---------------- разбор v4 (бэклог «Фидбек», Р-26, FB-16) ----------------
+
+// reviewBodyV4 is a review v4 body as the phone sends it: the facts of the cards and the month, the code's cards —
+// people and cash without names (Р-28).
+const reviewBodyV4 = `{"v":4,"reason":"month","facts":[` +
+	`{"id":"f1","about":"доход месяца","value":"1 200 000 ₸","raw":1200000},` +
+	`{"id":"f2","about":"переводы людям в этом месяце","value":"180 000 ₸","raw":180000},` +
+	`{"id":"f3","about":"переводы людям — доля своих трат месяца","value":"38 %","raw":38},` +
+	`{"id":"f4","about":"главная мечта «Море» — срок","value":"к июню 2028","raw":"2028-06"},` +
+	`{"id":"f5","about":"траты без раздела — доля своих трат месяца","value":"14 %","raw":14}` +
+	`],"cards":[` +
+	`{"id":"c1","kind":"unknown","about":"траты без раздела"},` +
+	`{"id":"c2","kind":"people","about":"переводы людям"},` +
+	`{"id":"c3","kind":"oneoff","about":"похоже на разовую покупку у «Avtoshkola»"}]}`
+
+// lead is a model answer v4 as JSON text.
+func lead(title, text string, figure any, next string) string {
+	b, _ := json.Marshal(map[string]any{"title": title, "text": text, "figure": figure, "next": next})
+	return string(b)
+}
+
+var cleanLead = lead("Куда ушёл месяц", "Главное в месяце — переводы людям: разберём их, и срок мечты «Море» станет честным.", "f3", "c2")
+
+func decodeLead(t *testing.T, rec *httptest.ResponseRecorder) ReviewLead {
+	t.Helper()
+	var got ReviewLead
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+	}
+	return got
+}
+
+// The instruction v4 (Р-23, Р-26): one thought and the next card, no number of its own, no names of people.
+func TestReviewSystemV4(t *testing.T) {
+	for _, want := range []string{"одна главная мысль месяца", "одну карточку", "next — id карточки из cards", "Не пересказывай карточки",
+		"Не пиши ни одной цифры", "{f3}", "«мы»", "людей из переводов не называй", "Не сравнивай участников", "в text его не повторяй", "«в месяц это {f5}»"} {
+		if !strings.Contains(reviewSystemV4, want) {
+			t.Errorf("reviewSystemV4 has no %q", want)
+		}
+	}
+	for _, old := range []string{"advices", "actions", "where", "в год", "за год"} {
+		if strings.Contains(reviewSystemV4, old) {
+			t.Errorf("reviewSystemV4 speaks of v3: %q", old)
+		}
+	}
+}
+
+// Only the instruction v4, the facts without raw, the cards and the reason go out; the answer comes back filled.
+func TestReviewV4SendsFactsAndCards(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{cleanLead}}, true)
+	got := decodeLead(t, f.post(t, f.member, reviewBodyV4))
+	if got.Title != "Куда ушёл месяц" || !strings.HasPrefix(got.Text, "Главное в месяце") || got.Figure == nil || *got.Figure != "f3" || got.Next != "c2" {
+		t.Errorf("answer = %+v", got)
+	}
+	sent := f.claude.sent[0]
+	if f.systemOf(0) != reviewSystemV4 {
+		t.Error("system is not the v4 instruction")
+	}
+	msgs, _ := sent["messages"].([]any)
+	content := fmt.Sprint(msgs)
+	for _, want := range []string{`"cards"`, `"kind":"people"`, `"reason":"month"`, "переводы людям"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("model text has no %s: %s", want, content)
+		}
+	}
+	for _, not := range []string{`"raw"`, `"actions"`, "1200000"} {
+		if strings.Contains(content, not) {
+			t.Errorf("model text has %s", not)
+		}
+	}
+	// The schema: next — one of the cards sent, figure — a fact or null.
+	format, _ := json.Marshal(sent)
+	if !strings.Contains(string(format), `"enum":["c1","c2","c3"]`) {
+		t.Errorf("schema has no cards enum: %s", format)
+	}
+	if u := f.usage(); u.Requests != 1 {
+		t.Errorf("usage = %+v", u)
+	}
+}
+
+func TestReviewV4Filled(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{lead("Люди и мечта", "На переводы ушло {f2} — мечта «Море» {f4}.", nil, "c2")}}, true)
+	got := decodeLead(t, f.post(t, f.member, reviewBodyV4))
+	if got.Text != "На переводы ушло 180 000 ₸ — мечта «Море» к июню 2028." || got.Figure != nil {
+		t.Errorf("answer = %+v", got)
+	}
+}
+
+func TestReviewV4DefectsRetry(t *testing.T) {
+	cases := []struct {
+		name, first, violation string
+	}{
+		{"digit in a text", lead("Месяц", "Ушло 180 000 ₸ людям.", nil, "c2"), "цифры в тексте"},
+		{"digit in a title", lead("Треть трат", "Переводы людям — {f3}.", nil, "c2"), "числа не из фактов: Треть"},
+		{"fact not sent", lead("Месяц", "Доход — {f99}.", nil, "c2"), "ссылка {f99} — такого факта нет"},
+		{"next not sent", lead("Месяц", "Разберём переводы.", nil, "c9"), "next c9 — такой карточки нет"},
+		{"figure not sent", lead("Месяц", "Разберём переводы.", "f99", "c2"), "figure f99 — такого факта нет"},
+		{"long title", lead("Очень длинный заголовок мысли месяца", "Разберём переводы.", nil, "c2"), "заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке"},
+		{"long text", lead("Месяц", strings.Repeat("слово ", 26), nil, "c2"), "мысль — до двадцати пяти слов"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{tc.first, cleanLead}}, true)
+			decodeLead(t, f.post(t, f.member, reviewBodyV4))
+			if len(f.claude.sent) != 2 {
+				t.Fatalf("calls = %d, want 2", len(f.claude.sent))
+			}
+			if want := fmt.Sprintf(reviewRetry, tc.violation); f.systemOf(1) != reviewSystemV4+want {
+				t.Errorf("retry system tail = %q, want %q", strings.TrimPrefix(f.systemOf(1), reviewSystemV4), want)
+			}
+		})
+	}
+}
+
+func TestReviewV4TwoDefectsFail(t *testing.T) {
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{lead("Месяц", "Ушло 180 000 ₸.", nil, "c2")}}, true)
+	rec := f.post(t, f.member, reviewBodyV4)
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), `"ai_failed"`) {
+		t.Fatalf("status %d %s, want 502 ai_failed", rec.Code, rec.Body.String())
+	}
+	if u := f.usage(); u.Requests != 0 || u.InputTokens != 2000 {
+		t.Errorf("usage = %+v", u)
+	}
+}
+
+func TestReviewV4Body(t *testing.T) {
+	fact := `{"id":"f1","about":"доход","value":"1 ₸","raw":1}`
+	card := func(id, kind string) string { return `{"id":"` + id + `","kind":"` + kind + `","about":"переводы людям"}` }
+	v4 := func(facts, cards string) string { return `{"v":4,"reason":"month","facts":[` + facts + `],"cards":[` + cards + `]}` }
+	seven := make([]string, 7)
+	for i := range seven {
+		seven[i] = card(fmt.Sprintf("c%d", i+1), "people")
+	}
+	open := `{"id":"a1","kind":"open","about":"открыть траты «Кафе»","value":"","effect":""}`
+	for name, tc := range map[string]struct {
+		body string
+		want int
+	}{
+		"ok":               {v4(fact, card("c1", "people")), http.StatusOK},
+		"no cards":         {v4(fact, ``), http.StatusBadRequest},
+		"7 cards":          {v4(fact, strings.Join(seven, ",")), http.StatusBadRequest},
+		"bad card id":      {v4(fact, card("a1", "people")), http.StatusBadRequest},
+		"card id twice":    {v4(fact, card("c1", "people")+","+card("c1", "cash")), http.StatusBadRequest},
+		"unknown kind":     {v4(fact, card("c1", "salary")), http.StatusBadRequest},
+		"extra card field": {v4(fact, `{"id":"c1","kind":"people","about":"x","name":"Замира"}`), http.StatusBadRequest},
+		"no facts":         {v4(``, card("c1", "people")), http.StatusBadRequest},
+		"v4 with actions":  {`{"v":4,"reason":"month","facts":[` + fact + `],"cards":[` + card("c1", "people") + `],"actions":[` + open + `]}`, http.StatusBadRequest},
+		"v3 with cards":    {`{"v":3,"reason":"month","facts":[` + fact + `],"actions":[` + open + `],"cards":[` + card("c1", "people") + `]}`, http.StatusBadRequest},
+		"v 5":              {`{"v":5,"reason":"month","facts":[` + fact + `],"cards":[` + card("c1", "people") + `]}`, http.StatusBadRequest},
+		// The old PWA keeps sending v3 (Р-26): accepted as it was.
+		"v3 body": {reviewBody, http.StatusOK},
+	} {
+		t.Run(name, func(t *testing.T) {
+			answers := []string{lead("Месяц", "Разберём переводы людям.", nil, "c1")}
+			if strings.Contains(tc.body, `"v":3`) {
+				answers = []string{cleanAnswer}
+			}
+			f := newReviewFixture(t, &fakeClaudeQueue{texts: answers}, true)
+			if rec := f.post(t, f.member, tc.body); rec.Code != tc.want {
+				t.Errorf("status %d %s, want %d", rec.Code, rec.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+// TestLiveReviewV4 is the live measure of FB-23: AI_LIVE=1, ANTHROPIC_API_KEY, AI_LIVE_BODY (a v4 body), AI_LIVE_N
+// runs, AI_LIVE_MODEL (claude-opus-5-5 by default). Skipped in CI.
+func TestLiveReviewV4(t *testing.T) {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key == "" || os.Getenv("AI_LIVE") != "1" {
+		t.Skip("live review v4: set AI_LIVE=1 and ANTHROPIC_API_KEY")
+	}
+	body := reviewBodyV4
+	if p := os.Getenv("AI_LIVE_BODY"); p != "" {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body = string(raw)
+	}
+	var req reviewRequest
+	_ = json.Unmarshal([]byte(body), &req)
+	kinds := map[string]string{}
+	for _, c := range req.Cards {
+		kinds[c.ID] = c.Kind
+	}
+	runs, _ := strconv.Atoi(os.Getenv("AI_LIVE_N"))
+	runs = max(runs, 1)
+	f := newReviewFixture(t, &fakeClaudeQueue{}, false)
+	f.handler.gate.client = ai.New(key, "")
+	if m := os.Getenv("AI_LIVE_MODEL"); m != "" {
+		f.handler.model = m
+	}
+	if e := os.Getenv("AI_LIVE_EFFORT"); e != "" {
+		f.handler.effort = e
+	}
+	ok := 0
+	for i := range runs {
+		before := f.usage()
+		start := time.Now()
+		rec := f.post(t, f.member, body)
+		after := f.usage()
+		t.Logf("run %d: %d in %v, %d in / %d out tokens, %d µ$ (retry ≈ 2× tokens)", i+1, rec.Code, time.Since(start).Round(100*time.Millisecond),
+			after.InputTokens-before.InputTokens, after.OutputTokens-before.OutputTokens, after.CostMicros-before.CostMicros)
+		if rec.Code != http.StatusOK {
+			continue
+		}
+		ok++
+		var got ReviewLead
+		_ = json.Unmarshal(rec.Body.Bytes(), &got)
+		fig := "—"
+		if got.Figure != nil {
+			fig = *got.Figure
+		}
+		t.Logf("  %s — %s [figure %s · next %s: %s]", got.Title, got.Text, fig, got.Next, kinds[got.Next])
+	}
+	u := f.usage()
+	t.Logf("total %s: %d/%d ok, %d requests, %d in, %d out, %d µ$", f.handler.model, ok, runs, u.Requests, u.InputTokens, u.OutputTokens, u.CostMicros)
+}
