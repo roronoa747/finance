@@ -133,6 +133,23 @@ describe('reviewCards — виды таблицы Р-24', () => {
     expect(kind(cards, 'double')[0]).toMatchObject({ title: 'Дважды', figure: { value: 12_000, unit: 'money' }, button: 'Разобрать', target: { kind: 'op', opId: sport[1].id } })
   })
 
+  it('подорожала годовая подписка — разница как есть, строка «раз в год» (Р-19); месячная — «чем было»', () => {
+    const kino: Obligation = { id: 'kino', name: 'Кинопоиск', note: '', day: 5, category: 'd4', versions: [{ from: '2026-01', amount: 2_490 }], updatedAt: T0 }
+    const ins: Obligation = { id: 'ins', name: 'Страховка', note: '', day: 5, category: 'd4', every: 'year', versions: [{ from: '2026-01', amount: 60_000 }], updatedAt: T0 }
+    const f = family({
+      doc: {
+        obligations: [...planFamilyDoc().obligations, kino, ins],
+        reviewFinds: [
+          rf('a', KEY, 'pricier', 'kino', { name: 'KINO', amount: 2_990, was: 2_490, targetId: 'kino' }),
+          rf('a', KEY, 'pricier', 'insur', { name: 'INSUR', amount: 66_000, was: 60_000, targetId: 'ins' }),
+        ],
+      },
+    })
+    const cards = kind(cardsOf(f), 'pricier')
+    expect(cards.find((c) => c.subject === 'Страховка')).toMatchObject({ figure: { value: 6_000, unit: 'money' }, line: 'Страховка — дороже, раз в год', monthly: 500 })
+    expect(cards.find((c) => c.subject === 'Кинопоиск')).toMatchObject({ line: 'Кинопоиск — дороже, чем было' })
+  })
+
   it('привычка с переносом — «Перенести в мечту»; привычка партнёра — не моя', () => {
     const ht = (by: PersonId, period: string): HabitTotal => ({ id: `${by}:${period}:delivery`, by, period, habit: 'delivery', count: 10, amount: 40_000, updatedAt: T0 })
     const totals = ['2026-07', '2026-08', '2026-09'].map((m) => ht('a', m))

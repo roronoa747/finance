@@ -6295,6 +6295,8 @@ export function whereRows(state: MonthPlanState, ctx: MonthPlanCtx, n = 5, by?: 
 export const REVIEW_CARDS_MAX = 6
 /** Строка карточки «Поставить план»: раздел выше своего плана / плана нет. */
 export const PLAN_LINE = { over: 'Выше плана', none: 'Плана нет' } as const
+/** Строка «Подорожало»: у годовой подписки разница — раз в год (Р-19), цифра та же. */
+export const PRICIER_LINE = { month: 'дороже, чем было', year: 'дороже, раз в год' } as const
 /** «Поставить план»: раздел без плана — от 10 % своего факта месяца; таких карточек — до 2. */
 export const PLAN_CARD_SHARE = 10
 export const PLAN_CARDS_MAX = 2
@@ -6415,7 +6417,7 @@ export function reviewCards(
     } else if (f.kind === 'pricier') {
       card({
         kind: 'pricier', key: f.key, title: 'Подорожало', figure: { value: f.amount - f.was, unit: 'money' },
-        line: `${f.name} — дороже, чем было`, button: 'Обновить сумму', target: { kind: 'obligation', obligationId: f.obligationId }, monthly: f.monthly, subject: f.name,
+        line: `${f.name} — ${f.every === 'year' ? PRICIER_LINE.year : PRICIER_LINE.month}`, button: 'Обновить сумму', target: { kind: 'obligation', obligationId: f.obligationId }, monthly: f.monthly, subject: f.name,
       })
     } else if (f.kind === 'double') {
       // Второе списание той же суммы — его и разбирают («Мне вернули»).

@@ -76,6 +76,16 @@ describe('buildReviewFactsV4 — факты и карточки', () => {
     expect(body).toContain('наличные без заметки — записать, на что')
   })
 
+  it('годовая подписка подорожала: факт — разница «раз в год», подпись «дороже раз в год», как v3 (Р-19)', () => {
+    const ins = { id: 'ins', name: 'Страховка', note: '', day: 5, category: 'd4' as const, every: 'year' as const, versions: [{ from: '2026-01', amount: 60_000 }], updatedAt: T0 }
+    const pricier: ReviewFind = { id: `a:${KEY}:pricier:insur`, by: 'a', period: KEY, kind: 'pricier', name: 'INSUR', categoryId: null, count: 1, amount: 66_000, was: 60_000, targetId: 'ins', updatedAt: T0 }
+    const { doc, plan } = input({ obligations: [...planFamilyDoc().obligations, ins], reviewFinds: [partnerFind, pricier] })
+    const out = buildReviewFactsV4(doc, plan, OPS, 'a', 'month')
+    const fact = out.payload.facts.find((f) => f.about === 'подписка «Страховка» стала дороже на — раз в год')!
+    expect(fact).toMatchObject({ value: money(6_000), raw: 6_000 })
+    expect(out.labels.get(fact.id)).toBe('дороже раз в год · Страховка')
+  })
+
   it('`by`: находки и итоги партнёра в моё тело не идут; у партнёра — его факт', () => {
     const { doc, plan } = input()
     const mine = JSON.stringify(buildReviewFactsV4(doc, plan, OPS, 'a', 'month').payload)

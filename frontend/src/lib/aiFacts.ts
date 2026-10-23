@@ -2,6 +2,7 @@ import type { OpenTarget, PersonId, ReviewAction, ReviewCardFact, ReviewFact, Re
 import {
   HABIT_NAMES,
   PLAN_LINE,
+  PRICIER_LINE,
   SHIFT_REASON_TEXT,
   activePlan,
   cushionCover,
@@ -437,7 +438,8 @@ function cardFacts(c: ReviewCard): Draft[] {
     case 'plan':
       return [c.line === PLAN_LINE.none ? put(`траты на ${nm(s)} без плана в этом месяце`, `без плана · ${bare(s)}`) : put(`траты на ${nm(s)} выше плана на`, `сверх плана · ${bare(s)}`)]
     case 'pricier':
-      return [put(`подписка ${nm(s)} стала дороже на`, `дороже · ${bare(s)}`)]
+      // Годовая — разница раз в год, как v3 (Р-19).
+      return [c.line.endsWith(PRICIER_LINE.year) ? put(`подписка ${nm(s)} стала дороже на — раз в год`, `дороже раз в год · ${bare(s)}`) : put(`подписка ${nm(s)} стала дороже на`, `дороже · ${bare(s)}`)]
     case 'double':
       return [put(`списание ${nm(s)} прошло дважды — лишнее`, `лишнее · ${bare(s)}`)]
   }
