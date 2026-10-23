@@ -88,7 +88,7 @@ describe('AI-05: карточка «ИИ» в настройках', () => {
     card.querySelector<HTMLButtonElement>('button[aria-label="Что уходит"]')!.click()
     await settle()
     expect(document.body.textContent).toContain(
-      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, продавцов и суммы частых трат, списаний и крупных покупок, скриншот товара, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
+      'Claude от Anthropic получает цифры месяца и названия статей без ваших имён, продавцов и суммы частых трат, списаний и крупных покупок, фото чека и фразу о мечте. Разбор приходит сам — 1-го и после зарплаты. На ваших данных не обучается.',
     )
     const sw = card.querySelector<HTMLButtonElement>('[role="switch"]')!
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -118,7 +118,6 @@ describe('AI-05: лист согласия', () => {
     expect(items).toEqual([
       'Цифры месяца и названия статей без ваших имён',
       'Продавцы и суммы частых трат, списаний и крупных покупок',
-      'Скриншот товара',
       'Фото чека',
       'Фраза о мечте',
     ])
@@ -183,7 +182,7 @@ describe('AI-05: лист согласия', () => {
     const first = ai.ensureConsent()
     await settle()
     expect(ai.sheetOpen).toBe(true)
-    expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(5)
+    expect(document.querySelectorAll('[data-ai-consent] li')).toHaveLength(4)
     document.querySelector<HTMLButtonElement>('[data-ai-yes]')!.click()
     await expect(first).resolves.toBe(true)
     expect(finance.privateDoc.aiConsent).toMatchObject({ on: true, v: 3 })
