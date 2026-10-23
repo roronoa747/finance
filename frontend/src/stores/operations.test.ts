@@ -1369,6 +1369,43 @@ describe('stores/operations — «В платежи» (FB-09, Р-17)', () => {
     expect(marks().map((p) => p.period)).toEqual(['2026-09', '2026-10'])
   })
 
+  it('TL-02: вторая подписка того же продавца — «В платежи» → два правила, обе строки отмечены своей суммой, в траты не уходят; следующий месяц — сами', async () => {
+    signIn('a')
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(planFamilyDoc(), 1)
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-02', -1_990, 'APPLE.COM BILL'), op('2026-09-14', -4_990, 'APPLE.COM BILL'))))
+    await store.send(client)
+    const line = (amount: number, month = '2026-09') => store.all.find((o) => o.amount === -amount && o.date.startsWith(month))!
+    const cloud = finance.addObligation({ name: 'iCloud', note: 'ежемесячно', day: 14, category: 'd4', amount: 4_990 })
+    await store.addToPayments(line(4_990).id, cloud, client)
+
+    // Продавец уже платёж, а 1 990 в том же месяце — вторая подписка: «В платежи» предлагает её сумму.
+    const prefill = store.recurringFor(line(1_990))!
+    expect(prefill).toMatchObject({ amount: 1_990, day: 2, kind: 'subscription' })
+    expect(store.recurringFor(line(4_990))).toBeNull()
+    const music = finance.addObligation({ name: 'Apple Music', note: 'ежемесячно', day: prefill.day, category: 'd4', amount: prefill.amount })
+    await store.addToPayments(line(1_990).id, music, client)
+
+    const apple = finance.merchantRules.filter((r) => r.match.merchant === normalizeMerchant('APPLE.COM BILL'))
+    expect(apple.map((r) => 'payment' in r.to && r.to.payment.targetId).sort()).toEqual([cloud, music].sort())
+    const marks = (id: string) => finance.payments.filter((p) => !p.deletedAt && p.targetId === id).map((p) => [p.period, p.amount, p.opId])
+    expect(marks(cloud)).toEqual([['2026-09', 4_990, line(4_990).id]])
+    expect(marks(music)).toEqual([['2026-09', 1_990, line(1_990).id]])
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_subscriptions')?.unmarked ?? 0).toBe(0)
+    expect(store.recurringFor(line(1_990))).toBeNull()
+
+    vi.setSystemTime(new Date('2026-10-16T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-16', op('2026-10-02', -1_990, 'APPLE.COM BILL'), op('2026-10-14', -4_990, 'APPLE.COM BILL'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(2)
+    expect(marks(music).map((m) => m[0])).toEqual(['2026-09', '2026-10'])
+    expect(marks(cloud).map((m) => m[0])).toEqual(['2026-09', '2026-10'])
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_subscriptions')?.unmarked ?? 0).toBe(0)
+  })
+
   it('строка ждёт «это платёж по …?» к заведённому платежу — «В платежи» не предлагается (/ux Блока 2: дубль платежа)', async () => {
     signIn('a')
     const finance = useFinanceStore()

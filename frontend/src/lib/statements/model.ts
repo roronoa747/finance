@@ -173,16 +173,47 @@ function fromRule(rule: MerchantRule, op: Operation, fits?: PaymentFits): Catego
   return { categoryId: to.categoryId, internal: false }
 }
 
-/** Правило семьи для операции: по получателю, затем по продавцу; последнее по правке. */
-export function ruleFor(op: Pick<Operation, 'merchant' | 'counterparty'>, rules: MerchantRule[]): MerchantRule | undefined {
+/**
+ * Сумма цели правила платежа на месяц операции (`matching.ts` `paymentAmount`): обязательство — сумма месяца, кредит —
+ * платёж; зарплата и нет цели — null.
+ */
+export type PaymentAmount = (payment: PaymentRule, op: Pick<Operation, 'date'>) => number | null
+
+type RuleOp = Pick<Operation, 'merchant' | 'counterparty'> & Partial<Pick<Operation, 'amount' | 'date'>>
+
+/**
+ * Правило совпадения: последнее по правке; последнее — правило платежа, а у совпадения их несколько (две подписки
+ * одного продавца, TL-02, Р-2) — то, чья сумма (`amountOf`) ближе к сумме строки; при равенстве — последнее. Без
+ * `amountOf` или суммы строки — последнее, как до TL-02.
+ */
+function pick(rules: MerchantRule[], op: RuleOp, amountOf?: PaymentAmount): MerchantRule | undefined {
+  const last = latest(rules)
+  if (!last || !('payment' in last.to) || !amountOf || op.amount === undefined || !op.date) return last
+  const payments = rules.filter((r) => 'payment' in r.to).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  if (payments.length < 2) return last
+  const spent = Math.abs(op.amount)
+  const gap = (r: MerchantRule) => {
+    const amount = 'payment' in r.to ? amountOf(r.to.payment, { date: op.date! }) : null
+    return amount === null ? Infinity : Math.abs(spent - amount)
+  }
+  let best = last
+  for (const r of payments) if (gap(r) < gap(best)) best = r
+  return best
+}
+
+/**
+ * Правило семьи для операции: по получателю, затем по продавцу; последнее по правке, из нескольких правил платежа — по
+ * ближайшей сумме (`pick`).
+ */
+export function ruleFor(op: RuleOp, rules: MerchantRule[], amountOf?: PaymentAmount): MerchantRule | undefined {
   const live = liveRules(rules)
   if (op.counterparty) {
     const who = normalizeCounterparty(op.counterparty)
-    const rule = latest(live.filter((r) => r.match.counterparty === who))
+    const rule = pick(live.filter((r) => r.match.counterparty === who), op, amountOf)
     if (rule) return rule
   }
   const merchant = normalizeMerchant(op.merchant)
-  return latest(live.filter((r) => r.match.merchant === merchant))
+  return pick(live.filter((r) => r.match.merchant === merchant), op, amountOf)
 }
 
 /** Заглушки разбора пуша вместо продавца (сервер, `applepay.Placeholder`): пуш не назвал ни продавца, ни получателя. */
@@ -267,13 +298,14 @@ export function categorize(
   rules: MerchantRule[],
   dictionary = DICTIONARY,
   fits?: PaymentFits,
+  amountOf?: PaymentAmount,
 ): Categorized {
   // Ручная трата: раздел выбрал человек (Р-1) — ни правило, ни словарь его не трогают.
   if (isHand(op)) return { categoryId: op.categoryId, internal: false }
   const stub = isPhoneStub(op)
   // Заглушка пуша: свой ответ этой строки (`isPhoneStub`) сильнее разбора; правила семьи — только правило платежа.
   if (stub && op.categoryId && op.amount < 0 && !op.internal) return { categoryId: op.categoryId, internal: false }
-  const rule = ruleFor(op, stub ? rules.filter((r) => 'payment' in r.to) : rules)
+  const rule = ruleFor(op, stub ? rules.filter((r) => 'payment' in r.to) : rules, amountOf)
   const byRule = rule ? fromRule(rule, op, fits) : null
   if (byRule) return byRule
   const payment = rule && 'payment' in rule.to ? { payment: rule.to.payment } : {}
@@ -294,7 +326,8 @@ const NONE: ReadonlySet<string> = new Set()
  * Пересчёт всех операций после нового правила. `released` — операции, чья отметка из выписки
  * снята (`releasedOps`, B2C-15 п. 3): правило «это платёж по …» им раздел не ставит — операция
  * возвращается в траты (раздел по словарю или виду), само правило остаётся для новых строк.
- * `fits` — плановый раздел правила платежа только «таким» строкам (`paymentFits`).
+ * `fits` — плановый раздел правила платежа только «таким» строкам (`paymentFits`); `amountOf` — какое из правил платежа
+ * продавца (`ruleFor`, TL-02).
  */
 export function applyRules(
   ops: Operation[],
@@ -302,10 +335,11 @@ export function applyRules(
   dictionary = DICTIONARY,
   released: ReadonlySet<string> = NONE,
   fits?: PaymentFits,
+  amountOf?: PaymentAmount,
 ): Operation[] {
   const unpaid = released.size ? rules.filter((r) => !('payment' in r.to)) : rules
   return ops.map((op) => {
-    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary, fits)
+    const { categoryId, internal } = categorize(op, released.has(op.id) ? unpaid : rules, dictionary, fits, amountOf)
     return categoryId === op.categoryId && internal === op.internal ? op : { ...op, categoryId, internal }
   })
 }

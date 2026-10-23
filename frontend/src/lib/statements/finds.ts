@@ -4,7 +4,7 @@ import type { Credit, Obligation, PersonId, RateBook } from '@/types/finance'
 import { UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
 import { detectRecurring } from './firstRun'
 import { habitKeepFrom, habitOf } from './habits'
-import { dayNumber, entrepreneurName, isSpend, normalizeMerchant, ruleFor, spendOf } from './model'
+import { dayNumber, entrepreneurName, isSpend, normalizeMerchant, ruleFor, spendOf, type PaymentAmount } from './model'
 import type { MerchantRule, Operation, ReviewFind, SpendCategory } from './types'
 
 // Находки по операциям (бэклог «Разбор», Р-13, Р-14, RZ-01): каждый телефон ищет их по своим операциям — операции
@@ -50,6 +50,8 @@ export type DueCtx = {
   obligations: Obligation[]
   credits: Pick<Credit, 'id' | 'name' | 'deletedAt'>[]
   book?: RateBook | null
+  /** Сумма цели правила платежа (`paymentAmount`): из двух подписок продавца — та, что ближе суммой (TL-02, Р-2). */
+  amountOf?: PaymentAmount
 }
 
 const clipName = (name: string) => name.trim().slice(0, FIND_NAME_MAX).trim()
@@ -134,8 +136,8 @@ export function topFinds(ops: Operation[], by: PersonId, period: string, categor
 }
 
 /** Правило платежа операции (обязательство, кредит, зарплата) или null. */
-const paymentOf = (op: Operation, rules: MerchantRule[]) => {
-  const to = ruleFor(op, rules)?.to
+const paymentOf = (op: Operation, rules: MerchantRule[], amountOf?: PaymentAmount) => {
+  const to = ruleFor(op, rules, amountOf)?.to
   return to && 'payment' in to ? to.payment : null
 }
 
@@ -173,7 +175,7 @@ export function dueFinds(ops: Operation[], by: PersonId, period: string, ctx: Du
   const pricier = new Map<string, ReviewFind>()
   for (const op of window) {
     if (!inMonth(op, period)) continue
-    const p = paymentOf(op, ctx.rules)
+    const p = paymentOf(op, ctx.rules, ctx.amountOf)
     if (p?.kind !== 'obligation') continue
     const o = ctx.obligations.find((x) => x.id === p.targetId && !x.deletedAt)
     if (!o || o.estimate) continue

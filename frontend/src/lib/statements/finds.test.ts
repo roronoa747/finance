@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Obligation } from '@/types/finance'
 import { DOUBLE_DAYS, FIND_NAME_MAX, FINDS_MAX, dueFinds, leakFinds, reviewFinds, sameFind, sellerOk, topFinds } from './finds'
 import { normalizeMerchant } from './model'
+import { paymentAmount } from './matching'
 import type { MerchantRule, Operation } from './types'
 
 // Находки участника RZ-01 (Р-13, Р-14): утечки, верхушки разделов, новые регулярные, подорожания и двойные — по
@@ -134,6 +135,17 @@ describe('dueFinds — новые регулярные, подорожания, 
       { id: 'a:2026-09:pricier:kinopoisk', by: 'a', period: SEP, kind: 'pricier', name: 'KINOPOISK', categoryId: 'sc_subscriptions', count: 1, amount: 2_990, was: 2_490, targetId: 'o1', updatedAt: 'T' },
     ])
     expect(dueFinds([kino(-2_590)], 'a', SEP, ctx)).toEqual([])
+  })
+
+  it('TL-02: две подписки продавца (1 990 и 4 990), подорожала одна (5 900) → «Подорожало» по ней, вторая не задета', () => {
+    const obligations = [obligation('music', 'Apple Music', 1_990), obligation('cloud', 'iCloud', 4_990)]
+    const rules = [{ ...payRule('APPLE.COM BILL', 'music'), updatedAt: '2026-02-01T00:00:00Z' }, payRule('APPLE.COM BILL', 'cloud')]
+    const ctx = { ...NONE, obligations, rules, amountOf: paymentAmount({ obligations }) }
+    const apple = (amount: number, d: number) => op('APPLE.COM BILL', amount, 'sc_subscriptions', day(SEP, d))
+    expect(dueFinds([apple(-1_990, 3), apple(-5_900, 14)], 'a', SEP, ctx).map((f) => [f.kind, f.amount, f.was, f.targetId])).toEqual([['pricier', 5_900, 4_990, 'cloud']])
+    expect(dueFinds([apple(-1_990, 3), apple(-4_990, 14)], 'a', SEP, ctx)).toEqual([])
+    // Без сумм — последнее правило (Apple Music) на обе строки, как до TL-02: 5 900 «дороже» 1 990 — ложное подорожание.
+    expect(dueFinds([apple(-1_990, 3), apple(-5_900, 14)], 'a', SEP, { ...ctx, amountOf: undefined }).map((f) => [f.was, f.targetId])).toEqual([[1_990, 'music']])
   })
 
   it('оценка («сумма плавает») 20 000, пришло 28 000 — не подорожание; та же сумма без оценки — подорожание', () => {

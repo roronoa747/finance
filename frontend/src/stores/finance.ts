@@ -1194,7 +1194,7 @@ export const useFinanceStore = defineStore('finance', () => {
 
   /**
    * Правило «продавец / получатель → раздел, внутренний, кому → что». Правило на то же
-   * совпадение не множится — правится его запись (LWW по id при слиянии).
+   * совпадение не множится — правится его запись (LWW по id при слиянии); кроме правил платежа разных целей (TL-02).
    */
   /**
    * Новое назначение поверх прежнего у того же продавца (одно правило на совпадение). Правило
@@ -1217,20 +1217,38 @@ export const useFinanceStore = defineStore('finance', () => {
     return addMerchantRules([rule], by)[0]
   }
 
-  /** Несколько правил одной правкой личного документа — один синк (ответ пачкой, Р-58). */
+  /**
+   * Несколько правил одной правкой личного документа — один синк (ответ пачкой, Р-58). Правило платежа с новой целью у
+   * продавца, у которого уже есть правила платежа (вторая подписка, TL-02, Р-2), — своя запись рядом, `restCategoryId`
+   * прежних; та же цель — правится её запись. Раздел у продавца с несколькими правилами платежа — «остальным» строкам
+   * каждого; «между своими» и «кому → что» заменяют первое, прочие — надгробия.
+   */
   function addMerchantRules(rules: Pick<MerchantRule, 'match' | 'to'>[], by: PersonId): MerchantRule[] {
     const t = new Date().toISOString()
+    const fresh = (rule: Pick<MerchantRule, 'match' | 'to'>): MerchantRule => ({ id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t })
+    const edit = (r: MerchantRule, to: MerchantRule['to']): MerchantRule => ({ ...r, to: mergeRuleTarget(r.to, to), by, updatedAt: t })
+    const writes: MerchantRule[] = []
     const records = rules.map((rule) => {
-      const existing = merchantRules.value.find((r) => r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty)
-      return existing
-        ? { ...existing, to: mergeRuleTarget(existing.to, rule.to), by, updatedAt: t }
-        : { id: Math.random().toString(36).slice(2, 10), match: rule.match, to: rule.to, by, updatedAt: t }
+      const same = merchantRules.value.filter((r) => r.match.merchant === rule.match.merchant && r.match.counterparty === rule.match.counterparty)
+      const to = rule.to
+      const payments = same.filter((r) => 'payment' in r.to)
+      if ('payment' in to && payments.length) {
+        const own = payments.find((r) => 'payment' in r.to && r.to.payment.kind === to.payment.kind && r.to.payment.targetId === to.payment.targetId)
+        const record = own ? edit(own, to) : { ...fresh(rule), to: mergeRuleTarget(payments[0].to, to) }
+        writes.push(record)
+        return record
+      }
+      const [first, ...rest] = same
+      const record = first ? edit(first, to) : fresh(rule)
+      const siblings = rest.map((r) => ('categoryId' in to ? edit(r, to) : { ...r, deletedAt: t, updatedAt: t }))
+      writes.push(record, ...siblings)
+      return record
     })
     mutatePrivateDoc((doc) => {
-      const byId = new Map(records.map((r) => [r.id, r]))
+      const byId = new Map(writes.map((r) => [r.id, r]))
       const list = ((doc.merchantRules as MerchantRule[] | undefined) ?? []).map((r) => byId.get(r.id) ?? r)
       const known = new Set(list.map((r) => r.id))
-      doc.merchantRules = [...list, ...records.filter((r) => !known.has(r.id))]
+      doc.merchantRules = [...list, ...writes.filter((r) => !known.has(r.id))]
     })
     return records
   }

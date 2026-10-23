@@ -23,7 +23,7 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { declineKey, isDeclined, markedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentAmount, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { recurringOf, type RecurringPrefill } from '@/lib/statements/firstRun'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacementPairs } from '@/lib/statements/phone'
@@ -208,7 +208,9 @@ export const useOperationsStore = defineStore('operations', () => {
    * Правила семьи к операциям: снятым отметкам — без правила платежа, плановый раздел — только
    * «таким» строкам правила платежа (знак и сумма в допуске, `paymentFits`).
    */
-  const reapply = (list: Operation[]) => applyRules(list, finance.merchantRules, undefined, released.value, paymentFits(matchState()))
+  /** Суммы заведённых платежей — из двух подписок продавца строка идёт к той, что ближе суммой (TL-02, Р-2). */
+  const amountOf = computed(() => paymentAmount(matchState()))
+  const reapply = (list: Operation[]) => applyRules(list, finance.merchantRules, undefined, released.value, paymentFits(matchState()), amountOf.value)
   /** Строки черновика, которые отметятся сами при отправке — по правилам семьи. */
   const draftAutoMatches = computed(() => matchCandidates(draftOps.value, matchState(), finance.merchantRules, me()).filter((c) => c.confidence === 'rule'))
 
@@ -510,6 +512,7 @@ export const useOperationsStore = defineStore('operations', () => {
       credits: finance.credits,
       book: useFxStore().book,
       categories: finance.householdDoc.spendCategories ?? [],
+      amountOf: amountOf.value,
     }
     const writes: ReviewFind[] = []
     for (const period of months.filter((m) => m >= from)) {
@@ -697,7 +700,7 @@ export const useOperationsStore = defineStore('operations', () => {
   const shownMarked = computed(() => totalMarks(shown.value).marked)
   function recurringFor(op: Operation): RecurringPrefill | null {
     if (auth.isViewer || shownMarked.value.has(op.id)) return null
-    return recurringOf(op, shown.value, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() })
+    return recurringOf(op, shown.value, { rules: finance.merchantRules, payments: finance.payments, today: todayIso(), amountOf: amountOf.value })
   }
 
   /**
@@ -1103,6 +1106,7 @@ export const useOperationsStore = defineStore('operations', () => {
     editOp,
     refundsFor,
     recurringFor,
+    amountOf,
     addToPayments,
     recategorizeAll,
     totalMarks,

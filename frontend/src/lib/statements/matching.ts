@@ -1,6 +1,6 @@
 import type { Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
-import { dayNumber, isHand, ruleFor } from './model'
+import { dayNumber, isHand, ruleFor, type PaymentAmount } from './model'
 import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
 import { addMonths, dayLabel, daysInMonth, monthKey, todayIso } from '@/lib/dates'
 import { money } from '@/lib/money'
@@ -131,6 +131,23 @@ export function ruleHit(op: Operation, payment: PaymentRule, targets: RuleTarget
 }
 
 /**
+ * Сумма цели правила платежа на месяц строки (TL-02, Р-2): обязательство — `amountAt` ближайшего месяца по дню платежа,
+ * кредит — `creditDueAmount`; зарплата и цели нет — null. По ней `ruleFor` выбирает из нескольких правил платежа продавца
+ * (две подписки) — одинаково для раздела (`applyRules`), отметки (`matchCandidates`), «Подорожало» и «В платежи».
+ */
+export function paymentAmount(state: { obligations?: Obligation[]; credits?: Credit[]; book?: RateBook | null }): PaymentAmount {
+  return (payment, op) => {
+    if (payment.kind === 'credit') {
+      const c = (state.credits ?? []).find((x) => x.id === payment.targetId && !x.deletedAt)
+      return c ? creditDueAmount(c) : null
+    }
+    if (payment.kind !== 'obligation') return null
+    const o = (state.obligations ?? []).find((x) => x.id === payment.targetId && !x.deletedAt)
+    return o ? amountAt(o, nearestPeriod(op.date, o.day).period, state.book) : null
+  }
+}
+
+/**
  * Проверка для `applyRules` (возврат приёмки 2 п. 2): плановый раздел правила платежа — только
  * «таким» строкам (`ruleHit`), остальные строки продавца — траты по словарю или незнакомое. Иначе
  * правило на «Перевод с карты на карту» 15 000 убирало из «Свободно» все переводы месяца. Кредит —
@@ -229,6 +246,7 @@ export function matchCandidates(
   // Чужая зарплата — не кандидат и правилом не применяется: иначе приход A закрыл бы месяц B.
   const people = (state.people ?? []).filter((p) => !p.deletedAt && p.id === me)
   const linked = new Set(payments.map((p) => p.opId).filter((id): id is string => !!id))
+  const amountOf = paymentAmount(state)
   // Вторая строка — факт из выписки: сумма и дата операции, строка банка (DESIGN.md §6).
   const when = (op: Operation) => dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7))
   const text = (kind: MatchKind, name: string, op: Operation, pay?: PayEvent['kind']) =>
@@ -255,7 +273,7 @@ export function matchCandidates(
     // Правило семьи — без вопроса, но только «такая» строка (`ruleHit`: знак и сумма в допуске),
     // иначе месяц отметился бы чужой суммой. Не прошедшая строка идёт к эвристикам ниже и может
     // стать вопросом; прошедшая, чья пара уже занята, — тоже.
-    const rule = ruleFor(op, rules)
+    const rule = ruleFor(op, rules, amountOf)
     const hit = rule && 'payment' in rule.to ? ruleHit(op, rule.to.payment, { obligations, credits, people, salary }) : null
     if (rule && 'payment' in rule.to && hit) {
       const { kind, targetId, categoryId } = rule.to.payment

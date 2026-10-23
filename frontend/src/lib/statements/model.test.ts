@@ -12,6 +12,7 @@ import {
   isPhoneStub,
   matchPerson,
   refundCandidates,
+  ruleFor,
   ruleMatchOf,
   spendOf,
   withEdits,
@@ -501,5 +502,40 @@ describe('spendTotals — разовые (FB-07, Р-16)', () => {
     expect(of('sc_education')).toMatchObject({ amount: 340_000, ops: 2, oneOff: 300_000 })
     expect(of('sc_home')).toMatchObject({ amount: 150_000, oneOff: 150_000 })
     expect(of('sc_food')).not.toHaveProperty('oneOff')
+  })
+})
+
+describe('ruleFor — несколько правил платежа у продавца, по ближайшей сумме (TL-02, Р-2)', () => {
+  const apple = { merchant: normalizeMerchant('APPLE.COM BILL') }
+  const pay = (targetId: string, updatedAt = T): MerchantRule =>
+    rule({ match: apple, to: { payment: { kind: 'obligation', targetId, categoryId: 'sc_subscriptions' } }, updatedAt })
+  const AMOUNTS: Record<string, number> = { music: 1_990, cloud: 4_990 }
+  const amountOf = (p: { targetId: string }) => AMOUNTS[p.targetId] ?? null
+  const target = (o: Operation, rules: MerchantRule[]) => {
+    const to = ruleFor(o, rules, amountOf)?.to
+    return to && 'payment' in to ? to.payment.targetId : to
+  }
+
+  it('два правила 1 990 и 4 990 → 1 990 и 5 000 уходят каждая к своему; раздел (`categorize`) — от выбранного', () => {
+    const rules = [pay('music'), pay('cloud', '2026-09-21T10:00:00.000Z')]
+    expect(target(op({ merchant: 'APPLE.COM BILL', amount: -1_990 }), rules)).toBe('music')
+    expect(target(op({ merchant: 'APPLE.COM BILL', amount: -5_000 }), rules)).toBe('cloud')
+    const fits = (o: Operation, p: { targetId: string }) => Math.abs(-o.amount - AMOUNTS[p.targetId]) <= AMOUNTS[p.targetId] * 0.02
+    expect(categorize(op({ merchant: 'APPLE.COM BILL', amount: -1_990 }), rules, DICTIONARY, fits, amountOf)).toMatchObject({ categoryId: 'sc_subscriptions', payment: { targetId: 'music' } })
+  })
+  it('равное расстояние — последнее правило; без сумм (`amountOf` нет) — последнее, как раньше', () => {
+    const rules = [pay('music'), pay('cloud', '2026-09-21T10:00:00.000Z')]
+    expect(target(op({ merchant: 'APPLE.COM BILL', amount: -3_490 }), rules)).toBe('cloud')
+    const to = ruleFor(op({ merchant: 'APPLE.COM BILL', amount: -1_990 }), rules)?.to
+    expect(to && 'payment' in to && to.payment.targetId).toBe('cloud')
+  })
+  it('одно правило — всё к нему (продавец целиком)', () => {
+    const rules = [pay('cloud')]
+    expect(target(op({ merchant: 'APPLE.COM BILL', amount: -1_990 }), rules)).toBe('cloud')
+    expect(target(op({ merchant: 'APPLE.COM BILL', amount: -99_000 }), rules)).toBe('cloud')
+  })
+  it('правило по разделу того же продавца позже — «последнее побеждает»', () => {
+    const rules = [pay('music'), pay('cloud'), rule({ match: apple, to: { categoryId: 'sc_fun' }, updatedAt: '2026-09-22T10:00:00.000Z' })]
+    expect(ruleFor(op({ merchant: 'APPLE.COM BILL', amount: -1_990 }), rules, amountOf)?.to).toEqual({ categoryId: 'sc_fun' })
   })
 })

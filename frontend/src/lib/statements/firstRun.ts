@@ -1,6 +1,6 @@
 import type { MerchantRule, Operation } from './types'
 import type { Payment } from '@/types/finance'
-import { categorize, dayNumber, normalizeCounterparty, normalizeMerchant, ruleFor, shortMerchant } from './model'
+import { categorize, dayNumber, normalizeCounterparty, normalizeMerchant, ruleFor, shortMerchant, type PaymentAmount } from './model'
 import { addMonths } from '@/lib/dates'
 import { isoWeekday } from '@/lib/finance'
 import { AMOUNT_TOLERANCE, SALARY_TOLERANCE } from './matching'
@@ -248,10 +248,7 @@ export function monthlyOnce(ops: Pick<Operation, 'date' | 'amount'>[]): boolean 
  * `monthlyOnce` (TL-01, Р-1). `opId` — строка для `AddPaymentSheet` (путь FB-09: форма с заполнением, «Сохранить» →
  * платёж + отметка + правило); после записи правило `payment` убирает строку.
  */
-export function foundPayments(
-  ops: Operation[],
-  ctx: { rules: MerchantRule[]; payments: Pick<Payment, 'opId' | 'deletedAt'>[]; today: string },
-): (RecurringPrefill & { opId: string; key: string })[] {
+export function foundPayments(ops: Operation[], ctx: RecurringCtx): (RecurringPrefill & { opId: string; key: string })[] {
   const from = `${addMonths(ctx.today.slice(0, 7), -RECURRING_OF_MONTHS)}-01`
   const recent = ops.filter((o) => o.date >= from)
   const out: (RecurringPrefill & { opId: string; key: string })[] = []
@@ -270,23 +267,45 @@ export function foundPayments(
 /** Заполнение формы «Регулярный платёж» из повтора продавца (FB-09, Р-17): имя меняется в форме. */
 export type RecurringPrefill = { name: string; amount: number; day: number; kind: RecurringKind }
 
+/** Правила, отметки и «сегодня» семьи; `amountOf` — суммы заведённых платежей (`paymentAmount`, TL-02). */
+type RecurringCtx = { rules: MerchantRule[]; payments: Pick<Payment, 'opId' | 'deletedAt'>[]; today: string; amountOf?: PaymentAmount }
+
+/**
+ * Вторая подписка продавца, у которого уже есть правило платежа (TL-02, Р-2): строка вне ±5 % суммы каждого заведённого
+ * платежа продавца, и в каком-то месяце окна у продавца есть и списание по заведённому (±5 % его суммы), и такое, как
+ * эта строка. Одна строка в месяце дороже заведённой — «подорожало», не вторая. Без сумм (`amountOf`) — нет.
+ */
+function secondPayment(op: Operation, ops: Operation[], ctx: RecurringCtx, from: string): boolean {
+  const amountOf = ctx.amountOf
+  if (!amountOf) return false
+  const merchant = normalizeMerchant(op.merchant)
+  const payments = ctx.rules.flatMap((r) => (!r.deletedAt && r.match.merchant === merchant && 'payment' in r.to ? [r.to.payment] : []))
+  const near = (spent: number, amount: number) => Math.abs(spent - amount) <= amount * RECURRING_TOLERANCE
+  const ruled = (o: Operation) => payments.some((p) => {
+    const amount = amountOf(p, o)
+    return amount !== null && near(-o.amount, amount)
+  })
+  if (ruled(op)) return false
+  const key = groupKey(op)
+  const mine = ops.filter((o) => o.date >= from && o.amount < 0 && groupKey(o) === key)
+  const months = new Set(mine.filter(ruled).map((o) => o.date.slice(0, 7)))
+  return [...mine, op].some((o) => months.has(o.date.slice(0, 7)) && near(-o.amount, -op.amount))
+}
+
 /**
  * «В платежи» у своей траты (FB-09, Р-6, Р-17): повтор продавца — кандидат `detectRecurring` по своим операциям за 3
  * месяца, в чью группу (`groupKey`) входит `op`; или `op` — списание словарного вида (подписки, связь, коммуналка, кредит,
- * аренда — с одного; по своему разделу операции тоже). null — продавец уже платёж (правило `payment`) или эта строка уже
- * отметка платежа (`payments.opId`). Сумма и день — медианы строк группы в допуске суммы `op` (±5 %, как повтор): у
- * продавца с несколькими подписками разной цены форма — той, у которой нажали (возврат приёмки Блока 2), целые.
+ * аренда — с одного; по своему разделу операции тоже). null — продавец уже платёж (правило `payment`; кроме второй
+ * подписки — `secondPayment`, TL-02) или эта строка уже отметка платежа (`payments.opId`). Сумма и день — медианы строк
+ * группы в допуске суммы `op` (±5 %, как повтор): у продавца с несколькими подписками разной цены форма — той, у которой
+ * нажали (возврат приёмки Блока 2), целые.
  */
-export function recurringOf(
-  op: Operation,
-  ops: Operation[],
-  ctx: { rules: MerchantRule[]; payments: Pick<Payment, 'opId' | 'deletedAt'>[]; today: string },
-): RecurringPrefill | null {
+export function recurringOf(op: Operation, ops: Operation[], ctx: RecurringCtx): RecurringPrefill | null {
   if (op.amount >= 0 || op.internal || op.counterparty) return null
-  const to = ruleFor(op, ctx.rules)?.to
-  if (to && 'payment' in to) return null
-  if (ctx.payments.some((p) => !p.deletedAt && p.opId === op.id)) return null
   const from = `${addMonths(ctx.today.slice(0, 7), -RECURRING_OF_MONTHS)}-01`
+  const to = ruleFor(op, ctx.rules)?.to
+  if (to && 'payment' in to && !secondPayment(op, ops, ctx, from)) return null
+  if (ctx.payments.some((p) => !p.deletedAt && p.opId === op.id)) return null
   const key = groupKey(op)
   const spent = -op.amount
   const mine = ops.filter((o) => o.date >= from && groupKey(o) === key && Math.abs(-o.amount - spent) <= spent * RECURRING_TOLERANCE)

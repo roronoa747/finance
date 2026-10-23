@@ -645,7 +645,7 @@ const debtName = computed(() => plan.value.queue.find((q) => q.id === DEBT_CARD)
 /* ---------- Блок 5 «Фидбек», FB-21: «нашли в выписке» (Р-35), «Поставить план» (Р-36), месяц без дохода (Р-37) ---------- */
 /** Повторы из своих выписок, ещё не платежи, — только текущий месяц и участнику. */
 const found = computed(() =>
-  canEdit.value && props.monthKey === monthNow() ? foundPayments(ops.shown, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() }) : [],
+  canEdit.value && props.monthKey === monthNow() ? foundPayments(ops.shown, { rules: finance.merchantRules, payments: finance.payments, today: todayIso(), amountOf: ops.amountOf }) : [],
 )
 /** Подпись «нашли N в выписке» — когда платежей месяца нет и повторы есть. */
 const foundMeta = computed(() => plan.value.dues.length === 0 && found.value.length > 0)

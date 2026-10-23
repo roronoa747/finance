@@ -11,6 +11,7 @@ import { UPLOAD_HOLD_MS, useOperationsStore } from '../src/stores/operations'
 import { T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Month from '../src/views/Month.vue'
+import Money from '../src/views/Money.vue'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -31,6 +32,13 @@ const op = (date: string, amount: number, merchant: string, categoryId: string |
 })
 const statement = (ops: Omit<Operation, 'id'>[], from = '2026-10-01', to = '2026-10-22'): ParsedStatement => ({ bank: 'kaspi', from, to, skipped: 0, operations: assignIds(ops) })
 const day = (d: number) => `${K}-${String(d).padStart(2, '0')}`
+const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|\s+/g, ' ')
+const between = (html: string, from: string, to: string) => {
+  const i = html.indexOf(from)
+  if (i < 0) return ''
+  const j = html.indexOf(to, i + from.length)
+  return html.slice(i, j < 0 ? undefined : j)
+}
 const THREE_WEEKS = () => [
   op(day(7), -3_990, 'NETFLIX.COM', 'sc_subscriptions'),
   ...[1, 2, 8, 9, 15, 16].map((d) => op(day(d), -2_500, 'Coffee Boom', 'sc_cafe')),
@@ -109,5 +117,44 @@ describe('e2e / Хвосты Блок 1 — платежи из выписки',
     expect(rows).toEqual(found(A).map((f) => f.opId))
     expect(found(A).map((f) => [f.name, f.amount, f.kind])).toEqual([['NETFLIX.COM', 3_990, 'subscription']])
     for (const m of ['Coffee Boom', 'Yandex Go', 'Magnum']) expect(html).not.toContain(m)
+  })
+
+  it('TL-02: магазин приложений, две подписки (1 990 и 4 990) — обе заводятся через «В платежи», обе в «Деньгах», в траты не уходят; ноябрь отмечается сам', async () => {
+    const A = await phone()
+    const apple = (date: string, amount: number) => op(date, -amount, 'APPLE.COM BILL', 'sc_subscriptions')
+    await uploaded(A, statement([apple('2026-09-02', 1_990), apple('2026-09-14', 4_990), apple('2026-10-02', 1_990), apple('2026-10-14', 4_990)], '2026-09-01', '2026-10-22'))
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    const line = (amount: number, month = K) => ops.all.find((o) => o.amount === -amount && o.date.startsWith(month))!
+
+    // «Нашли в выписке» — одна строка продавца; «В платежи» → форма с её суммой → платёж.
+    const [first] = found(A)
+    expect(found(A)).toHaveLength(1)
+    const firstId = A.store.addObligation({ name: 'Apple Music', note: 'ежемесячно', day: first.day, category: 'd4', every: 'month', amount: first.amount })
+    await ops.addToPayments(first.opId, firstId, A.client)
+    // Вторая подписка — «В платежи» у её строки (лист операции): продавец уже платёж, но в месяце обе суммы.
+    const other = first.amount === 1_990 ? 4_990 : 1_990
+    const pre = ops.recurringFor(line(other))!
+    expect(pre).toMatchObject({ amount: other, kind: 'subscription' })
+    const secondId = A.store.addObligation({ name: 'iCloud', note: 'ежемесячно', day: pre.day, category: 'd4', every: 'month', amount: pre.amount })
+    await ops.addToPayments(line(other).id, secondId, A.client)
+    await A.store.syncHousehold(A.client)
+
+    const marks = (id: string) => A.store.payments.filter((p) => !p.deletedAt && p.targetId === id).map((p) => [p.period, p.amount])
+    expect(marks(firstId)).toEqual([[K, first.amount]])
+    expect(marks(secondId)).toEqual([[K, other]])
+    expect(A.store.householdDoc.spendTotals?.find((t) => t.id === `a:month:${K}:sc_subscriptions`)?.unmarked ?? 0).toBe(0)
+    expect(found(A)).toEqual([])
+    // «Деньги → Платежи»: подписки одной строкой — обе, сумма 6 980.
+    const subs = between(await screen(A.pinia, Money, '/money'), 'data-subs', '</button>')
+    expect(text(subs)).toContain('Подписки · 2')
+    expect(text(subs)).toContain('6 980')
+
+    // Ноябрь: обе строки отмечаются правилами сами, каждая своей суммой.
+    at('2026-11-20T07:00:00Z')
+    await uploaded(A, statement([apple('2026-11-02', 1_990), apple('2026-11-14', 4_990)], '2026-11-01', '2026-11-19'))
+    expect(marks(firstId).find((m) => m[0] === '2026-11')).toEqual(['2026-11', first.amount])
+    expect(marks(secondId).find((m) => m[0] === '2026-11')).toEqual(['2026-11', other])
+    expect(A.store.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-11:sc_subscriptions')?.unmarked ?? 0).toBe(0)
   })
 })

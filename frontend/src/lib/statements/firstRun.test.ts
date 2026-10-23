@@ -203,6 +203,24 @@ describe('recurringOf — «В платежи» у повтора продавц
     expect(recurringOf(at('i1', '2026-10-10', 5_000, 'APPLE.COM BILL'), APPLE, NONE)).toBeNull()
     expect(recurringOf(at('p1', '2026-10-10', -5_000, 'Дана К.', { counterparty: 'Дана К.', kind: 'transfer-out' }), APPLE, NONE)).toBeNull()
   })
+  describe('вторая подписка продавца с правилом платежа (TL-02, Р-2)', () => {
+    const rules = [{ id: 'r1', match: { merchant: normalizeMerchant('APPLE.COM BILL') }, to: { payment: { kind: 'obligation', targetId: 'o1', categoryId: 'sc_subscriptions' } }, updatedAt: T0 }] as MerchantRule[]
+    const ctx = { ...NONE, rules, amountOf: () => 4_990 }
+    it('в месяце 4 990 (заведено) + 1 990 → для 1 990 предлагает; для 4 990 — молчит', () => {
+      const music = at('m1', '2026-10-02', -1_990, 'APPLE.COM BILL')
+      const ops = [...APPLE, music]
+      expect(recurringOf(music, ops, ctx)).toEqual({ name: 'APPLE.COM BILL', amount: 1_990, day: 2, kind: 'subscription' })
+      expect(recurringOf(APPLE[2], ops, ctx)).toBeNull()
+    })
+    it('только 5 900 в месяце (подорожала) → молчит', () => {
+      const pricier = at('p1', '2026-10-13', -5_900, 'APPLE.COM BILL')
+      expect(recurringOf(pricier, [APPLE[0], APPLE[1], pricier], ctx)).toBeNull()
+    })
+    it('без сумм платежей (`amountOf` нет) — молчит, как раньше', () => {
+      const music = at('m1', '2026-10-02', -1_990, 'APPLE.COM BILL')
+      expect(recurringOf(music, [...APPLE, music], { ...NONE, rules })).toBeNull()
+    })
+  })
 })
 
 describe('foundPayments — «нашли N в выписке» (FB-21, Р-35)', () => {
