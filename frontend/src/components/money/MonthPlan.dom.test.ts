@@ -131,6 +131,9 @@ const press = async (el: HTMLElement | null | undefined) => {
 }
 const norm = (s: string) => s.replace(/\s+/g, ' ')
 const section = (k: 'dues' | 'spend' | 'queue') => q<HTMLButtonElement>(`[data-section="${k}"]`)
+/** «Раскрыто» — у кнопки-названия строки (`aria-expanded`), не у div строки (критик Блока 5 «Фидбек»). */
+const expanded = (k: 'dues' | 'spend' | 'queue') => q(`[data-section="${k}"] [data-row-open]`)!.getAttribute('aria-expanded')
+const allCollapsed = () => all('[data-section] [data-row-open]').every((el) => el.getAttribute('aria-expanded') === 'false')
 const dialogButton = (label: string) => all('[role="dialog"] button').find((b) => txt(b).startsWith(label))
 const plans = (finance: ReturnType<typeof useFinanceStore>) => (finance.householdDoc.allocations ?? []).filter((a) => a.kind === 'plan' && !a.deletedAt)
 
@@ -167,7 +170,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     }
     // Оглавление: три строки, всё свёрнуто.
     expect(all('[data-section]').map((el) => el.dataset.section)).toEqual(['dues', 'spend', 'queue'])
-    expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(allCollapsed()).toBe(true)
     expect(q('[data-due]')).toBeNull()
     expect(q('[data-queue]')).toBeNull()
     expect(txt(section('dues'))).toContain(norm(plain(plan.duesTotal)))
@@ -215,7 +218,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const finance = await open()
     const plan = planOf(finance)
     await press(section('queue'))
-    expect(section('queue')!.getAttribute('aria-expanded')).toBe('true')
+    expect(expanded('queue')).toBe('true')
     expect(all('[data-queue]').map((el) => el.dataset.queue)).toEqual(plan.queue.map((x) => x.id))
     expect(q('[data-queue-list] img')).toBeNull()
     expect(txt(document.body)).not.toContain('Желания')
@@ -224,14 +227,14 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     // Цвет круга «Платежи» — открывает платежи, цели сворачиваются; остальные цвета бледнеют.
     q<SVGElement>('[data-part="dues"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush()
-    expect(section('dues')!.getAttribute('aria-expanded')).toBe('true')
-    expect(section('queue')!.getAttribute('aria-expanded')).toBe('false')
+    expect(expanded('dues')).toBe('true')
+    expect(expanded('queue')).toBe('false')
     expect(q('[data-queue]')).toBeNull()
     expect(q('[data-part="queue"]')!.getAttribute('opacity')).toBe('0.3')
     expect(q('[data-part="dues"]')!.getAttribute('opacity')).toBe('1')
     // Повторное нажатие — свернуть.
     await press(section('dues'))
-    expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(allCollapsed()).toBe(true)
     await press(section('spend'))
     // AU-02: раскрытая «Траты» — разделы семьи (выписок нет — план), а не блоки участников.
     expect(q('[data-spend]')).toBeNull()
@@ -1528,7 +1531,7 @@ describe('FB-21: «нашли в выписке», «Поставить план
     expect(btn.className).toContain('h-[26px]')
     // Раскрытия строки нажатие кнопки не трогает.
     await press(btn)
-    expect(section('spend')!.getAttribute('aria-expanded')).toBe('false')
+    expect(expanded('spend')).toBe('false')
     const sheet = q('[data-plan-fact-sheet]')!
     expect(all('[data-plan-fact-row]').map((el) => el.dataset.planFactRow)).toEqual(['sc_food', 'sc_cafe', 'sc_fun'])
     expect(txt(q('[data-plan-fact-more]'))).toContain('ещё 2 раздела')

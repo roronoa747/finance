@@ -733,16 +733,18 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Tip id="tab-month" :text="tipText" above>
         <div class="border-t border-line py-0.5" data-sections>
         <template v-for="s in sections" :key="s.key">
-          <!-- Строка — div с кнопкой-названием на всю строку (`row-open`): рядом живёт маленькая «Поставить план» (Р-36), кнопки в кнопке нет. -->
+          <!--
+            Строка — div с кнопкой-названием на всю строку (`row-open`): рядом живёт маленькая «Поставить план» (Р-36),
+            кнопки в кнопке нет; «раскрыто» для читалки — у кнопки (критик Блока 5: `aria-expanded` на div без роли не читается).
+          -->
           <div
             class="press relative flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
-            :aria-expanded="opened === s.key"
             :data-section="s.key"
             @click="toggleSection(s.key)"
           >
             <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
-              <button type="button" class="row-open text-left text-[16.5px] font-bold text-ink" data-row-open>
+              <button type="button" class="row-open text-left text-[16.5px] font-bold text-ink" :aria-expanded="opened === s.key" data-row-open>
                 {{ s.name
                 }}<template v-if="s.dot"><span class="sr-only">, {{ s.call }}</span></template
                 ><template v-else-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>

@@ -4071,20 +4071,8 @@ const USUAL_LOOKBACK = 6
  * бы треть трат и заниженное «обычно». Загрузки встык и внахлёст склеиваются; дыра хоть в день — не полный.
  */
 export function monthCovered(key: string, uploads: UploadPeriod[], by: PersonId): boolean {
-  const start = `${key}-01`
   const end = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  const mine = uploads
-    .filter((u) => u.slot === by)
-    .map((u) => ({ from: u.period_from.slice(0, 10), to: u.period_to.slice(0, 10) }))
-    .filter((u) => u.to >= start && u.from <= end)
-    .sort((a, b) => a.from.localeCompare(b.from))
-  let next = start // первый ещё не покрытый день
-  for (const u of mine) {
-    if (u.from > next) return false
-    if (u.to >= next) next = addDaysIso(u.to, 1)
-    if (next > end) return true
-  }
-  return false
+  return spansCover(uploadSpans(uploads, by), { from: `${key}-01`, to: end })
 }
 
 /**
@@ -4133,14 +4121,20 @@ export const PLAN_FACT_DAYS = 14
 export const USUAL_WEEKS_MAX = 8
 export const USUAL_WEEKS_MIN = 2
 
-/** Периоды своих загрузок, не позже `today`, склеенные встык и внахлёст, по возрастанию. */
-function uploadSpans(uploads: UploadPeriod[], by: PersonId, today: string): { from: string; to: string }[] {
+type DateSpan = { from: string; to: string }
+
+/**
+ * Периоды своих загрузок, склеенные встык и внахлёст, по возрастанию; с `until` — обрезанные этим днём (не позже сегодня).
+ * Одно место для «полного» месяца (`monthCovered`), покрытия дней и полных недель «Поставить план» (критик Блока 5 «Фидбек»).
+ */
+function uploadSpans(uploads: UploadPeriod[], by: PersonId, until?: string): DateSpan[] {
+  const cut = (to: string) => (until && to > until ? until : to)
   const mine = uploads
     .filter((u) => u.slot === by)
-    .map((u) => ({ from: u.period_from.slice(0, 10), to: u.period_to.slice(0, 10) < today ? u.period_to.slice(0, 10) : today }))
+    .map((u) => ({ from: u.period_from.slice(0, 10), to: cut(u.period_to.slice(0, 10)) }))
     .filter((u) => u.from <= u.to)
     .sort((a, b) => a.from.localeCompare(b.from))
-  const out: { from: string; to: string }[] = []
+  const out: DateSpan[] = []
   for (const u of mine) {
     const last = out[out.length - 1]
     if (last && u.from <= addDaysIso(last.to, 1)) last.to = u.to > last.to ? u.to : last.to
@@ -4148,6 +4142,9 @@ function uploadSpans(uploads: UploadPeriod[], by: PersonId, today: string): { fr
   }
   return out
 }
+
+/** Период `r` целиком внутри одного из склеенных периодов (дыра хоть в день — нет). */
+const spansCover = (spans: DateSpan[], r: DateSpan) => spans.some((u) => u.from <= r.from && u.to >= r.to)
 
 /** Сколько дней покрывают мои выписки (объединение периодов, не позже `today`). */
 export function coveredDays(uploads: UploadPeriod[], by: PersonId, today: string): number {
@@ -4169,13 +4166,12 @@ export function usualWeekly(
 ): { weeks: string[]; amounts: Map<string, number> } | null {
   const spans = uploadSpans(uploads, by, today)
   if (!spans.length) return null
-  const covered = (r: { from: string; to: string }) => spans.some((u) => u.from <= r.from && u.to >= r.to)
   const weeks: string[] = []
   let w = weekKey(today)
   if (weekRange(w).to >= today) w = prevWeekKey(w)
   const first = spans[0].from
   while (weeks.length < USUAL_WEEKS_MAX && weekRange(w).to >= first) {
-    if (covered(weekRange(w))) weeks.push(w)
+    if (spansCover(spans, weekRange(w))) weeks.push(w)
     w = prevWeekKey(w)
   }
   if (weeks.length < USUAL_WEEKS_MIN) return null
