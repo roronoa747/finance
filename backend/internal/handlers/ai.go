@@ -218,17 +218,21 @@ func saneNumber(n json.Number) bool {
 	return err == nil && math.Abs(f) <= maxReviewNumber
 }
 
-// valid checks the body (RZ-04): v 3, reason, 1–40 facts f<N>, 1–9 actions a<N> (do — with a sum, open — about
-// only), no duplicates, short strings. A v2 body (no v, candidates) is 400 — the old client says «не вышло» (Р-16).
+// valid checks the body (RZ-04): v 3 or v 4, reason, 1–40 facts f<N>; v 3 — 1–9 actions a<N> (do — with a sum,
+// open — about only), v 4 — the cards (validV4); no duplicates, short strings. A v2 body (no v, candidates) is 400 —
+// the old client says «не вышло» (Р-16).
 func (q reviewRequest) valid() bool {
-	if q.V == 4 {
-		return q.validV4()
-	}
-	if q.V != 3 || len(q.Cards) > 0 || !slices.Contains(reviewReasons, q.Reason) || len(q.Actions) == 0 || len(q.Actions) > maxReviewActions {
+	if (q.V != 3 && q.V != 4) || !slices.Contains(reviewReasons, q.Reason) {
 		return false
 	}
 	seen := map[string]bool{}
 	if !q.validFacts(seen) {
+		return false
+	}
+	if q.V == 4 {
+		return q.validV4(seen)
+	}
+	if len(q.Cards) > 0 || len(q.Actions) == 0 || len(q.Actions) > maxReviewActions {
 		return false
 	}
 	for _, a := range q.Actions {
@@ -246,8 +250,8 @@ func (q reviewRequest) valid() bool {
 	return true
 }
 
-// modelText is what the model reads: the phone's facts without raw (the model does not count),
-// the actions and the reason — nothing else (the outgoing body is fixed by the tests).
+// modelText is what the model reads: the phone's facts without raw (the model does not count), the actions (v 3)
+// or the cards (v 4) and the reason — nothing else (the outgoing body is fixed by the tests).
 func (q reviewRequest) modelText() string {
 	type fact struct {
 		ID    string `json:"id"`
@@ -261,8 +265,28 @@ func (q reviewRequest) modelText() string {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false) // «Дом & сад» as named, not a \u code — as the sellers handler
-	_ = enc.Encode(map[string]any{"reason": q.Reason, "facts": facts, "actions": q.Actions})
+	m := map[string]any{"reason": q.Reason, "facts": facts}
+	if q.V == 4 {
+		m["cards"] = q.Cards
+	} else {
+		m["actions"] = q.Actions
+	}
+	_ = enc.Encode(m)
 	return strings.TrimSpace(b.String())
+}
+
+// hasFact: a fact with this id was sent.
+func (q reviewRequest) hasFact(id string) bool {
+	return slices.ContainsFunc(q.Facts, func(f reviewFact) bool { return f.ID == id })
+}
+
+// figureSchema: the figure of an answer is one of the facts sent or null.
+func figureSchema(facts []reviewFact) map[string]any {
+	ids := make([]string, len(facts))
+	for i, f := range facts {
+		ids[i] = f.ID
+	}
+	return map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": ids}, map[string]any{"type": "null"}}}
 }
 
 // numbers is the input of the second check (ai.CheckNumbers): every about, value and raw sent.
@@ -302,10 +326,6 @@ func (q reviewRequest) texts() []string {
 // reviewSchema is the answer (structured outputs: every object closes its properties): the figure is one of the
 // facts sent or null, the action one of the actions sent — never null (Р-6: no advice without a button).
 func reviewSchema(facts []reviewFact, actions []reviewAction) map[string]any {
-	factIDs := make([]string, len(facts))
-	for i, f := range facts {
-		factIDs[i] = f.ID
-	}
 	actionIDs := make([]string, len(actions))
 	for i, a := range actions {
 		actionIDs[i] = a.ID
@@ -322,7 +342,7 @@ func reviewSchema(facts []reviewFact, actions []reviewAction) map[string]any {
 					"properties": map[string]any{
 						"title":  str,
 						"text":   str,
-						"figure": map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": factIDs}, map[string]any{"type": "null"}}},
+						"figure": figureSchema(facts),
 						"action": map[string]any{"type": "string", "enum": actionIDs},
 					},
 					"required":             []string{"title", "text", "figure", "action"},
@@ -374,14 +394,6 @@ func (a ReviewAnswer) usable() bool {
 // a text of one short sentence, a figure and an action from the ones sent, a reference to a fact sent, no digit
 // outside the references. A name in «» that the phone sent (a goal «iPhone 17») keeps its digits.
 func (a ReviewAnswer) defects(q reviewRequest) []string {
-	facts := map[string]bool{}
-	for _, f := range q.Facts {
-		facts[f.ID] = true
-	}
-	actions := map[string]bool{}
-	for _, x := range q.Actions {
-		actions[x.ID] = true
-	}
 	var bad []string
 	add := func(s string) {
 		if !slices.Contains(bad, s) {
@@ -397,10 +409,10 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 			add("одно действие на совет")
 		}
 		used[x.Action] = true
-		if !actions[x.Action] {
+		if !slices.ContainsFunc(q.Actions, func(y reviewAction) bool { return y.ID == x.Action }) {
 			add("действие " + x.Action + " — такого нет")
 		}
-		if x.Figure != nil && !facts[*x.Figure] {
+		if x.Figure != nil && !q.hasFact(*x.Figure) {
 			add("figure " + *x.Figure + " — такого факта нет")
 		}
 		// Words as the family sees them: «Аптека {f7}» is «Аптека 144 000 ₸» — four, not two (Р-12).
@@ -420,10 +432,6 @@ func (a ReviewAnswer) defects(q reviewRequest) []string {
 // textDefects are the checks of every answer text (v3 and v4): a reference to a fact sent, no digit outside the
 // references and the names in «» the phone sent.
 func (q reviewRequest) textDefects(texts []string, add func(string)) {
-	facts := map[string]bool{}
-	for _, f := range q.Facts {
-		facts[f.ID] = true
-	}
 	names := map[string]bool{}
 	for _, s := range q.texts() {
 		for _, n := range quotedName.FindAllString(s, -1) {
@@ -432,7 +440,7 @@ func (q reviewRequest) textDefects(texts []string, add func(string)) {
 	}
 	for _, t := range texts {
 		for _, m := range reviewRef.FindAllStringSubmatch(t, -1) {
-			if !facts[m[1]] {
+			if !q.hasFact(m[1]) {
 				add("ссылка {" + m[1] + "} — такого факта нет")
 			}
 		}
@@ -519,13 +527,10 @@ func (q reviewRequest) validFacts(seen map[string]bool) bool {
 	return true
 }
 
-// validV4 checks a v4 body: reason, facts as v3, 1–6 cards c<N> of the known kinds, no actions.
-func (q reviewRequest) validV4() bool {
-	if !slices.Contains(reviewReasons, q.Reason) || len(q.Actions) > 0 || len(q.Cards) == 0 || len(q.Cards) > maxReviewCards {
-		return false
-	}
-	seen := map[string]bool{}
-	if !q.validFacts(seen) {
+// validV4 checks the rest of a v4 body (the reason and the facts — valid): 1–6 cards c<N> of the known kinds, no
+// actions; seen holds the fact ids.
+func (q reviewRequest) validV4(seen map[string]bool) bool {
+	if len(q.Actions) > 0 || len(q.Cards) == 0 || len(q.Cards) > maxReviewCards {
 		return false
 	}
 	for _, c := range q.Cards {
@@ -537,30 +542,8 @@ func (q reviewRequest) validV4() bool {
 	return true
 }
 
-// modelTextV4 is what the model reads of a v4 body: the reason, the facts without raw and the cards.
-func (q reviewRequest) modelTextV4() string {
-	type fact struct {
-		ID    string `json:"id"`
-		About string `json:"about"`
-		Value string `json:"value"`
-	}
-	facts := make([]fact, len(q.Facts))
-	for i, f := range q.Facts {
-		facts[i] = fact{f.ID, f.About, f.Value}
-	}
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(map[string]any{"reason": q.Reason, "facts": facts, "cards": q.Cards})
-	return strings.TrimSpace(b.String())
-}
-
 // reviewSchemaV4 is the answer v4: the figure is one of the facts sent or null, next — one of the cards sent.
 func reviewSchemaV4(facts []reviewFact, cards []reviewCard) map[string]any {
-	factIDs := make([]string, len(facts))
-	for i, f := range facts {
-		factIDs[i] = f.ID
-	}
 	cardIDs := make([]string, len(cards))
 	for i, c := range cards {
 		cardIDs[i] = c.ID
@@ -571,7 +554,7 @@ func reviewSchemaV4(facts []reviewFact, cards []reviewCard) map[string]any {
 		"properties": map[string]any{
 			"title":  str,
 			"text":   str,
-			"figure": map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": factIDs}, map[string]any{"type": "null"}}},
+			"figure": figureSchema(facts),
 			"next":   map[string]any{"type": "string", "enum": cardIDs},
 		},
 		"required":             []string{"title", "text", "figure", "next"},
@@ -609,7 +592,7 @@ func (a ReviewLead) defects(q reviewRequest) []string {
 	if len(strings.Fields(a.Text)) > maxLeadText {
 		add("мысль — до двадцати пяти слов")
 	}
-	if a.Figure != nil && !slices.ContainsFunc(q.Facts, func(f reviewFact) bool { return f.ID == *a.Figure }) {
+	if a.Figure != nil && !q.hasFact(*a.Figure) {
 		add("figure " + *a.Figure + " — такого факта нет")
 	}
 	if !slices.ContainsFunc(q.Cards, func(c reviewCard) bool { return c.ID == a.Next }) {
@@ -623,7 +606,8 @@ func (a ReviewLead) filled(q reviewRequest) ReviewLead {
 	return ReviewLead{Title: q.fill(a.Title), Text: q.fill(a.Text), Figure: a.Figure, Next: a.Next}
 }
 
-// AIReviewHandler is POST /api/ai/review (бэклог «ИИ», AI-08; v2 — «ИИ-польза», AU-12; v3 — «Разбор», RZ-04).
+// AIReviewHandler is POST /api/ai/review (бэклог «ИИ», AI-08; v2 — «ИИ-польза», AU-12; v3 — «Разбор», RZ-04;
+// v4 — «Фидбек», FB-16).
 type AIReviewHandler struct {
 	gate   *AIGate
 	model  string
@@ -634,8 +618,9 @@ func NewAIReviewHandler(gate *AIGate, model string) *AIReviewHandler {
 	return &AIReviewHandler{gate: gate, model: model, effort: "medium"}
 }
 
-// Review — {v: 3, reason, facts, actions} → {where, advices: [{title, text, figure|null, action}]} with the facts'
-// values put in. Only the facts, the actions and the fixed instruction go to the model. A defect (see defects) or a
+// Review — v 3: {reason, facts, actions} → {where, advices: [{title, text, figure|null, action}]}; v 4 (бэклог
+// «Фидбек», FB-16): {reason, facts, cards} → {title, text, figure|null, next}; with the facts' values put in. Only
+// the facts, the actions or the cards and the fixed instruction go to the model. A defect (see defects) or a
 // number of the filled text that the body has not (ai.CheckNumbers — the second guard) is asked again once with what
 // was wrong; a second is 502 ai_failed. A v2 body is 400 (Р-16). Nothing of the body or the answer is logged.
 func (h *AIReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
@@ -653,7 +638,7 @@ func (h *AIReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.V == 4 {
-		answerReview[ReviewLead](h, w, r, call, req, reviewSystemV4, reviewSchemaV4(req.Facts, req.Cards), req.modelTextV4())
+		answerReview[ReviewLead](h, w, r, call, req, reviewSystemV4, reviewSchemaV4(req.Facts, req.Cards), req.modelText())
 		return
 	}
 	answerReview[ReviewAnswer](h, w, r, call, req, reviewSystem, reviewSchema(req.Facts, req.Actions), req.modelText())
