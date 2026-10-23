@@ -1406,6 +1406,33 @@ describe('stores/operations — «В платежи» (FB-09, Р-17)', () => {
     expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-10:sc_subscriptions')?.unmarked ?? 0).toBe(0)
   })
 
+  it('TL-03: «В платежи» у строки кредита → кредит: отметка `credit` с opId, правило `credit` в «Кредиты»; следующий месяц — сам (ярус 0)', async () => {
+    signIn('a')
+    const finance = useFinanceStore()
+    finance.setHouseholdDoc(planFamilyDoc(), 1)
+    vi.setSystemTime(new Date('2026-09-20T07:00:00Z'))
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-05', -32_000, 'Kaspi Кредит'))))
+    await store.send(client)
+    const line = store.all.find((o) => o.merchant === 'Kaspi Кредит')!
+    expect(store.recurringFor(line)).toMatchObject({ kind: 'credit', amount: 32_000, day: 5 })
+    const id = finance.addCredit({ name: 'Kaspi Кредит', principal: 450_000, annualRate: 0, payment: 32_000, day: 5 })
+    await store.addToPayments(line.id, id, client)
+
+    const marks = () => finance.payments.filter((p) => !p.deletedAt && p.targetId === id)
+    expect(marks()).toEqual([expect.objectContaining({ kind: 'credit', period: '2026-09', amount: 32_000, source: 'statement', opId: line.id })])
+    expect(finance.merchantRules.find((r) => r.match.merchant === normalizeMerchant('Kaspi Кредит'))?.to).toEqual({ payment: { kind: 'credit', targetId: id, categoryId: 'sc_credit' } })
+    expect(store.all.find((o) => o.id === line.id)!.categoryId).toBe('sc_credit')
+    expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_credit')?.unmarked ?? 0).toBe(0)
+
+    vi.setSystemTime(new Date('2026-10-16T07:00:00Z'))
+    store.setDraft(draftOf(statement('2026-10-01', '2026-10-16', op('2026-10-05', -32_000, 'Kaspi Кредит'))))
+    await store.send(client)
+    expect(store.lastAutoMarked).toBe(1)
+    expect(marks().map((p) => [p.kind, p.period])).toEqual([['credit', '2026-09'], ['credit', '2026-10']])
+  })
+
   it('строка ждёт «это платёж по …?» к заведённому платежу — «В платежи» не предлагается (/ux Блока 2: дубль платежа)', async () => {
     signIn('a')
     const finance = useFinanceStore()

@@ -157,4 +157,30 @@ describe('e2e / Хвосты Блок 1 — платежи из выписки',
     expect(marks(secondId).find((m) => m[0] === '2026-11')).toEqual(['2026-11', other])
     expect(A.store.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-11:sc_subscriptions')?.unmarked ?? 0).toBe(0)
   })
+
+  it('TL-03: «нашли» → строка кредита → «В платежи» (лист кредита: платёж и день из выписки) → остаток → кредит в «Деньгах → Долг» с остатком, платёж октября отмечен, раздел «Кредиты»', async () => {
+    const A = await phone()
+    await uploaded(A, statement([...THREE_WEEKS(), op(day(5), -32_000, 'Kaspi Кредит', 'sc_credit')]))
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    const credit = found(A).find((f) => f.kind === 'credit')!
+    expect(credit).toMatchObject({ name: 'Kaspi Кредит', amount: 32_000, day: 5 })
+    expect(found(A).map((f) => f.kind).sort()).toEqual(['credit', 'subscription'])
+    expect(await month(A, { opened: 'dues' })).toContain(`data-found-row="${credit.opId}"`)
+    // Как `NewDebtSheet` с `prefill`: «Банку», имя, платёж и день из выписки; остаток вводит человек.
+    const id = A.store.addCredit({ name: credit.name, note: 'рассрочка', principal: 450_000, annualRate: 0, payment: credit.amount, day: credit.day })
+    await ops.addToPayments(credit.opId, id, A.client)
+    await A.store.syncHousehold(A.client)
+
+    expect(A.store.obligations).toEqual([])
+    expect(A.store.payments.filter((p) => !p.deletedAt && p.targetId === id)).toEqual([expect.objectContaining({ kind: 'credit', period: K, amount: 32_000, opId: credit.opId })])
+    expect(ops.all.find((o) => o.id === credit.opId)!.categoryId).toBe('sc_credit')
+    expect(A.store.householdDoc.spendTotals?.find((t) => t.id === `a:month:${K}:sc_credit`)?.unmarked ?? 0).toBe(0)
+    expect(found(A).map((f) => f.kind)).toEqual(['subscription'])
+    const debts = text(await screen(A.pinia, Money, '/money/debts'))
+    expect(debts).toContain('Kaspi Кредит')
+    // Отметка из выписки — до ввода остатка (`operationAt`), остаток не уменьшается второй раз.
+    expect(debts).toContain('450 000')
+    expect(server.data.credits).toEqual([expect.objectContaining({ id, name: 'Kaspi Кредит', payment: 32_000 })])
+  })
 })

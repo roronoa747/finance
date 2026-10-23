@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney, ratePct } from '@/lib/money'
 import { installmentMonths, rateFromSchedule, scheduleMismatch } from '@/lib/finance'
@@ -16,10 +16,21 @@ import Input from '@/components/ui/Input.vue'
 
 /**
  * Новый долг (бывшее окно Капитала, PV-03): «Банку» — кредит или рассрочка, ставка — названная, из срока или без
- * процентов; «Человеку» (мелочи Р-5) — займ без процентов с именем, путь расчёта — рассрочки.
+ * процентов; «Человеку» (мелочи Р-5) — займ без процентов с именем, путь расчёта — рассрочки. «В платежи» у строки
+ * кредита (TL-03, Р-3): `prefill` — «Банку», имя, платёж и день из выписки, остаток пуст — его и спрашиваем.
  */
-defineProps<{ open: boolean }>()
-const emit = defineEmits<{ (e: 'close'): void }>()
+const props = defineProps<{
+  open: boolean
+  /** «В платежи» у строки кредита (TL-03): имя, платёж в месяц и день из выписки. */
+  prefill?: { name: string; payment: number; day: number } | null
+  /** Поверх другого листа (`Sheet` `z`). */
+  z?: number
+}>()
+const emit = defineEmits<{
+  (e: 'close'): void
+  /** Кредит заведён — id перед `close` (TL-03: отметка месяца и правило по продавцу). */
+  (e: 'created', id: string): void
+}>()
 
 const financeStore = useFinanceStore()
 
@@ -32,6 +43,21 @@ const debtMode = ref<'none' | 'rate' | 'term'>('none')
 const debtRate = ref('')
 const debtTerm = ref('')
 const debtDay = ref('12')
+// Открытие с заполнением — заново из выписки: «Банку», имя, платёж и день; остаток пуст. Только открытие: синк посреди
+// ввода пересобирает `prefill` и не должен стереть введённое (возврат приёмки 2 п. 1 B2C Блока 3).
+watch(
+  () => props.open && !!props.prefill,
+  (v) => {
+    const p = props.prefill
+    if (!v || !p) return
+    debtKind.value = 'bank'
+    debtName.value = p.name
+    debtPrincipal.value = ''
+    debtPayment.value = plain(p.payment)
+    debtDay.value = String(p.day)
+  },
+  { immediate: true },
+)
 
 const leftPrincipal = computed(() => parseMoney(debtPrincipal.value))
 const paymentVal = computed(() => parseMoney(debtPayment.value))
@@ -65,7 +91,7 @@ const form = useFormCheck(() => [
 ])
 
 function createDebt() {
-  financeStore.addCredit({
+  const id = financeStore.addCredit({
     name: debtName.value.trim() || 'Долг',
     note: person.value ? '' : resolvedRate.value > 0 ? 'ежемесячный платёж' : 'рассрочка',
     principal: leftPrincipal.value,
@@ -81,12 +107,13 @@ function createDebt() {
   debtRate.value = ''
   debtTerm.value = ''
   debtMode.value = 'none'
+  emit('created', id)
   emit('close')
 }
 </script>
 
 <template>
-  <Sheet :open="open" title="Новый долг" @close="emit('close')">
+  <Sheet :open="open" :z="z" title="Новый долг" @close="emit('close')">
     <Segmented
       v-model="debtKind"
       :options="[

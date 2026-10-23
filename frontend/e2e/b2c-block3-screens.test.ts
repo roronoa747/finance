@@ -22,7 +22,6 @@ import { templateById, templateCredit } from '../src/lib/goalTemplates'
 import type { PdfRow } from '../src/lib/statements/pdf'
 import { parseStatement } from '../src/lib/statements/parsers'
 import { foundPayments } from '../src/lib/statements/firstRun'
-import { matchCategory } from '../src/lib/statements/matching'
 import { todayIso } from '../src/lib/dates'
 import { landingPath } from '../src/router/landing'
 import Start from '../src/views/Start.vue'
@@ -489,6 +488,17 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await ops.addToPayments(found!.opId, id, p.client)
     return finance.obligations.find((o) => o.id === id)!
   }
+  /** «В платежи» у строки кредита «нашли» (`AddPaymentSheet` → `NewDebtSheet`, TL-03): платёж и день из выписки, остаток — человек. */
+  async function creditToPayments(p: Phone, merchant: string, principal: number) {
+    setActivePinia(p.pinia)
+    const finance = useFinanceStore()
+    const ops = useOperationsStore()
+    const found = foundPayments(ops.all, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() }).find((f) => f.name === merchant)
+    expect(found?.kind, `«нашли» кредит: ${merchant}`).toBe('credit')
+    const id = finance.addCredit({ name: found!.name, note: 'рассрочка', principal, annualRate: 0, payment: found!.amount, day: found!.day })
+    await ops.addToPayments(found!.opId, id, p.client)
+    return finance.credits.find((c) => c.id === id)!
+  }
   /**
    * «В платежи» у строки в листе операции (`OpSheet` → `AddPaymentSheet`, `recurringFor`): продавца с несколькими
    * списаниями в месяц в «нашли» нет (TL-01, Р-1), а у строки кнопка та же.
@@ -562,19 +572,19 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await sayIncome(A)
     expect(A.store.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000, payday: 24 })])
 
-    // «Месяц» → «Платежи»: «нашли N в выписке»; «В платежи» — кредит в «Кредиты» (d2) с отметкой июля и правилом; подписка — быт.
+    // «Месяц» → «Платежи»: «нашли N в выписке»; «В платежи» у кредита — лист кредита (TL-03): кредит с остатком, отметка
+    // июля и правило в «Кредиты»; подписка — быт.
     const month = await screen(A.pinia, Month, '/month', undefined, [screenMixin({ opened: 'dues' })])
     expect(month).toContain('нашли')
     expect(month).toContain('Нашли в выписке')
     for (const name of ['Оплата Kaspi Кредита', 'Оплата Kaspi Red', 'Яндекс Плюс']) expect(month, name).toContain(name)
-    const credit = await toPayments(A, 'Оплата Kaspi Кредита')
-    expect(credit).toMatchObject({ category: 'd4', day: 24 })
-    expect(credit.versions[0].amount).toBe(151_790)
-    expect(A.store.payments).toEqual([expect.objectContaining({ kind: 'obligation', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
-    expect(A.store.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)!.to).toEqual({ payment: { kind: 'obligation', targetId: credit.id, categoryId: matchCategory('obligation', credit) } })
-    const red = await toPayments(A, 'Оплата Kaspi Red')
-    expect(red.category).toBe('d4')
-    expect(A.store.payments.find((p) => p.targetId === red.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 45_000, source: 'statement' })
+    const credit = await creditToPayments(A, 'Оплата Kaspi Кредита', 2_400_000)
+    expect(credit).toMatchObject({ day: 24, payment: 151_790, principal: 2_400_000 })
+    expect(A.store.payments).toEqual([expect.objectContaining({ kind: 'credit', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
+    expect(A.store.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)!.to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: 'sc_credit' } })
+    const red = await creditToPayments(A, 'Оплата Kaspi Red', 90_000)
+    expect(red).toMatchObject({ payment: 45_000, principal: 90_000 })
+    expect(A.store.payments.find((p) => p.targetId === red.id)).toMatchObject({ kind: 'credit', period: '2025-07', amount: 45_000, source: 'statement' })
     const plus = await toPayments(A, 'Яндекс Плюс')
     expect(plus).toMatchObject({ category: 'd4' })
     // Заведённые — из «нашли» ушли.

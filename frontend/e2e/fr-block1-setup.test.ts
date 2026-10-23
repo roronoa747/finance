@@ -300,27 +300,31 @@ describe('e2e / бэклог «первый», Блок 1 — выписка н�
     // Отправитель безымянный и приход не регулярный (кредит наличными не в счёт) — правила зарплаты нет, как и раньше.
     expect(A.finance.merchantRules.filter((r) => 'payment' in r.to && r.to.payment.kind === 'salary')).toEqual([])
 
-    // «Месяц» → «Платежи»: «нашли N в выписке»; «В платежи» у «Оплата Kaspi Кредита» → форма → «Добавить».
+    // «Месяц» → «Платежи»: «нашли N в выписке»; «В платежи» у «Оплата Kaspi Кредита» → лист кредита (TL-03) → остаток →
+    // «Добавить».
     await open(A, '/month', Month)
     expect(document.querySelector('[data-section-found]')).not.toBeNull()
     await press(document.querySelector<HTMLElement>('[data-section="dues"]'), 'строка «Платежи»')
     const row = [...document.querySelectorAll<HTMLElement>('[data-found-row]')].find((r) => r.textContent?.includes('Оплата Kaspi Кредита'))!
     expect(row, 'строка кредита').toBeTruthy()
     await press(row.querySelector<HTMLElement>('[data-found-pay]'), '«В платежи»')
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Новый долг')
+    const rest = [...document.querySelectorAll('[role="dialog"] label')].find((l) => l.textContent?.includes('Остаток долга'))!.querySelector('input')!
+    await type(rest, '2400000')
     await tap('Добавить')
-    const credit = A.finance.obligations.find((o) => o.name === 'Оплата Kaspi Кредита')!
-    // Через «В платежи» — «Подписка или услуга», быт (FB-09, Р-17); кредит с остатком — через «Долг» в «Деньгах».
-    expect(credit).toMatchObject({ category: 'd4', day: 24 })
-    expect(credit.versions[0].amount).toBe(151_790)
-    expect(A.finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 151_790, source: 'statement' })
-    expect(A.finance.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)!.to).toEqual({ payment: { kind: 'obligation', targetId: credit.id, categoryId: matchCategory('obligation', credit) } })
+    // Строка кредита — кредит с остатком (TL-03, Р-3), не обязательство «быт».
+    const credit = A.finance.credits.find((c) => c.name === 'Оплата Kaspi Кредита')!
+    expect(credit).toMatchObject({ day: 24, payment: 151_790, principal: 2_400_000 })
+    expect(A.finance.obligations).toEqual([])
+    expect(A.finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'credit', period: '2025-07', amount: 151_790, source: 'statement' })
+    expect(A.finance.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)!.to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: matchCategory('credit', credit) } })
     // Строка ушла из «нашли» (правило платежа записано — после пересчёта операций).
     await vi.advanceTimersByTimeAsync(200)
     await settle()
     expect([...document.querySelectorAll('[data-found-row]')].some((r) => r.textContent?.includes('Оплата Kaspi Кредита'))).toBe(false)
 
     await synced(A)
-    expect(server.data.obligations).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита' })])
+    expect(server.data.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 2_400_000 })])
     expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000 })])
     expect(server.data.spendTotals!.some((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')).toBe(true)
   })

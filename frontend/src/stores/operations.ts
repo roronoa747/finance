@@ -706,17 +706,21 @@ export const useOperationsStore = defineStore('operations', () => {
   /**
    * «В платежи» сохранено (FB-09, Р-17; образец — `answerRecurring` первого запуска): месяц платежа отмечается этой
    * строкой (ближайший к дате операции по дню платежа; уже отмечен — второй отметки нет), правило «это платёж по …» по
-   * продавцу — строка уходит из трат раздела, следующие выписки отмечаются сами (`autoMark`).
+   * продавцу — строка уходит из трат раздела, следующие выписки отмечаются сами (`autoMark`). Цель — обязательство или
+   * кредит (строка кредита → лист кредита, TL-03): вид — по тому, чей это id.
    */
-  async function addToPayments(opId: string, obligationId: string, client: ApiClient = apiClient) {
+  async function addToPayments(opId: string, targetId: string, client: ApiClient = apiClient) {
     const op = all.value.find((o) => o.id === opId)
-    const o = finance.obligations.find((x) => x.id === obligationId && !x.deletedAt)
-    if (!op || !o || auth.isViewer) return
-    const { period } = nearestPeriod(op.date, o.day)
-    const paid = finance.payments.some((p) => !p.deletedAt && p.kind === 'obligation' && p.targetId === o.id && p.period === period)
+    const o = finance.obligations.find((x) => x.id === targetId && !x.deletedAt)
+    const c = o ? undefined : finance.credits.find((x) => x.id === targetId && !x.deletedAt)
+    const target = o ? { kind: 'obligation' as const, t: o } : c ? { kind: 'credit' as const, t: c } : null
+    if (!op || !target || auth.isViewer) return
+    const { kind, t } = target
+    const { period } = nearestPeriod(op.date, t.day)
+    const paid = finance.payments.some((p) => !p.deletedAt && p.kind === kind && p.targetId === t.id && p.period === period)
     // Отметка — до пересчёта: итоги пишутся с ней, отмеченная строка не трата (хвосты 952/967).
-    if (!paid) finance.markPaid('obligation', o.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
-    await recategorize(ruleMatchOf(op), { payment: { kind: 'obligation', targetId: o.id, categoryId: matchCategory('obligation', o) } }, client)
+    if (!paid) finance.markPaid(kind, t.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
+    await recategorize(ruleMatchOf(op), { payment: { kind, targetId: t.id, categoryId: matchCategory(kind, t) } }, client)
   }
 
   /** Смена раздела задним числом: правило + пересчёт своих операций и итогов их периодов. */

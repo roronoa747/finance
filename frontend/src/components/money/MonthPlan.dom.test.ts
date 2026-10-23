@@ -1495,6 +1495,39 @@ describe('FB-21: «нашли в выписке», «Поставить план
     expect(txt(q('[data-section="dues"] [data-section-meta]'))).not.toContain('нашли')
   })
 
+  it('TL-03: строка кредита «нашли» → «В платежи» — лист кредита поверх «Месяца» (платёж и день заполнены, остаток пуст) → остаток → кредит, отметка месяца, правило `credit`, тост; подписка — лист обязательства', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] } as never)
+    const finance = await open('member', familyDoc({ obligations: [], credits: [], payments: [] }))
+    const store = useOperationsStore()
+    for (const o of [opOf('kc9', '2026-09-05', 32_000, 'Kaspi Кредит', 'sc_credit'), opOf('ap9', '2026-09-10', 4_990, 'APPLE.COM BILL', 'sc_subscriptions')]) store.ops[o.id] = o
+    await flush()
+    await press(section('dues'))
+    await press(q('[data-found-row="ap9"] [data-found-pay]'))
+    expect(txt(q('[role="dialog"]'))).toContain('Регулярный платёж')
+    await press(all('[role="dialog"] button').find((b) => b.getAttribute('aria-label') === 'Закрыть') ?? null)
+    await flush()
+
+    await press(q('[data-found-row="kc9"] [data-found-pay]'))
+    const dialog = q('[role="dialog"]')!
+    expect(txt(dialog)).toContain('Новый долг')
+    const input = (label: string) => [...dialog.querySelectorAll('label')].find((l) => l.textContent?.includes(label))!.querySelector('input')!
+    expect(input('Название').value).toBe('Kaspi Кредит')
+    expect(input('Платёж в месяц').value.replace(/\s/g, '')).toBe('32000')
+    expect(input('День платежа').value).toBe('5')
+    expect(input('Остаток долга').value).toBe('')
+    input('Остаток долга').value = '450 000'
+    input('Остаток долга').dispatchEvent(new Event('input', { bubbles: true }))
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Добавить'))
+    await flush()
+    const credit = finance.credits.find((c) => c.name === 'Kaspi Кредит')!
+    expect(credit).toMatchObject({ payment: 32_000, day: 5 })
+    expect(finance.obligations.map((o) => o.name)).not.toContain('Kaspi Кредит')
+    expect(finance.payments.filter((p) => !p.deletedAt && p.targetId === credit.id)).toEqual([expect.objectContaining({ kind: 'credit', period: KEY, amount: 32_000, opId: 'kc9' })])
+    expect(finance.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)?.to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: 'sc_credit' } })
+    expect(txt(document.body)).toContain('Добавлено в платежи')
+    expect(q('[data-found-row="kc9"]')).toBeNull()
+  })
+
   /**
    * «Поставить план»: выписка Ильяса 17 авг – 10 сен (25 дней ≥ 14), полные недели W34, W35, W36; по неделям — продукты
    * 20 000 / 30 000 / 25 000 (→ 25 000 × 52 / 12 = 108 333 → 109 000), кафе 6 000 / 6 000 / 6 000 (→ 26 000), транспорт

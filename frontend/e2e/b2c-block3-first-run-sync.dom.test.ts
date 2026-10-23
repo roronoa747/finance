@@ -123,29 +123,33 @@ describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приём�
     expect(finance.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000, payday: 24 })])
     await pause()
 
-    // «Месяц» → «Платежи»: «нашли N в выписке» → «В платежи» у кредита → имя переписано → пауза → «Добавить».
+    // «Месяц» → «Платежи»: «нашли N в выписке» → «В платежи» у кредита → лист кредита (TL-03): имя переписано, остаток
+    // вписан → пауза → «Добавить».
     await mount(pinia, Month, '/month')
     expect(page()).toContain('нашли')
     await click(document.querySelector<HTMLElement>('[data-section="dues"]')!)
     const row = [...document.querySelectorAll<HTMLElement>('[data-found-row]')].find((r) => r.textContent?.includes('Оплата Kaspi Кредита'))!
     expect(row, 'строка кредита в «нашли»').toBeTruthy()
     await click(row.querySelector<HTMLElement>('[data-found-pay]')!)
+    expect(document.querySelector('[role="dialog"]')!.textContent).toContain('Новый долг')
     const name = [...document.querySelectorAll<HTMLInputElement>('[role="dialog"] input')].find((i) => i.value.includes('Kaspi Кредита'))!
     expect(name, 'имя из выписки в поле').toBeTruthy()
     await type(name, 'Автокредит Kaspi')
+    await type(field('Остаток долга, ₸'), '2400000')
     await pause()
     expect(name.value).toBe('Автокредит Kaspi')
+    expect(field('Остаток долга, ₸').value).toBe(plain(2_400_000))
     await click(button('Добавить'))
-    const credit = finance.obligations.find((o) => o.name === 'Автокредит Kaspi')!
-    // Через «В платежи» всё — «Подписка или услуга», быт (FB-09, Р-17); кредит с остатком — через «Долг» в «Деньгах».
-    expect(credit).toMatchObject({ category: 'd4', day: 24 })
-    expect(credit.versions[0].amount).toBe(151_790)
+    // Строка кредита — кредит с остатком (TL-03, Р-3), не обязательство «быт».
+    const credit = finance.credits.find((c) => c.name === 'Автокредит Kaspi')!
+    expect(credit).toMatchObject({ day: 24, payment: 151_790, principal: 2_400_000 })
+    expect(finance.obligations).toEqual([])
     // Платёж июля из той же выписки отмечен днём операции; правило платежа — по продавцу.
-    expect(finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 151_790, source: 'statement' })
+    expect(finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'credit', period: '2025-07', amount: 151_790, source: 'statement' })
     expect(finance.merchantRules.some((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)).toBe(true)
     void ops
     await pause()
-    expect(server.data.obligations).toEqual([expect.objectContaining({ name: 'Автокредит Kaspi' })])
+    expect(server.data.credits).toEqual([expect.objectContaining({ name: 'Автокредит Kaspi', principal: 2_400_000 })])
     expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000 })])
   })
 })
