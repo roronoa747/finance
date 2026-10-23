@@ -323,7 +323,7 @@ FB-20 — `merge.test` notes, `finance.notes.test`, `Week.notes.dom` (включ
 запуске, увидят вопрос один раз снова (ключ стал `income:<key>`).
 
 **Верификация после правок:** `npx vitest run` целевые (`MonthPlan.dom`, `spendCompare`, `planByFact`, `week`, `finance`,
-e2e `fb-block5-look`, `b2c-block14`, `b2c-block15`) — 364 ✓; полный набор и `npm run build` — см. хеш коммита ниже.
+e2e `fb-block5-look`, `b2c-block14`, `b2c-block15`) — 364 ✓; полный набор 287 / 2 948 + 1 skipped ✓ и `npm run build` ✓. **Коммит критика — `cf86e424`** (ветка `fb-block-5-look`, запушена).
 
 **Готовность бэклога к закрытию (DoD BACKLOG-GUIDE) — что осталось до архива:**
 1. Блок 5: `/ux` → `/accept` → «да» владельца → мёрж + деплой оркестратором (только фронт, миграций нет; откат — promote
