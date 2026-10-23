@@ -134,9 +134,11 @@ describe('e2e / приёмка Фидбек Блок 5 — нажатиями в
   /** Фоновые синки экранов и стора идут в `apiClient` — направляем их в Go-мок этого телефона. */
   function wire(p: Phone) {
     vi.restoreAllMocks()
-    const c = p.client as unknown as Record<string, (...a: unknown[]) => unknown>
-    for (const m of ['getHouseholdDoc', 'pushHouseholdDoc', 'getPrivateDoc', 'pushPrivateDoc', 'listOperations', 'listStatementUploads', 'upsertOperations', 'createStatementUpload'] as const) {
-      if (c[m]) vi.spyOn(apiClient, m as never).mockImplementation(c[m] as never)
+    type Methods = Record<string, (...a: unknown[]) => unknown>
+    const c = p.client as unknown as Methods
+    const api = apiClient as unknown as Methods
+    for (const m of ['getHouseholdDoc', 'pushHouseholdDoc', 'getPrivateDoc', 'pushPrivateDoc', 'listOperations', 'listStatementUploads', 'upsertOperations', 'createStatementUpload']) {
+      if (c[m]) vi.spyOn(api, m).mockImplementation(c[m])
     }
   }
   /** Приложение телефона целиком: роутер с гардами, `Root` → оболочка с вкладками и «+». */
