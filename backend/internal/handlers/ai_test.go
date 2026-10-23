@@ -1011,6 +1011,8 @@ func TestReviewV4DefectsRetry(t *testing.T) {
 		{"figure not sent", lead("Месяц", "Разберём переводы.", "f99", "c2"), "figure f99 — такого факта нет"},
 		{"long title", lead("Очень длинный заголовок мысли месяца", "Разберём переводы.", nil, "c2"), "заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке"},
 		{"long text", lead("Месяц", strings.Repeat("слово ", 26), nil, "c2"), "мысль — до двадцати пяти слов"},
+		// Four words before the value is put in, six as the family sees it.
+		{"long title with a value", lead("Месяц и доход {f1}", "Разберём переводы.", nil, "c2"), "заголовок до четырёх слов вместе с подставленным значением и названием — лучше без {fN} в заголовке"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1037,6 +1039,18 @@ func TestReviewV4TwoDefectsFail(t *testing.T) {
 	}
 }
 
+// A card's name with digits («Kaspi Red 24») is the phone's: the model writes it in «» — no defect, no number check
+// failure, one call.
+func TestReviewV4CardNameDigits(t *testing.T) {
+	body := strings.Replace(reviewBodyV4, `{"id":"c3","kind":"oneoff","about":"похоже на разовую покупку у «Avtoshkola»"}`,
+		`{"id":"c3","kind":"recurring","about":"списание «Kaspi Red 24»"}`, 1)
+	f := newReviewFixture(t, &fakeClaudeQueue{texts: []string{lead("Подписка месяца", "Списание «Kaspi Red 24» — не в платежах, разберём его.", nil, "c3")}}, true)
+	got := decodeLead(t, f.post(t, f.member, body))
+	if !strings.Contains(got.Text, "«Kaspi Red 24»") || len(f.claude.sent) != 1 {
+		t.Errorf("answer = %+v, calls = %d", got, len(f.claude.sent))
+	}
+}
+
 func TestReviewV4Body(t *testing.T) {
 	fact := `{"id":"f1","about":"доход","value":"1 ₸","raw":1}`
 	card := func(id, kind string) string { return `{"id":"` + id + `","kind":"` + kind + `","about":"переводы людям"}` }
@@ -1060,6 +1074,9 @@ func TestReviewV4Body(t *testing.T) {
 		"no facts":         {v4(``, card("c1", "people")), http.StatusBadRequest},
 		"v4 with actions":  {`{"v":4,"reason":"month","facts":[` + fact + `],"cards":[` + card("c1", "people") + `],"actions":[` + open + `]}`, http.StatusBadRequest},
 		"v3 with cards":    {`{"v":3,"reason":"month","facts":[` + fact + `],"actions":[` + open + `],"cards":[` + card("c1", "people") + `]}`, http.StatusBadRequest},
+		"bad reason":       {`{"v":4,"reason":"week","facts":[` + fact + `],"cards":[` + card("c1", "people") + `]}`, http.StatusBadRequest},
+		"blank card about": {v4(fact, `{"id":"c1","kind":"people","about":" "}`), http.StatusBadRequest},
+		"long card about":  {v4(fact, `{"id":"c1","kind":"people","about":"`+strings.Repeat("я", maxReviewRunes+1)+`"}`), http.StatusBadRequest},
 		"v 5":              {`{"v":5,"reason":"month","facts":[` + fact + `],"cards":[` + card("c1", "people") + `]}`, http.StatusBadRequest},
 		// The old PWA keeps sending v3 (Р-26): accepted as it was.
 		"v3 body": {reviewBody, http.StatusOK},
