@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCaretLeft, PhCaretRight, PhPlus } from '@phosphor-icons/vue'
+import { PhCaretLeft, PhCaretRight, PhCheck, PhClock, PhPlus } from '@phosphor-icons/vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
@@ -16,6 +16,7 @@ import PlanSwitch from '@/components/plan/PlanSwitch.vue'
 import SectionSheet from '@/components/week/SectionSheet.vue'
 import UploadsSheet from '@/components/week/UploadsSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
+import NoteSheet from '@/components/week/NoteSheet.vue'
 import { useQuerySheet } from '@/components/useQuerySheet'
 import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import OpSheet from '@/components/OpSheet.vue'
@@ -29,7 +30,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore, type Draft } from '@/stores/operations'
 import { money, parseMoney, plain } from '@/lib/money'
 import { plural } from '@/lib/utils'
-import { MONTHS_NOM, addDaysIso, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
+import { MONTHS_NOM, addDaysIso, dayLabel, monthKey, parseMonthKey, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { unknownGroups } from '@/lib/statements/model'
 import { readStatementFiles } from '@/lib/statements/read'
@@ -60,7 +61,9 @@ import { readDeferred, readMonthEnd, writeDeferred, writeMonthEnd } from '@/lib/
  * Под шапкой — полоса плана недели (план месяца × 7 / дней, Р-31) с одной подписью «осталось N / M»; без плана трат —
  * ни полосы, ни призыва (призыв к плану — точка на «Месяце», FB-21). Разделы — значок, имя, сумма за неделю, без полос
  * (остаток раздела на месяц — в листе раздела); строка «Не разобрано» с вопросами — сама кнопка в лист «Вопросы» (по
- * одному). Лента «Траты недели» и тренд 8 недель — свёрнуты. Цифр партнёра нет: его траты — в «Месяце». Считает
+ * одному). Между полосой и разделами — карточки заметок себе на эту неделю (Р-33, FB-20: личный документ, ✓ — сделано,
+ * нажатие — правка; из «+ → Заметка», `/week?note=1`). Лента «Траты недели» и тренд 8 недель — свёрнуты. Цифр партнёра
+ * нет: его траты — в «Месяце». Считает
  * `finance.ts` (`myWeek`, `sectionWeek`, `weekTrend`); файл выписки разбирается на телефоне и никуда не уходит (Р-4).
  *
  * Загрузка — «сразу готово» (Р-97): выбрал файл — неделя показывает выписку сразу, тост «Загружено N · Отменить»;
@@ -174,6 +177,29 @@ function onHandSaved(date: string) {
 function pickFile() {
   uploadsOpen.value = false
   fileInput.value?.click()
+}
+
+/*
+ * Заметка себе с датой (Блок 5 «Фидбек», Р-33, Figma `18:36`): из «+» — `/week?note=1`; карточки — свои заметки с датой
+ * на этой неделе (сделанные — до конца недели, приглушённо), по дате и времени правки; ✓ — сделано, нажатие — правка.
+ * Личный документ: партнёр и viewer не видят. Сохранили — неделя даты на экране.
+ */
+const { open: noteOpen, close: closeNote } = useQuerySheet('note')
+const noteEdit = ref<string | null>(null)
+const weekNotes = computed(() =>
+  canUpload.value
+    ? finance.notes
+        .filter((n) => weekKey(n.date) === week.value)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.updatedAt.localeCompare(b.updatedAt))
+    : [],
+)
+const noteMeta = (n: { date: string; amount?: number | null }) => {
+  const day = dayLabel(Number(n.date.slice(8, 10)), n.date.slice(0, 7))
+  return n.amount ? `${day} · ${plain(n.amount)}` : day
+}
+function closeNoteSheet() {
+  noteEdit.value = null
+  closeNote()
 }
 
 /* ---------- тост: одна фраза, у загрузки — «Отменить» (Р-97) ---------- */
@@ -473,6 +499,26 @@ onBeforeUnmount(() => {
       </span>
     </div>
 
+    <!-- Заметки себе на этой неделе (Р-33): карточка — текст, «12 ноября · 60 000», ✓ справа; нажатие строки — правка -->
+    <Card v-for="n in weekNotes" :key="n.id" tight class="flex items-center gap-2.5" :data-note="n.id" :data-done="n.doneAt ? 'true' : undefined">
+      <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2" aria-hidden="true"><PhClock :size="16" /></span>
+      <button type="button" class="press min-w-0 flex-1 cursor-pointer text-left" data-note-open @click="noteEdit = n.id">
+        <span class="block truncate text-[15.5px] font-semibold" :class="n.doneAt ? 'text-ink-2' : 'text-ink'">{{ n.text }}</span>
+        <span class="block type-meta num">{{ noteMeta(n) }}</span>
+      </button>
+      <button
+        type="button"
+        class="press grid size-[30px] shrink-0 cursor-pointer place-items-center rounded-full border-[1.5px]"
+        :class="n.doneAt ? 'border-ok bg-ok text-surface' : 'border-line-strong text-ink-3'"
+        :aria-label="n.doneAt ? 'Сделано, снять' : 'Сделано'"
+        :aria-pressed="!!n.doneAt"
+        data-note-done
+        @click="finance.setNoteDone(n.id, !n.doneAt)"
+      >
+        <PhCheck :size="14" weight="bold" />
+      </button>
+    </Card>
+
     <!--
       Разделы списком (Figma `18:47`): значок, имя, сумма за неделю — без полос: остаток раздела на месяц — в листе раздела.
       Вопросы разбора — строка «Не разобрано» сама кнопка к листу «Вопросы» (владелец 2026-10-23: действие у своего
@@ -597,6 +643,7 @@ onBeforeUnmount(() => {
     <!-- Строка выписки в листе раздела — лист операции поверх (FB-04, Р-14). -->
     <OpSheet :op-id="sectionOp" :z="60" @close="sectionOp = null" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
+    <NoteSheet v-if="canUpload" :open="noteOpen || noteEdit !== null" :note-id="noteEdit" @close="closeNoteSheet" @saved="onHandSaved" />
     <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 

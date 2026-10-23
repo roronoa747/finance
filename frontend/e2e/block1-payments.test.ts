@@ -140,7 +140,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
     await B.store.pullHousehold(B.client)
     expect(text(await dues(B))).toContain(paidMark)
     expect(text(await dues(B, '2026-10'))).not.toContain(paidMark)
-    expect(await screen(B.pinia, Money, '/money')).toContain(money(780_000))
+    expect(await screen(B.pinia, Money, '/money')).toContain(plain(780_000)) // FB-20: суммы списков без «₸»
   })
 
   it('RP-08: досрочка «сократить срок» меняет остаток и срок, показывает сэкономленное — у обоих, до тенге', async () => {
@@ -158,7 +158,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       expect(p.store.credits[0].principal).toBe(plan.left)
       expect(p.store.accounts[0].amount).toBe(800_000)
       expect(prepaySaved(p.store.payments, p.store.credits)).toBe(plan.saved)
-      expect(await screen(p.pinia, Money, '/money')).toContain(money(800_000))
+      expect(await screen(p.pinia, Money, '/money')).toContain(plain(800_000))
       // Пивот 3 (B2C-42): срок — в листе кредита; число платежей — в свёрнутом «Графике платежей» (Б17).
       expect(text(await screen(p.pinia, Money, '/money?credit=loan', undefined, [screenMixin({ scheduleOpen: true })]))).toContain(`Платежей осталось ${plan.months}`)
       // Сэкономленное досрочками — в «Подробнее» экрана «Закрыть быстрее» (Б17; прежде квадрат «План», Р-34, B2C-43).

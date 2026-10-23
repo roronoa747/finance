@@ -161,6 +161,10 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html.indexOf('>Трата<')).toBeGreaterThan(0)
     expect(html.indexOf('>Трата<')).toBeLessThan(html.indexOf('Загрузить выписку'))
     expect(html).toContain('сумма и раздел')
+    // FB-20 (Р-33): «Заметка» — сразу после «Траты», подпись «себе, с датой», ведёт в `/week?note=1`.
+    expect(html.indexOf('>Трата<')).toBeLessThan(html.indexOf('>Заметка<'))
+    expect(html.indexOf('>Заметка<')).toBeLessThan(html.indexOf('Загрузить выписку'))
+    expect(html).toContain('себе, с датой')
     const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку']
     const at = order.map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
@@ -188,6 +192,7 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
     expect(html).not.toContain('сумма и раздел')
+    expect(html).not.toContain('себе, с датой')
     for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
       expect(html).not.toContain(t)
     }

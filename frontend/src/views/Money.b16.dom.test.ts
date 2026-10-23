@@ -135,48 +135,82 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/trip'), { timeout: 5000 })
   })
 
-  it('зарплаты: ✓ у пришедшей; дата («ждём» / «пришла») — в листе зарплаты (Р-116); строки = monthSalaries', async () => {
+  it('FB-20 (Р-34, Figma 19:2): сегмент как «Неделя | Месяц»; у каждой строки слот 32 слева; суммы без «₸» одной колонкой; «Добавить» — строка со слотом, одна черта', async () => {
+    const finance = await open()
+    // Сегмент — группа кнопок без рамок-коробок, активный по адресу.
+    const seg = q('[role="group"][aria-label="Деньги"]')!
+    expect(seg.className).toContain('bg-surface-2')
+    expect(all('[role="group"][aria-label="Деньги"] button').map(txt)).toEqual(['Капитал', 'Долги', 'История'])
+    expect(all('[role="group"][aria-label="Деньги"] button[aria-current="page"]').map(txt)).toEqual(['Капитал'])
+    expect(seg.querySelector('.border-brand')).toBeNull()
+    await press(all('[role="group"][aria-label="Деньги"] button')[1])
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/money/debts'), { timeout: 5000 })
+    expect(router.options.history.state.replaced ?? true).toBeTruthy()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open()
+    // Слот 32 у каждой строки: счета — значок, «Цели · N», кредиты, платежи (кружок плательщика), «Подписки · N», «Добавить».
+    const rows = [...all('[data-payments] [data-payment]'), q('[data-goals] > button')!, ...all('[data-credits] button'), q('[data-add-account]')!, q('[data-add-payment]')!]
+    for (const r of rows) expect(r.querySelector('.size-8'), r.textContent ?? '').not.toBeNull()
+    expect(q('[data-payments] [data-payment] [data-payment-slot]')).not.toBeNull()
+    // Суммы списков — без «₸»; «₸» — только у капитала.
+    const sums = all('[data-payments] .num, [data-credits] .num, [data-goals-total]').map(txt)
+    expect(sums.length).toBeGreaterThan(3)
+    for (const s of sums) expect(s).not.toContain('₸')
+    expect(txt(q('[data-worth]'))).toContain('₸')
+    // «Добавить» — строка списка (без обёртки с лишней чертой), у viewer её нет.
+    expect(q('[data-add-payment]')!.closest('.border-b')).not.toBeNull()
+    expect(q('[data-add-account]')!.closest('.border-b')).not.toBeNull()
+    expect(all('[data-payments] > div.border-t')).toEqual([])
+    expect(finance.notes).toEqual([])
+    app?.unmount()
+    document.body.innerHTML = ''
+    await open('viewer')
+    expect(q('[data-add-payment]')).toBeNull()
+    expect(q('[data-add-account]')).toBeNull()
+  })
+
+  // FB-20 (Р-34): зарплат на «Капитале» больше нет — строки и тот же лист живут в «Месяце»; факты проверок те же.
+  it('зарплаты — на «Месяце»: подсветка у пришедшей; дата («ждём» / «пришла») — в листе зарплаты (Р-116); на «Капитале» зарплат нет', async () => {
     const doc = familyDoc()
-    const finance = await open('member', { ...doc, payments: [...doc.payments!, paid('salary', 'b', KEY, 500_000, { by: 'b', at: '2026-09-11T05:00:00.000Z' })] })
+    await open('member', doc)
+    expect(q('[data-capital-salaries]')).toBeNull()
+    expect(q('[data-salary]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    const finance = await open('member', { ...doc, payments: [...doc.payments!, paid('salary', 'b', KEY, 500_000, { by: 'b', at: '2026-09-11T05:00:00.000Z' })] }, '/month', Month)
     const lines = monthSalaries(finance.monthPlanOf(KEY), { people: finance.people, payments: finance.payments })
     expect(lines.map((s) => [s.person, s.came])).toEqual([['a', false], ['b', true]])
-    expect(q('[data-capital-salaries] [data-salary-status]')).toBeNull()
-    expect(q('[data-capital-salaries] [data-salary="a"] [data-came]')).toBeNull()
-    expect(q('[data-capital-salaries] [data-salary="b"] [data-came]')).not.toBeNull()
-    expect(num(q('[data-capital-salaries] [data-salary="b"] b'))).toBe(500_000)
+    expect(q('[data-salary] [data-salary-status]')).toBeNull()
+    expect(q('[data-salary="a"][data-came]')).toBeNull()
+    expect(q('[data-salary="b"][data-came]')).not.toBeNull()
+    expect(num(q('[data-salary="b"] b'))).toBe(500_000)
     for (const [id, when] of [['a', 'ждём 10 сентября'], ['b', 'пришла 11 сентября']]) {
-      await press(q(`[data-capital-salaries] [data-salary="${id}"]`))
+      await press(q(`[data-salary="${id}"]`))
       expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain(when)
       await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     }
   })
 
-  it('строка зарплаты — тот же лист, что в «Месяце»; «Пришла» из «Капитала» пишет ту же отметку', async () => {
-    const finance = await open()
-    await press(q('[data-capital-salaries] [data-salary="a"]'))
-    const fromCapital = txt(dialog())
-    expect(fromCapital).toContain('Зарплата · Ильяс')
-    expect(fromCapital).toContain('ждём 10 сентября')
+  it('строка зарплаты «Месяца» — лист; «Пришла зарплата» пишет отметку, строка подсвечена', async () => {
+    const finance = await open('member', familyDoc(), '/month', Month)
+    await press(q('[data-salary="a"]'))
+    const sheet = txt(dialog())
+    expect(sheet).toContain('Зарплата · Ильяс')
+    expect(sheet).toContain('ждём 10 сентября')
     expect(dialogButton('Изменить оклад')).toBeTruthy()
     await press(dialogButton('Пришла зарплата'))
-    // Лист закрылся сам — ✓ у суммы в строке (как в «Месяце»).
+    // Лист закрылся сам — строка подсвечена (FB-19).
     expect(dialog()).toBeNull()
-    expect(q('[data-capital-salaries] [data-salary="a"] [data-came]')).not.toBeNull()
+    expect(q('[data-salary="a"][data-came]')).not.toBeNull()
     const marks = finance.payments.filter((p) => p.kind === 'salary' && p.period === KEY && !p.deletedAt)
     expect(marks).toMatchObject([{ targetId: 'a', amount: 700_000, accountId: 'card', by: 'a' }])
-
-    // В «Месяце» — тот же лист (общий компонент): тот же текст до «Пришла».
-    app?.unmount()
-    document.body.innerHTML = ''
-    await open('member', familyDoc(), '/month', Month)
-    await press(q('[data-salary="a"]'))
-    expect(txt(dialog())).toBe(fromCapital)
   })
 
   // Критик Б17: дата и «хватает» переехали в лист (Р-116) — viewer открывает его только для чтения, иначе числа потеряны.
   it('viewer — лист зарплаты только для чтения: «Когда» и «Хватает» есть, кнопок нет', async () => {
-    await open('viewer')
-    await press(q('[data-capital-salaries] [data-salary="a"]'))
+    await open('viewer', familyDoc(), '/month', Month)
+    await press(q('[data-salary="a"]'))
     expect(txt(q('[role="dialog"] [data-salary-status]'))).toContain('ждём 10 сентября')
     expect(q('[role="dialog"] [data-left]')).not.toBeNull()
     expect(dialogButton('Изменить оклад')).toBeFalsy()

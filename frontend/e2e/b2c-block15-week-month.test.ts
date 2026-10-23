@@ -441,10 +441,12 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const capital = await screen(A.pinia, Money, '/money')
     const seen = text(capital)
     for (const t of ['Капитал', 'Долги', 'История', 'Kaspi Gold', 'Аренда', 'Подписки · 3']) expect(seen).toContain(t)
-    // Ни плана месяца, ни отметок, ни «Оплатил» — это «Месяц». Зарплаты — для справки карточкой «Капитала» (Блок 16, Р-108).
+    // Ни плана месяца, ни отметок, ни «Оплатил» — это «Месяц».
     for (const t of ['Оплатил', 'оплачено', 'До зарплаты', 'Остаётся', 'Отложил', 'Пришла зарплата', 'нагрузка', 'Подробнее']) expect(seen).not.toContain(t)
     for (const a of ['data-rest', 'data-sections', 'data-plan-view']) expect(capital).not.toContain(a)
-    expect(capital).toContain('data-capital-salaries')
+    // FB-20 (Р-34): зарплат на «Капитале» нет — они в «Месяце».
+    expect(capital).not.toContain('data-capital-salaries')
+    expect(capital).not.toContain('data-salary=')
     expect(capital).not.toContain('Netflix')
     expect(await screen(A.pinia, Money, '/money', undefined, [screenMixin({ subsOpen: true })])).toContain('Netflix')
     // «Долги» — ссылка «Как закрыть быстрее» на свой экран долгового плана (Б17; прежде план жил на «Долгах»).

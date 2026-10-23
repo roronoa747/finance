@@ -109,11 +109,12 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     const A = await phone(server, st, 'a')
     expect(incomeOf(A, 'a')).toMatchObject({ amount: 750_000, eventCount: 5, cameCount: 0, came: false })
     // FB-19: «N из M пришли» — в листе зарплаты, в строке — «Пришла» и подсветка только когда пришли все.
-    for (const [view, path] of [[Month, '/month'], [Money, '/money']] as const) {
+    expect(await screen(on(A).pinia, Money, '/money')).not.toContain('data-salary=') // FB-20: зарплат на «Капитале» нет
+    for (const [view, path] of [[Month, '/month']] as const) {
       const row = rowOf(await screen(on(A).pinia, view, path), 'a')
-      if (view === Month) expect(text(row), path).not.toContain('пришли') // «Деньги» — до FB-20 ещё со старой карточкой зарплат
+      expect(text(row), path).not.toContain('пришли')
       expect(row, path).toContain('data-salary-came-btn')
-      if (view === Month) expect(row, path).not.toContain('data-came')
+      expect(row, path).not.toContain('data-came')
     }
     expect(await status(A, 'a')).toContain('0 из 5 пришли')
 

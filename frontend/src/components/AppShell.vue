@@ -12,6 +12,7 @@ import {
   PhWallet,
   PhGearSix,
   PhFileArrowUp,
+  PhNote,
   PhReceipt,
   PhShoppingBag,
   PhCoins,
@@ -159,6 +160,8 @@ const actions = computed(() => {
   return [
     // «Трата» руками — первой (бэклог «Ручная трата», Р-1): самое частое действие дня, выписка — раз в неделю.
     edit && { to: '/week?spend=1', title: 'Трата', note: 'сумма и раздел', icon: PhReceipt },
+    // «Заметка» себе с датой (Блок 5 «Фидбек», Р-33): всплывает карточкой на «Неделе» своей даты.
+    edit && { to: '/week?note=1', title: 'Заметка', note: 'себе, с датой', icon: PhNote },
     edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
     edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
     edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },

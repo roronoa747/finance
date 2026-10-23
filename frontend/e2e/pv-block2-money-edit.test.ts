@@ -427,7 +427,8 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(rentRow).toContain('3-го')
       expect(rentRow).not.toContain('5-го')
       // Капитал второго: у аренды хозяйка в подписи; в окне «Чья» нажата Аруна.
-      expect(between(await page(B.pinia, Money, '/money'), 'Аренда', '</svg>')).toContain('Аруна')
+      // FB-20 (Р-34): кружок плательщика стоит в слоте перед названием — берём строку платежа целиком.
+      expect(between(await page(B.pinia, Money, '/money'), 'data-payment>', '</svg>')).toContain('Аруна')
       expect(await page(B.pinia, Money, '/money?obligation=rent')).toMatch(pressed('Аруна'))
 
       // «Общая» на втором — хозяина нет (null, а не строка 'all').
@@ -436,7 +437,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(rentB().who).toBeNull()
       const moneyB = await page(B.pinia, Money, '/money')
       const shared = between(moneyB, 'Аренда', '</svg>')
-      expect(shared).toContain(money(220_000))
+      expect(shared).toContain(plain(220_000)) // FB-20: суммы списков без «₸»
       expect(shared).not.toContain('Аруна')
 
       // «Оставить?» (RP-09; карточка «Недели» — пивот 3, Р-43): только что заведённое в этом квартале не спрашиваем…
@@ -589,9 +590,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const capital = await page(B.pinia, Money, '/money')
       const row = between(capital, 'Доллары', '</button>')
       expect(row).toContain(`наличные · ${moneyIn(1_337, 'USD')} · общий`)
-      expect(row).toContain(money(640_771))
-      expect(row).not.toContain(money(512_340))
-      expect(row).not.toContain(money(479_260))
+      expect(row).toContain(plain(640_771)) // FB-20: суммы списков без «₸»
+      expect(row).not.toContain(plain(512_340))
+      expect(row).not.toContain(plain(479_260))
       // 1 000 000 на карте + 640 771 — «счета» в формуле под капиталом (понятность Р-2), тем же расчётом.
       expect(capital).toContain('data-worth-formula')
       expect(assetsOf(B.store)).toBe(1_640_771)

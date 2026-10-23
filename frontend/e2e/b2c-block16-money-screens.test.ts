@@ -114,19 +114,20 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     expect(amountAt(html, 'data-worth')).toBe(740_000)
     expect(assets - debt).toBe(amountAt(html, 'data-worth'))
     const seen = text(html)
-    expect(seen).toContain(`Цели · 2 ${money(250_000)}`)
+    expect(seen).toContain(`Цели · 2 ${plain(250_000)}`) // FB-20: суммы списков без «₸»
     expect(seen).toContain('Подушка на Kaspi Gold — уже в счёте')
-    // Зарплаты для справки: дата — в листе зарплаты (Р-116). Ильяс ждём 10-го (день прошёл — «Пришла» можно), Аруна ждём 20-го.
+    // Зарплат на «Капитале» нет (FB-20, Р-34) — строки и лист в «Месяце»: дата — в листе зарплаты (Р-116). Ильяс ждём 10-го (день прошёл — «Пришла» можно), Аруна ждём 20-го.
     expect(seen).not.toContain('ждём')
+    expect(html).not.toContain('data-salary=')
     const status = async (p: Phone, person: 'a' | 'b') =>
-      text((await screen(p.pinia, Money, '/money', undefined, [screenMixin({ open: person })])).match(/data-salary-status[\s\S]*?<\/div>/)?.[0] ?? '')
+      text((await screen(p.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: person })])).match(/data-salary-status[\s\S]*?<\/div>/)?.[0] ?? '')
     expect(await status(A, 'a')).toContain('ждём 10 сентября')
     expect(await status(A, 'b')).toContain('ждём 20 сентября')
 
     // Строка Ильяса → лист зарплаты (тот же, что в «Месяце») → «Пришла зарплата»: одним нажатием на карту прошлого раза.
-    const sheet = await screen(A.pinia, Money, '/money', undefined, [screenMixin({ open: 'a' })])
+    const sheet = await screen(A.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' })])
     expect(text(sheet)).toContain('Зарплата · Ильяс')
-    await screen(A.pinia, Money, '/money', undefined, [screenMixin({ open: 'a' }), screenMixin({}, (s) => (s.tap as () => void)())])
+    await screen(A.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' }), screenMixin({}, (s) => (s.tap as () => void)())])
     setActivePinia(A.pinia)
     const came = A.store.payments.filter((p) => p.kind === 'salary' && p.period === K && !p.deletedAt)
     expect(came).toEqual([expect.objectContaining({ targetId: 'a', amount: 700_000, accountId: 'card', by: 'a' })])
@@ -134,8 +135,7 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
     await sync(A, B)
     const month = await screen(B.pinia, Month, '/month')
     expect(month).toMatch(/data-salary="a"[\s\S]*?data-came/)
-    // У Аруны строка Ильяса — с ✓, дата прихода — в листе его зарплаты.
-    expect(await screen(B.pinia, Money, '/money')).toMatch(/data-salary="a"(?:(?!data-salary="b")[\s\S])*data-came/)
+    // У Аруны строка Ильяса — подсвечена, дата прихода — в листе его зарплаты.
     expect(await status(B, 'a')).toContain('пришла 12 сентября')
   })
 
@@ -185,10 +185,11 @@ describe('e2e / B2C Блок 16 — «Деньги» по макету на дв
   // Критик Б17: дата зарплаты — в листе (Р-116), viewer открывает его только для чтения (кнопки — DOM-тест Money.b16).
   it('часть 4 — viewer: зарплаты открывают лист, без «+ Кредит», месяцы «Истории» те же', async () => {
     const V = await phone(server, 'a', 'viewer')
-    const capital = await screen(V.pinia, Money, '/money')
-    // Строка — div с кнопкой имени (PN-02: рядом живёт «Пришла» участника, кнопки в кнопке нет); у viewer кнопки «Пришла» нет.
-    expect(capital).toMatch(/<div[^>]*data-salary="a"[^>]*>[\s\S]*?<button[^>]*data-row-open/)
-    expect(capital).not.toContain('data-salary-came-btn')
+    const month = await screen(V.pinia, Month, '/month')
+    // Зарплаты — в «Месяце» (FB-20): строка — div с кнопкой имени (PN-02: рядом живёт «Пришла» участника, кнопки в кнопке нет); у viewer кнопки «Пришла» нет.
+    expect(month).toMatch(/<div[^>]*data-salary="a"[^>]*>[\s\S]*?<button[^>]*data-row-open/)
+    expect(month).not.toContain('data-salary-came-btn')
+    expect(await screen(V.pinia, Money, '/money')).not.toContain('data-salary=')
     expect(await screen(V.pinia, Money, '/money/debts')).not.toContain('data-add-credit')
     const history = await screen(V.pinia, Money, '/money/history')
     expect(history.match(/data-history-month=/g)).toHaveLength(2)

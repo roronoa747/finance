@@ -310,6 +310,20 @@ export type TripExcluded = Tracked & {
   goalId: string | null
 }
 
+/**
+ * Заметка себе с датой (Блок 5 «Фидбек», Р-33) — список `notes` личного документа: всплывает карточкой на «Неделе» своей
+ * даты, партнёр и viewer не видят. `amount` — только подпись, нигде не считается. `doneAt` — сделано (✓); удаление —
+ * надгробие.
+ */
+export type Note = Tracked & {
+  id: string
+  text: string
+  /** `YYYY-MM-DD` — неделя, на которой всплывает. */
+  date: string
+  amount?: number | null
+  doneAt?: string | null
+}
+
 export type WishItem = Tracked & {
   id: string
   name: string
