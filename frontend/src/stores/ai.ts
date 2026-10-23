@@ -4,7 +4,7 @@ import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { buildReviewFactsV4 } from '@/lib/aiFacts'
 import { demoReview } from '@/lib/demo'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
-import { countedPayments, liveSpendCategories, periodMonth, reviewCardOrder, reviewCards, reviewWork } from '@/lib/finance'
+import { countedPayments, liveSpendCategories, periodMonth, reviewCardOrder, reviewCards, reviewWork, type ReviewCard } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage, type AiAutoTry } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
@@ -12,7 +12,7 @@ import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
 import { useOperationsStore } from './operations'
-import type { AiConsent, AiReview, OpenTarget, Payment, ReviewReason } from '@/types/finance'
+import type { AiConsent, AiReview, OpenTarget, Payment, PersonId, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -132,10 +132,18 @@ export const useAiStore = defineStore('ai', () => {
   const reasonKeyOf = (reason: ReviewReason, key: string): string | undefined =>
     reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${key}` : undefined
 
-  /** Свои операции, правила «В платежи» и ответы «Кому → что» — для карточек кода (FB-15); стор операций — лениво (он тяжёлый). */
-  const cardsInput = () => {
+  /** Свой участник — как `me` экранов (`MonthPlan`, `Week`). */
+  const me = computed<PersonId>(() => auth.slot ?? 'a')
+
+  /**
+   * Карточки кода разбора v4 месяца `key` (FB-15) — одна сборка для отчёта на «Месяце», ✦ у предметов, разбора сам и
+   * запроса (ревью frontend 4б Н-3: разойдись входы — модель видела бы не те карточки, что человек, номера ✦ — не те):
+   * свои операции, «В платежи» и ответы «Кому → что». Стор операций — лениво (он тяжёлый).
+   */
+  function cardsOf(key: string): ReviewCard[] {
     const ops = useOperationsStore()
-    return { ops: ops.all, opts: { recurringFor: ops.recurringFor, rules: finance.merchantRules } }
+    const { state, ctx } = finance.planInput(key)
+    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, me.value, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
   }
 
   /**
@@ -150,9 +158,8 @@ export const useAiStore = defineStore('ai', () => {
     if (inflight) return inflight
     inflight = (async () => {
       const input = finance.planInput(key)
-      const by = auth.slot ?? 'a'
-      const { ops, opts } = cardsInput()
-      const { payload, cards, cardById, labels } = buildReviewFactsV4(finance.householdDoc, input, ops, by, reason, opts)
+      const by = me.value
+      const { payload, cards, cardById, labels } = buildReviewFactsV4(finance.householdDoc, input, useOperationsStore().all, by, reason, cardsOf(key))
       if (!payload.facts.length || !payload.cards.length) return 'no_cards'
       try {
         const res = await client.aiReview({ reason, ...payload })
@@ -247,9 +254,7 @@ export const useAiStore = defineStore('ai', () => {
     if (!reason) return null
     // Своих карточек нет (выписка ещё не загружена или не подтянулась) — спрашивать не о чем, и попытку не пишем: иначе
     // выписка того же дня ждала бы разбора сутки.
-    const { ops, opts } = cardsInput()
-    const { state, ctx } = finance.planInput(key)
-    if (!reviewCards({ ...finance.householdDoc, ...state }, ctx, ops, auth.slot ?? 'a', opts).length) return null
+    if (!cardsOf(key).length) return null
     // Попытка v4 — своя (`v4:month:<key>`): попытка v3 того же утра (прошлая сборка) не держит её сутки.
     const rk = `v4:${reasonKeyOf(reason, key)!}`
     // Попытки — только этого месяца: прошлые поводы не копятся.
@@ -326,9 +331,7 @@ export const useAiStore = defineStore('ai', () => {
     if (review?.v === 4) {
       // v4 (бэклог «Фидбек», Р-27): предметы карточек кода на «Месяце» — раздел и платёж; номер — место карточки в
       // отчёте (`reviewCardOrder`: следующая за мыслью — первой). Карточки — свежие, по своим операциям.
-      const { ops, opts } = cardsInput()
-      const { state, ctx } = finance.planInput(key)
-      const cards = reviewCardOrder(reviewCards({ ...finance.householdDoc, ...state }, ctx, ops, auth.slot ?? 'a', opts), review.next)
+      const cards = reviewCardOrder(cardsOf(key), review.next)
       cards.forEach((c, i) => {
         const t = c.target
         if (t.kind === 'cat' || t.kind === 'plan') put(`cat:${t.categoryId}`, i + 1)
@@ -411,6 +414,7 @@ export const useAiStore = defineStore('ai', () => {
 
   return {
     available,
+    me,
     consent,
     sheetOpen,
     sheetMounted,
@@ -419,6 +423,7 @@ export const useAiStore = defineStore('ai', () => {
     ensureConsent,
     answer,
     reviewState,
+    cardsOf,
     runReview,
     autoReview,
     salaryMarks,

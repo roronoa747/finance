@@ -185,7 +185,7 @@ const leadFigure = computed(() => {
   const next = frozen.value.find((c) => c.id === mine.value?.next)
   return next && flat(figureOf(next)) === flat(f.value) ? null : f
 })
-const by = computed(() => auth.slot ?? 'a')
+const by = computed(() => ai.me)
 /** Месяц карточек v4 — по своим выпискам (`findMonth(…, by)`, как `reviewCards`); в первые дни — прошлый. */
 const cardMonth = computed(() => findMonth(input.value.ctx, by.value))
 /** Карточки не за открытый месяц (первые дни) — его имя в шапке отчёта: «Выше плана» иначе читается про этот (`/ux` 4б). */

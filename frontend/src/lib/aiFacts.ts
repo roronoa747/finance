@@ -36,7 +36,6 @@ import {
   type MonthPlanCtx,
   type MonthPlanState,
   type ReviewCard,
-  type ReviewCardsOpts,
   type ReviewFinding,
   type ReviewScenario,
   type StepCandidate,
@@ -446,8 +445,8 @@ function cardFacts(c: ReviewCard): Draft[] {
 }
 
 /**
- * Факты и карточки разбора v4 участника `by` (Р-23, Р-26): карточки кода (`reviewCards` по своим операциям `ops`) —
- * их цифры фактами, «Куда ушло» долями (`whereSplit`, выходные — `weekendShare`), затем факты v2 месяца — разделы,
+ * Факты и карточки разбора v4 участника `by` (Р-23, Р-26): карточки кода `cards` — готовые (стор ИИ `cardsOf`, те же, что
+ * на экране; нет — `reviewCards` по своим операциям `ops` без опций) — их цифры фактами, «Куда ушло» долями (`whereSplit`, выходные — `weekendShare`), затем факты v2 месяца — разделы,
  * привычка и сдвиг мечты свои, доход, мечты, подушка и долги — семьи; всего ≤ 40. В модель не уходят (Р-28): имена людей
  * из переводов, имена участников (`maskNames`), даты операций, «ИП + фамилия» и 6+ цифр (продавцы — по `sellerOk`).
  * Карточек нет — тело без карточек (ручка его не примет; стор не спрашивает).
@@ -458,13 +457,12 @@ export function buildReviewFactsV4(
   ops: Operation[],
   by: PersonId,
   reason?: ReviewReason,
-  opts: ReviewCardsOpts = {},
+  cards: ReviewCard[] = reviewCards({ ...doc, ...input.state }, input.ctx, ops, by),
 ): ReviewFactsV4 {
   const people = doc.people ?? []
   const mask = (s: string) => maskNames(s, people)
   const { state, ctx } = input
   const plan = monthPlan(state, ctx)
-  const cards = reviewCards({ ...doc, ...state }, ctx, ops, by, opts)
   const own: Draft[] = cards.flatMap(cardFacts)
   const split = whereSplit(state, ctx, by)
   for (const p of split?.parts ?? []) if (p.amount > 0) own.push({ about: `${WHERE_ABOUT[p.key]} — доля своих трат месяца`, value: pctText(p.share), raw: p.share })

@@ -31,7 +31,6 @@ import {
   planPuts,
   putsLeft,
   queueStatus,
-  reviewCards,
   rkShare,
   spendCompare,
   spendFact,
@@ -288,11 +287,12 @@ const demoReview = computed<AiReview | null>(() =>
 const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.monthKey))
 /**
  * Карточки кода разбора v4 (бэклог «Фидбек», Р-23, Р-24, Р-27): участнику текущего месяца — по своим операциям, свежие;
- * и без ИИ (вариант А). Viewer — нет (отчёт v1–v3 общего документа, как был).
+ * и без ИИ (вариант А); сборка одна — стор ИИ `cardsOf` (те же карточки уходят модели и ставят ✦). Viewer — нет (отчёт
+ * v1–v3 общего документа, как был).
  */
 const v4Cards = computed<ReviewCard[] | null>(() =>
   canEdit.value && props.monthKey === monthNow()
-    ? reviewCards({ ...finance.householdDoc, ...state.value }, ctx.value, ops.all, me.value, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
+    ? ai.cardsOf(props.monthKey)
     : null,
 )
 /** ИИ разбора: участник с ИИ, не сказавший «Не надо» (Р-9), или демо — пилюля «✦ Разбор»; без ИИ — «Разбор» (только карточки). */
