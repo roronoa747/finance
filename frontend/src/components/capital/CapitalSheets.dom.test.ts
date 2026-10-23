@@ -220,7 +220,7 @@ describe('ML-16: формы «Человеку» и «Людям»', () => {
     expect('person' in c).toBe(false)
   })
 
-  it('TL-03: с `prefill` из выписки — «Банку», имя, платёж и день заполнены, остаток пуст; без остатка кредит не заводится; с ним — `created(id)`', async () => {
+  it('TL-03: с `prefill` из выписки — «Банку», имя, платёж и день заполнены, остаток пуст и в фокусе; без остатка кредит не заводится; с ним — `created(id)`', async () => {
     const { pinia, store } = family()
     const created = vi.fn()
     mount(pinia, () => h(NewDebtSheet, { open: true, prefill: { name: 'Kaspi Кредит', payment: 32_000, day: 12 }, onCreated: created, onClose: () => {} }))
@@ -230,6 +230,8 @@ describe('ML-16: формы «Человеку» и «Людям»', () => {
     expect(field('Платёж в месяц').value.replace(/\s/g, '')).toBe('32000')
     expect(field('День платежа').value).toBe('12')
     expect(field('Остаток долга').value).toBe('')
+    await nextTick()
+    expect(document.activeElement).toBe(field('Остаток долга'))
     const before = store.householdDoc.credits.length
     button('Добавить').click()
     await nextTick()

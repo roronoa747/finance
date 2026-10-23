@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney, ratePct } from '@/lib/money'
 import { installmentMonths, rateFromSchedule, scheduleMismatch } from '@/lib/finance'
@@ -43,6 +43,7 @@ const debtMode = ref<'none' | 'rate' | 'term'>('none')
 const debtRate = ref('')
 const debtTerm = ref('')
 const debtDay = ref('12')
+const principalField = ref<{ $el: HTMLElement } | null>(null)
 // Открытие с заполнением — заново из выписки: «Банку», имя, платёж и день; остаток пуст. Только открытие: синк посреди
 // ввода пересобирает `prefill` и не должен стереть введённое (возврат приёмки 2 п. 1 B2C Блока 3).
 watch(
@@ -55,6 +56,8 @@ watch(
     debtPrincipal.value = ''
     debtPayment.value = plain(p.payment)
     debtDay.value = String(p.day)
+    // Пустое здесь одно — остаток: курсор сразу в нём (как сумма новой траты; Android откроет клавиатуру сам).
+    void nextTick(() => principalField.value?.$el.querySelector<HTMLInputElement>('input')?.focus())
   },
   { immediate: true },
 )
@@ -148,7 +151,7 @@ function createDebt() {
       <Field label="Название">
         <Input v-model="debtName" placeholder="Например, рассрочка на телефон" />
       </Field>
-      <Field label="Остаток долга, ₸" name="principal">
+      <Field ref="principalField" label="Остаток долга, ₸" name="principal">
         <NumField v-model="debtPrincipal" placeholder="600 000" />
       </Field>
       <Field label="Платёж в месяц, ₸" name="payment">
