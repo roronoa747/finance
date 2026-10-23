@@ -55,9 +55,9 @@ Chrome 390, смоук на проде после каждого блока.
 
 | Блок | Задача | Файл | Зависит от | Статус |
 |---|---|---|---|---|
-| 1. Платежи из выписки ⬜ *(M с `/ux`)* | TL-01 «Нашли в выписке» — только похожее на платежи | `block-1-found-payments/TL-01-found-only-payments.md` | — | ⬜ |
-| | TL-02 Правило платежа по продавцу и сумме | `block-1-found-payments/TL-02-rule-by-amount.md` | TL-01 | ⬜ |
-| | TL-03 Строка кредита → лист кредита | `block-1-found-payments/TL-03-credit-sheet.md` | TL-02 | ⬜ |
+| 1. Платежи из выписки 🔄 *(M с `/ux`)* | TL-01 «Нашли в выписке» — только похожее на платежи | `block-1-found-payments/TL-01-found-only-payments.md` | — | ✅ |
+| | TL-02 Правило платежа по продавцу и сумме | `block-1-found-payments/TL-02-rule-by-amount.md` | TL-01 | ✅ |
+| | TL-03 Строка кредита → лист кредита | `block-1-found-payments/TL-03-credit-sheet.md` | TL-02 | ✅ |
 | 2. Цифры сходятся ⬜ *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ⬜ |
 | | TL-05 «Платежи без отметки» в «Месяц → Траты» | `block-2-figures/TL-05-unmarked-payments-row.md` | TL-04 | ⬜ |
 | | TL-06 Лист «Наличные» и «Переводы людям» — только операции | `block-2-figures/TL-06-cash-people-sheet.md` | — | ⬜ |
