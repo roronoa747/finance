@@ -32,11 +32,13 @@ watch(
 const finance = useFinanceStore()
 /** Раздел платежей (Подписки, Связь…): у строки с повтором продавца — «В платежи» (FB-09, Р-17). */
 const planned = computed(() => !!props.row && plannedElsewhere(props.row.categoryId, (finance.householdDoc.spendCategories ?? []).filter((c) => !c.deletedAt)))
+// У раздела платежей — только строки без отметки, как крупная сумма (`unmarked` итогов, Х-5).
 const detail = computed(() =>
   props.row
     ? sectionWeek(store.shown, {
         week: props.week,
         categoryId: props.row.categoryId,
+        ...store.totalMarks(store.shown),
         ...(all.value ? { limit: Infinity } : {}),
         ...(planned.value ? { recurring: store.recurringFor } : {}),
       })

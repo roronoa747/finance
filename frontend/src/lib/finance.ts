@@ -5385,15 +5385,31 @@ export const SECTION_OPS = 5
 
 /**
  * Лист раздела (Р-101): свои траты раздела за неделю — топ продавцов и операции по дням. Отбор — тот же, что у
- * итогов выписок (`isSpend`: списания, без переводов между своими); раздел `UNKNOWN_CATEGORY` — не разобранное. Имя —
- * продавец коротко (`shortMerchant`) или получатель, как в ленте и листе операции.
+ * итогов выписок (`isSpend`: списания, без переводов между своими; у разделов платежей — только строки без отметки
+ * `marked`, как `sectionMonth` и крупная сумма строки — `unmarked` итогов, Х-5); раздел `UNKNOWN_CATEGORY` — не
+ * разобранное. Имя — продавец коротко (`shortMerchant`) или получатель, как в ленте и листе операции.
  */
 export function sectionWeek(
   ops: Operation[],
-  where: { week: string; categoryId: string; limit?: number; tops?: number; recurring?: (op: Operation) => RecurringPrefill | null },
+  where: {
+    week: string
+    categoryId: string
+    limit?: number
+    tops?: number
+    recurring?: (op: Operation) => RecurringPrefill | null
+    marked?: ReadonlySet<string>
+    categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]
+  },
 ): SectionWeek {
+  const planned = plannedElsewhere(where.categoryId, where.categories ?? [])
   const list = ops
-    .filter((op) => isSpend(op) && (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && weekKey(op.date) === where.week)
+    .filter(
+      (op) =>
+        isSpend(op) &&
+        (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
+        weekKey(op.date) === where.week &&
+        (!planned || (!!where.marked && !where.marked.has(op.id))),
+    )
     .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null, key: op.counterparty ? `c:${normalizeCounterparty(op.counterparty)}` : `m:${normalizeMerchant(op.merchant)}` }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
 

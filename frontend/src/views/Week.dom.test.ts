@@ -283,6 +283,26 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(all('[role="dialog"] button').filter((b) => b.className.includes('bg-brand '))).toHaveLength(0)
   })
 
+  it('лист раздела платежей (Х-5): отмеченная подписка не в списке — крупная сумма = сумма строк', async () => {
+    const { finance, store } = await openWeek()
+    // W39: подписка 4 990 отмечена платежом обязательства, 1 990 — нет → строка и лист «Подписки» — 1 990.
+    const paid = { ...op('2026-09-22', 4_990, 'sc_subscriptions', 'Yandex Plus'), id: 'sub-paid' }
+    const open = { ...op('2026-09-23', 1_990, 'sc_subscriptions', 'Yandex Plus'), id: 'sub-open' }
+    const list = [...OPS, paid, open]
+    const marked = new Set([paid.id])
+    store.ops[paid.id] = paid
+    store.ops[open.id] = open
+    finance.householdDoc.payments = [{ id: 'p1', kind: 'obligation', targetId: 'ob-plus', period: '2026-09', amount: 4_990, accountId: null, by: 'a', opId: paid.id, at: '', updatedAt: '' }]
+    finance.householdDoc.spendTotals = [...periodsOf(list).flatMap(({ kind, period }) => spendTotals(list, 'a', kind, period, '', { marked, categories: [] })), ...TOTALS.filter((t) => t.by === 'b')]
+    await flush()
+    await press(openRow('sc_subscriptions'))
+    const sheet = q('[role="dialog"]')!
+    expect(txt(sheet.querySelector('[data-section-total]'))).toBe(norm(money(1_990)))
+    expect(all('[role="dialog"] [data-section-op]').map((el) => el.dataset.sectionOp)).toEqual([open.id])
+    const rows = all('[role="dialog"] [data-section-op] b').reduce((s, el) => s + Number(txt(el).replace(/\D/g, '')), 0)
+    expect(rows).toBe(1_990)
+  })
+
   it('свой кружок — лист «Мои выписки»: только свои загрузки, банк, период, число операций и «+ Загрузить выписку»', async () => {
     await openWeek({ uploads: [...BOTH, upload('u0', 'a', '2026-08-25', '2026-08-31', { ops_count: 44, created_at: '2026-09-01T05:00:00Z' })] })
     await press(q('[data-my-uploads]'))

@@ -246,6 +246,23 @@ describe('sectionWeek — раздел за неделю (Р-101)', () => {
       expect(fromOps.reduce((s, x) => s + x, 0)).toBe(mine.total)
     }
   })
+
+  it('раздел платежей (Х-5): только строки без отметки — сумма листа = крупная сумма строки; без отметок — строк нет', () => {
+    // W42: подписка 4 990 отмечена платежом, 1 990 — нет → в листе только 1 990, как `unmarked` итогов.
+    const subs = [op('2026-10-13', 4_990, 'sc_subscriptions', 'Yandex Plus'), op('2026-10-14', 1_990, 'sc_subscriptions', 'Yandex Plus')]
+    const list = [...OPS, ...subs]
+    const marked = new Set([subs[0]!.id])
+    const s = sectionWeek(list, { week: '2026-W42', categoryId: 'sc_subscriptions', marked, categories: [] })
+    expect(s).toMatchObject({ total: 1_990, count: 1, tops: [{ name: 'Yandex Plus', count: 1, amount: 1_990 }], more: null })
+    expect(s.days.flatMap((d) => d.ops.map((o) => o.id))).toEqual([subs[1]!.id])
+    const totals = periodsOf(list).flatMap(({ kind, period }) => spendTotals(list, 'a', kind, period, T0, { marked, categories: [] }))
+    const row = myWeek(state(), { ...base, totals, by: 'a', week: '2026-W42', today: '2026-10-21' }).rows.find((r) => r.categoryId === 'sc_subscriptions')!
+    expect(row.amount).toBe(s.total)
+    // Без набора отметок — как `sectionMonth`: строк раздела платежей нет.
+    expect(sectionWeek(list, { week: '2026-W42', categoryId: 'sc_subscriptions' })).toMatchObject({ total: 0, count: 0, days: [] })
+    // Обычный раздел отметки не смотрит: 25 000 продуктов W42 как были.
+    expect(sectionWeek(list, { week: '2026-W42', categoryId: 'sc_food', marked: new Set([OPS[0]!.id]), categories: [] }).total).toBe(25_000)
+  })
 })
 
 describe('weekFeed — лента трат недели (бэклог «Лента недели», Р-1)', () => {
