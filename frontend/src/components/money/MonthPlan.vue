@@ -124,11 +124,14 @@ const monthName = computed(() => MONTHS_NOM[parseMonthKey(props.monthKey).month]
 type Section = 'dues' | 'spend' | 'queue'
 const opened = ref<Section | null>(null)
 const toggleSection = (k: string) => (opened.value = opened.value === k ? null : (k as Section))
-const parts = computed(() => [
-  { key: 'dues', amount: plan.value.duesTotal, color: '--s1' },
-  { key: 'spend', amount: plan.value.spendTotal, color: '--s8' },
-  { key: 'queue', amount: plan.value.queueTotal, color: '--s3' },
-])
+/**
+ * Доли кольца — суммы разделов. С доходом «Траты» — план (`spendTotal`, как считает «Остаётся»); без дохода (Х-23,
+ * владелец 2026-10-23) — та же сумма, что в строке «Траты» («обычно в месяц» до плана), иначе кольцо пустое при числах
+ * в строках.
+ */
+const parts = computed(() =>
+  sections.value.map((s) => ({ key: s.key, amount: s.key === 'spend' && !noIncome.value ? plan.value.spendTotal : s.total, color: s.color })),
+)
 
 /* ---------- список дел: «Отложил» (Р-97) и деньги сверх плана (Р-86) ---------- */
 const puts = computed(() => planPuts(state.value, plan.value))
@@ -690,7 +693,7 @@ function addFund(kind: 'reserve' | 'cushion') {
           <MonthRing :parts="parts" :total="plan.income.total" :active="opened" pickable @pick="toggleSection" />
           <div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
             <!-- «из N», «Свободно» по выпискам и дни до зарплаты — в подсказке у слова (Р-116), крупно — одно число. -->
-            <!-- Дохода месяца нет (Р-37: оклад не указан) — «Остаётся» и «—», без «Не хватает» и красного; кольцо — дорожка. -->
+            <!-- Дохода месяца нет (Р-37: оклад не указан) — «Остаётся» и «—», без «Не хватает» и красного; кольцо — доли из сумм разделов (Х-23). -->
             <span class="flex items-center gap-1">
               <span class="text-[13px] font-semibold text-ink-2">{{ plan.short > 0 && !noIncome ? 'Не хватает' : 'Остаётся' }}</span>
               <Hint label="Остаётся" data-rest-hint>

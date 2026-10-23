@@ -12,7 +12,7 @@ import { computed } from 'vue'
 const props = withDefaults(
   defineProps<{
     parts: { key: string; amount: number; color: string }[]
-    /** Целое кольца: доход месяца (части сверх него обрезаются кругом). */
+    /** Целое кольца: доход месяца (части сверх него обрезаются кругом); 0 — доли из суммы частей (Х-23). */
     total: number
     size?: number
     /** Раскрытый раздел — ключ части; остальные бледнеют. */
@@ -31,9 +31,9 @@ const GAP = 2
 type Arc = { key: string; from: number; len: number; color: string }
 
 const arcs = computed(() => {
-  // Дохода нет (Р-37) — только дорожка: доли «из нуля» не рисуются.
-  if (props.total <= 0) return []
-  const whole = props.total
+  // Дохода нет (Р-37, Х-23 — владелец 2026-10-23): доли — из суммы разделов, кольцо целиком; все нули — только дорожка.
+  const whole = props.total > 0 ? props.total : props.parts.reduce((s, x) => s + Math.max(0, x.amount), 0)
+  if (whole <= 0) return []
   let acc = 0
   const out: Arc[] = []
   for (const x of props.parts) {

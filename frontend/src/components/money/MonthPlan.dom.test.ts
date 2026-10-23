@@ -1585,8 +1585,16 @@ describe('FB-21: «нашли в выписке», «Поставить план
     await press(q('button[aria-label="Остаётся"]'))
     expect(txt(q('[role="note"]'))).toContain('Доход месяца не указан.')
     await press(q('button[aria-label="Остаётся"]'))
-    // Кольцо — только дорожка.
-    expect(q('[data-month-ring] circle[data-part]')).toBeNull()
+    // Кольцо — доли из сумм разделов, не из дохода (Х-23): база дуг = платежи + траты + цели.
+    const p = planOf(finance)
+    const base = p.duesTotal + p.spendTotal + p.queueTotal
+    expect(base).toBeGreaterThan(0)
+    const arcs = all('[data-month-ring] circle[data-part]')
+    expect(arcs.map((el) => el.dataset.part)).toEqual(['dues', 'spend', 'queue'].filter((k) => (p as unknown as Record<string, number>)[`${k}Total`] > 0))
+    const C = 2 * Math.PI * 88
+    const arcLen = (el: HTMLElement) => Number(el.getAttribute('stroke-dasharray')!.split(' ')[0]) + 2
+    expect(arcLen(arcs[0])).toBeCloseTo((C * p.duesTotal) / base, 6)
+    expect(arcs.reduce((s, el) => s + arcLen(el), 0)).toBeCloseTo(C, 6)
     await press(q('[data-add-salary]'))
     expect(q('[role="dialog"]')).not.toBeNull()
     expect(txt(q('[role="dialog"]'))).toContain('Ильяс')
@@ -1596,5 +1604,36 @@ describe('FB-21: «нашли в выписке», «Поставить план
     await open('member', { ...doc, people: doc.people.map((p) => (p.id === 'b' ? { ...p, salary: 0 } : p)) })
     expect(q('[data-add-salary]')).toBeNull()
     expect(q('[data-rest-none]')).toBeNull()
+  })
+
+  it('Х-23: без дохода и до плана — кольцо долями из сумм строк («обычно в месяц» 164 000 у «Трат»), не из плана семьи; с доходом — «Траты» по плану', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    const doc = planDoc()
+    const finance = await open('member', { ...doc, people: doc.people.map((p) => ({ ...p, salary: 0 })), payments: [] })
+    await useOperationsStore().loadUploads()
+    await flush()
+    const p = planOf(finance)
+    expect(p.income.total).toBe(0)
+    expect(txt(q('[data-rest-none]'))).toBe('—')
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    expect(p.spendTotal).toBe(150_000) // план Аруны — в «Остаётся», в строке «Трат» — «обычно» Ильяса
+    const C = 2 * Math.PI * 88
+    const arcLen = (el: HTMLElement) => Number(el.getAttribute('stroke-dasharray')!.split(' ')[0]) + 2
+    const arcs = all('[data-month-ring] circle[data-part]')
+    expect(arcs.map((el) => el.dataset.part)).toEqual(['dues', 'spend'])
+    const base = p.duesTotal + 164_000
+    expect(arcLen(arcs[1])).toBeCloseTo((C * 164_000) / base, 6)
+    expect(arcLen(arcs[0]) + arcLen(arcs[1])).toBeCloseTo(C, 6)
+    app?.unmount()
+    document.body.innerHTML = ''
+    // Доход есть — доля «Трат» из плана семьи (150 000 из дохода), как «Остаётся».
+    const withIncome = await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    const pi = planOf(withIncome)
+    expect(pi.income.total).toBeGreaterThan(0)
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    const spend = q('[data-month-ring] circle[data-part="spend"]')!
+    expect(arcLen(spend)).toBeCloseTo((C * 150_000) / pi.income.total, 6)
   })
 })
