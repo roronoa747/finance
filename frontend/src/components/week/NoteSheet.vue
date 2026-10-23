@@ -61,7 +61,7 @@ function remove() {
 <template>
   <Sheet :open="open && (!noteId || !!editing)" title="Заметка" @close="emit('close')">
     <div data-note-sheet>
-      <Field label="Заметка" name="text">
+      <Field label="Что" name="text">
         <Input v-model="text" placeholder="Продлить страховку" maxlength="80" autocapitalize="sentences" data-note-text />
       </Field>
       <div class="flex gap-2">

@@ -75,7 +75,7 @@ const uid = useId()
         </span>
         <span v-if="note" :id="`${uid}-n`" class="block text-[12.5px] text-ink-2">{{ note }}</span>
       </span>
-      <span v-if="slot" :id="`${uid}-a`" class="block shrink-0 font-num text-[15px] font-semibold num text-ink">{{ plain(amount) }}</span>
+      <span v-if="slot" :id="`${uid}-a`" class="block shrink-0 text-[14.5px] font-semibold num text-ink">{{ plain(amount) }}</span>
       <span v-else class="flex shrink-0 items-center gap-2">
         <Avatar v-if="payer" :id="payer" :name="payerName" :size="24" />
         <span :id="`${uid}-a`" class="block text-[14.5px] font-semibold num text-ink">{{ money(amount) }}</span>
