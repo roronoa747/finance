@@ -6,9 +6,9 @@ import { writePlanView, type PlanView } from '@/lib/storage'
  * Переключатель вкладки «План» — «Неделя | Месяц» (Р-89; макет week-month.html `.seg`): один на оба экрана.
  * Выбор запоминается на устройстве (Р-99) — вкладка «План» открывает последний; переход — `router.replace`:
  * «назад» ведёт на прошлую вкладку, а не перебирает виды. Действие зовёт точка у своего раздела в «Месяце» (Р-116,
- * Б17); единственное исключение — `dot`: новый разбор месяца не открыт (бэклог «ИИ-польза», Р-4, решение владельца
- * 2026-10-16). `month` — месяц, где ждёт действие, если не текущий (своя зарплата прошлого месяца не отложена):
- * «Месяц» откроет его.
+ * Б17); исключения — `dot`: новый разбор месяца не открыт (бэклог «ИИ-польза», Р-4, решение владельца 2026-10-16) и
+ * «Поставить план» по неделям ждёт в строке «Траты» (Блок 5 «Фидбек», Р-36). `month` — месяц, где ждёт действие, если
+ * не текущий (своя зарплата прошлого месяца не отложена): «Месяц» откроет его.
  * Это переход по адресу, не вкладки на месте: группа кнопок с `aria-current`, как `MoneySquares` (ревью frontend Б15, Н-8).
  */
 const props = defineProps<{ view: PlanView; month?: string | null; dot?: boolean }>()
@@ -38,7 +38,7 @@ function pick(o: (typeof OPTIONS)[number]) {
       :class="o.value === view ? 'bg-surface text-ink' : 'text-ink-2'"
       @click="pick(o)"
     >
-      {{ o.label }}<template v-if="dot && o.value === 'month'"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-plan-dot aria-hidden="true" /><span class="sr-only">, новый разбор</span></template>
+      {{ o.label }}<template v-if="dot && o.value === 'month'"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-plan-dot aria-hidden="true" /><span class="sr-only">, есть что сделать</span></template>
     </button>
   </div>
 </template>

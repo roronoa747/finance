@@ -315,9 +315,9 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(openDebt(store.credits)).toBe(1_509_500)
       expect(html).not.toContain(money(1_509_500))
       // Строка кредита — вид и остаток; ставки и срока нет (Р-116) — они в листе кредита.
-      expect(credits).toContain(`Кредит кредит ${money(969_500)}`)
+      expect(credits).toContain(`Кредит кредит ${plain(969_500)}`) // FB-20: суммы списков без «₸»
       expect(credits).not.toMatch(/33 %|до [а-я]+ 20\d\d/)
-      expect(credits).toContain(`Рассрочка рассрочка ${money(240_000)}`)
+      expect(credits).toContain(`Рассрочка рассрочка ${plain(240_000)}`)
       const loanSheet = await renderScreen(Money, '/money?credit=loan')
       expect(loanSheet).toContain(`value="${rateField(store.credits.find((c) => c.id === 'loan')!.annualRate)}"`)
       // Рассрочка 0 %: 240 000 / 20 000 = 12 платежей — в листе: срок строкой, число — в раскрытом «Графике платежей» (Б17).
@@ -416,10 +416,10 @@ describe('views/Money.vue — финансовые показатели (рас�
         // итог не у заголовка, а в подсказке у капитала («Счета и цели — …», Р-116): та же сумма из finance.ts.
         expect(amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total).toBe(4_629_260)
         expect(html).not.toContain(money(4_629_260))
-        expect(html).toContain(`Kaspi Gold карта · общий ${money(2_000_000)}`)
-        expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${money(479_260)}`)
-        expect(html).toContain(`Депозит Kaspi 14 % · общий ${money(1_200_000)}`)
-        expect(html).toContain(`Заначка наличные · личный ${money(300_000)}`)
+        expect(html).toContain(`Kaspi Gold карта · общий ${plain(2_000_000)}`)
+        expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${plain(479_260)}`)
+        expect(html).toContain(`Депозит Kaspi 14 % · общий ${plain(1_200_000)}`)
+        expect(html).toContain(`Заначка наличные · личный ${plain(300_000)}`)
         expect(html).toContain('Добавить счёт')
       })
 
@@ -432,15 +432,16 @@ describe('views/Money.vue — финансовые показатели (рас�
         expect(order.map((n) => list.indexOf(n)).every((i) => i >= 0)).toBe(true)
         expect(order.map((n) => list.indexOf(n))).toEqual([...order.map((n) => list.indexOf(n))].sort((a, b) => a - b))
         // Строка: название, день, кружок плательщика, сумма — и больше ничего.
-        expect(list).toContain(`Аренда 5-го И ${money(220_000)}`)
-        expect(list).toContain(`Коммуналка 8-го · ≈ оценка А ${money(30_000)}`)
-        expect(list).toContain(`Страховка раз в год · в марте И ${money(60_000)}`)
+        // FB-20 (Р-34): кружок плательщика — в слоте слева от названия, сумма без «₸».
+        expect(list).toContain(`И Аренда 5-го ${plain(220_000)}`)
+        expect(list).toContain(`А Коммуналка 8-го · ≈ оценка ${plain(30_000)}`)
+        expect(list).toContain(`И Страховка раз в год · в марте ${plain(60_000)}`)
         // Оплаченный кредит — та же строка справочника: отметка живёт в «Месяце».
-        expect(list).toContain(`Кредит 15-го И ${money(58_000)}`)
+        expect(list).toContain(`И Кредит 15-го ${plain(58_000)}`)
         for (const gone of ['Оплатил', 'оплачено', 'Осталось в', '✓']) expect(list).not.toContain(gone)
         expect(html).not.toContain('aria-label="Оплачено — подробнее"')
         // Подписки (Р-93): свёрнуты — «Подписки · 3» и сумма в месяц (4 990 + 2 990 + 1 490); по отдельности их в списке нет.
-        expect(list).toContain(`Подписки · 3 ${money(9_470)}`)
+        expect(list).toContain(`Подписки · 3 ${plain(9_470)}`)
         for (const name of ['Netflix', 'Яндекс', 'iCloud']) expect(list).not.toContain(name)
         // Ручная группа «Кино» целиком из подписок — своей строкой не стоит (она подзаголовком внутри).
         expect(list).not.toContain('Кино')
@@ -457,7 +458,7 @@ describe('views/Money.vue — финансовые показатели (рас�
         const order = ['iCloud', 'Кино ›', 'Netflix', 'Яндекс']
         expect(order.map((n) => list.indexOf(n)).every((i) => i >= 0)).toBe(true)
         expect(order.map((n) => list.indexOf(n))).toEqual([...order.map((n) => list.indexOf(n))].sort((a, b) => a - b))
-        expect(list).toContain(`Netflix 3-го И ${money(4_990)}`)
+        expect(list).toContain(`И Netflix 3-го ${plain(4_990)}`)
         const group = text(await renderScreen(Money, '/money', undefined, [screenMixin({ selectedGroupId: 'Кино' })]))
         expect(group).toContain(`Netflix 3-го И ${money(4_990)}`)
         expect(group).toContain(`Итого ${money(7_980)} в месяц`)
@@ -474,9 +475,9 @@ describe('views/Money.vue — финансовые показатели (рас�
           ],
         })
         const list = payments(await renderScreen(Money, '/money'))
-        expect(list).toContain(`iCloud 15-го И ${money(1_490)}`)
+        expect(list).toContain(`И iCloud 15-го ${plain(1_490)}`)
         expect(list).not.toContain('Подписки ·')
-        expect(list).toContain(`Дом 1 ${money(30_000)}`)
+        expect(list).toContain(`Дом 1 ${plain(30_000)}`)
       })
 
       it('листы платежа и кредита — без «Оплатил»: отметка месяца — только в «Месяце» (Р-94)', async () => {

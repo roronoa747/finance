@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhSparkle, PhWallet } from '@phosphor-icons/vue'
+import { PhArrowsClockwise, PhBank, PhCalendarPlus, PhCaretRight, PhCoins, PhCreditCard, PhFolderSimple, PhHouse, PhPlus, PhSparkle, PhTarget, PhWallet } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useAiStore } from '@/stores/ai'
-import { money, moneyIn, rateField } from '@/lib/money'
+import { moneyIn, plain, rateField } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { calendarEvents, icsText } from '@/lib/calendar'
 import { shareFile } from '@/lib/share'
@@ -44,10 +44,12 @@ import GroupSheets from '@/components/capital/GroupSheets.vue'
 import PaymentLine from '@/components/money/PaymentLine.vue'
 
 /**
- * Списки Капитала (Блок 15, Р-91, Р-93; макет week-month.html «Деньги · Капитал»): «Счета» с итогом, «Кредиты» —
+ * Списки Капитала (Блок 15, Р-91, Р-93; вид — Блок 5 «Фидбек», Р-34, Figma `19:21`, `19:73`): «Счета» с итогом, «Кредиты» —
  * остаток, ставка и срок, «Платежи» с суммой месяца —
  * справочник: один список по дню, без «Оплатил» и отметок месяца (✓ и «Оплатил» — в «Месяце», Р-94); подписки —
- * одной строкой «Подписки · N», раскрытие — список с ручными группами. Всё остальное — в листах: счёт (и вклад),
+ * одной строкой «Подписки · N», раскрытие — список с ручными группами. У каждой строки слот 32 слева (значок счёта, цели,
+ * кредита, кружок плательщика, ↻ подписок, папка группы, «+» у «Добавить»), суммы одной колонкой без «₸» («₸» — только у
+ * капитала), «Добавить» — строка списка с той же чертой. Всё остальное — в листах: счёт (и вклад),
  * кредит, обязательство, группа подписок, формы добавления.
  * Листы открываются и по адресу (`?account=`, `?credit=`, `?obligation=`, `?payoff=`, `?add=`) — «+» оболочки,
  * «Изменить платёж» из «Месяца» и старые ссылки; формы добавления — только участнику.
@@ -211,7 +213,7 @@ watch(queryModalOpen, (open) => {
       :key="a.id"
       :title="a.name"
       :note="accountMeta(a)"
-      :value="money(a.amount)"
+      :value="plain(a.amount)"
       clickable
       @click="selectedAccountId = a.id"
     >
@@ -225,8 +227,9 @@ watch(queryModalOpen, (open) => {
     <!-- Цели · N: деньги в целях — тоже капитал; на счёте — видна, но второй раз не считается (Р-109) -->
     <div v-if="goals.items.length" class="border-b border-line last:border-b-0" data-goals>
       <button type="button" class="press flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" :aria-expanded="goalsOpen" @click="goalsOpen = !goalsOpen">
+        <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-3 text-ink-2" aria-hidden="true"><PhTarget :size="17" /></span>
         <span class="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink">Цели · {{ goals.count }}</span>
-        <span class="shrink-0 text-[14.5px] font-semibold num text-ink" data-goals-total>{{ money(goals.total) }}</span>
+        <span class="shrink-0 text-[14.5px] font-semibold num text-ink" data-goals-total>{{ plain(goals.total) }}</span>
         <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="goalsOpen && 'rotate-90'" />
       </button>
       <div v-if="goalsOpen" class="mb-2 ml-4 border-l-2 border-line pl-1">
@@ -243,17 +246,16 @@ watch(queryModalOpen, (open) => {
             <span class="grid size-full place-items-center rounded-[10px] text-[13px] font-bold text-dot-ink" :style="{ background: goalHue(g.goalId) }">{{ g.name.slice(0, 1).toUpperCase() }}</span>
           </template>
           <template #value>
-            <span class="block text-[14.5px] font-semibold num" :class="g.accountName ? 'text-ink-2' : 'text-ink'">{{ money(g.amount) }}</span>
+            <span class="block text-[14.5px] font-semibold num" :class="g.accountName ? 'text-ink-2' : 'text-ink'">{{ plain(g.amount) }}</span>
           </template>
         </Row>
       </div>
     </div>
     <div v-if="!accounts.length" class="px-4 py-6 text-center text-[13px] text-ink-2">Счетов пока нет</div>
-    <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
-      <Button variant="ghost" class="px-2.5" @click="accountOpen = true">
-        <PhPlus :size="16" weight="bold" /> Добавить счёт
-      </Button>
-    </div>
+    <!-- «Добавить счёт» — строка списка со слотом «+» и той же чертой (одна черта, Р-34) -->
+    <Row v-if="!authStore.isViewer" title="Добавить счёт" clickable data-add-account @click="accountOpen = true">
+      <template #icon><PhPlus :size="16" weight="bold" /></template>
+    </Row>
   </Card>
 
   <!-- Кредиты: остаток, ставка и срок; нажатие — лист кредита -->
@@ -261,7 +263,9 @@ watch(queryModalOpen, (open) => {
     <!-- Итог — на «Долгах», ставка и срок — в листе кредита (Р-116). -->
     <Section title="Кредиты" />
     <Card flush data-credits>
-      <Row v-for="c in openCredits" :key="c.id" :title="c.name" :note="creditMeta(c)" :value="money(c.principal)" clickable @click="selectedCreditId = c.id" />
+      <Row v-for="c in openCredits" :key="c.id" :title="c.name" :note="creditMeta(c)" :value="plain(c.principal)" clickable @click="selectedCreditId = c.id">
+        <template #icon><PhCreditCard :size="17" /></template>
+      </Row>
     </Card>
   </template>
 
@@ -279,6 +283,7 @@ watch(queryModalOpen, (open) => {
     <PaymentLine
       v-for="l in lines"
       :key="l.id"
+      slot
       :item="l.item"
       :period="key"
       :mark="ai.markFor(l.item.kind, l.id)"
@@ -286,16 +291,16 @@ watch(queryModalOpen, (open) => {
     />
     <div v-if="subs" class="border-b border-line last:border-b-0" data-subs>
       <button type="button" class="press flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-surface-2" :aria-expanded="subsOpen" @click="subsOpen = !subsOpen">
-        <span class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-surface-3 text-ink-2"><PhArrowsClockwise :size="17" /></span>
+        <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-3 text-ink-2"><PhArrowsClockwise :size="17" /></span>
         <!-- Совет ИИ про подписку внутри — ✦ у свёрнутой группы зовёт издалека (правило 12), кнопка — у самой подписки. -->
         <span class="flex min-w-0 flex-1 items-center gap-1.5 text-[14.5px] font-medium text-ink">
           <span class="truncate">Подписки · {{ subs.count }}</span>
           <template v-if="subsMarked"><PhSparkle :size="12" weight="fill" class="shrink-0 text-brand" aria-hidden="true" data-subs-mark /><span class="sr-only">, есть совет ИИ</span></template>
         </span>
-        <span class="shrink-0 text-[14.5px] font-semibold num text-ink">{{ money(subs.total) }}</span>
+        <span class="shrink-0 text-[14.5px] font-semibold num text-ink">{{ plain(subs.total) }}</span>
         <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
       </button>
-      <div v-if="subsOpen" class="mb-2 ml-[33px] border-l-2 border-line pl-3">
+      <div v-if="subsOpen" class="mb-2 ml-[31px] border-l-2 border-line pl-3">
         <template v-for="w in subsByWho" :key="w.who">
           <p v-if="subsByWho.length > 1" class="pb-0.5 pt-3 text-[13px] font-semibold text-ink" :data-subs-who="w.who">{{ w.name }} · {{ w.group.count }}</p>
           <template v-for="g in w.group.parts" :key="g.groupId ?? ''">
@@ -312,6 +317,7 @@ watch(queryModalOpen, (open) => {
               v-for="x in g.rows"
               :key="x.obligation.id"
               dense
+              slot
               :item="{ kind: 'obligation', obligation: x.obligation }"
               :period="key"
               :mark="ai.markFor('obligation', x.obligation.id)"
@@ -326,10 +332,12 @@ watch(queryModalOpen, (open) => {
       :key="g.id"
       :title="g.name"
       :note="`${groupChildren(g, financeStore.obligations).length}${g.noAsk ? ' · рабочие' : ''}`"
-      :value="money(groupTotal(g, financeStore.obligations, key, fx.book))"
+      :value="plain(groupTotal(g, financeStore.obligations, key, fx.book))"
       clickable
       @click="selectedGroupId = g.id"
-    />
+    >
+      <template #icon><PhFolderSimple :size="17" /></template>
+    </Row>
     <div v-if="!lines.length && !groupRows.length && !subs" class="px-4 py-6 text-center text-[13px] text-ink-2">Платежей пока нет</div>
     <button
       v-if="closed.length"
@@ -340,11 +348,10 @@ watch(queryModalOpen, (open) => {
       <span>Закрытые · {{ closed.length }}</span>
       <PhCaretRight :size="14" class="shrink-0" />
     </button>
-    <div v-if="!authStore.isViewer" class="border-t border-line px-2 py-1.5">
-      <Button variant="ghost" class="px-2.5" @click="addOpen = true">
-        <PhPlus :size="16" weight="bold" /> Добавить
-      </Button>
-    </div>
+    <!-- «Добавить» — строка списка со слотом «+» (одна черта, Р-34) -->
+    <Row v-if="!authStore.isViewer" title="Добавить" clickable data-add-payment @click="addOpen = true">
+      <template #icon><PhPlus :size="16" weight="bold" /></template>
+    </Row>
   </Card>
 
   <!-- Что добавить: четыре вида платежа; жильё — своим входом (Р-7 «понятность») -->

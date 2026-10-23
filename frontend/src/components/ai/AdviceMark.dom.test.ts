@@ -206,7 +206,7 @@ describe('RZ-10: ✦ у предметов на «Месяце» и «Деньг
     await mount({ path: '/money' })
     const line = all('[data-payments] > [data-payment]').find((el) => txt(el).includes('Аренда'))!
     const payText = described(line.querySelector('.row-open'), line)
-    expect(payText).toMatch(/-го · .*\d.*₸$/)
+    expect(payText).toMatch(/-го · .*\d$/) // FB-20: сумма строки «Капитала» без «₸»
     expect(payText).not.toContain('Аренда')
   })
 

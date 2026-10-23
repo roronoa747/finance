@@ -108,7 +108,9 @@ describe('e2e / понятность Блок 1 — настройки везд�
     const B = await as('member', 'b')
     const V = await as('viewer', 'b')
 
-    for (const [view, path] of [[Month, '/month'], [Money, '/money']] as const) {
+    // FB-20: зарплат на «Капитале» нет — строки только в «Месяце».
+    expect(await screen(on(A).pinia, Money, '/money')).not.toContain('data-salary=')
+    for (const [view, path] of [[Month, '/month']] as const) {
       const a = await screen(on(A).pinia, view, path)
       expect(a, path).toMatch(/data-salary="a" data-can-mark="true"/)
       expect(rowOf(a, 'a'), path).toContain('data-salary-came-btn')
@@ -132,7 +134,6 @@ describe('e2e / понятность Блок 1 — настройки везд�
     const after = await screen(A.pinia, Month, '/month')
     expect(rowOf(after, 'a')).toContain('data-came')
     expect(rowOf(after, 'a')).not.toContain('data-salary-came-btn')
-    expect(rowOf(await screen(A.pinia, Money, '/money'), 'a')).toContain('data-came')
     // Второе нажатие (двойной тап, второй телефон) — той же записью.
     await screen(A.pinia, Month, '/month', undefined, [screenMixin({}, (s) => (s.tap as () => void)())]).catch(() => {})
     expect(salaries(A)).toHaveLength(1)
@@ -154,10 +155,6 @@ describe('e2e / понятность Блок 1 — настройки везд�
     const sheet = await screen(A.pinia, Month, '/month', undefined, [screenMixin({ salaryFor: 'a' })])
     expect(sheet).toContain('data-fx-year')
     expect(text(sheet)).toContain(`Евро за год ${moneySigned(-134)}`.replace(/[  ]/g, ' '))
-    // Из «Капитала» — тот же лист (`CapitalSalaries.open`).
-    const capital = await screen(A.pinia, Money, '/money', undefined, [screenMixin({}, (s) => { void s.lines; s.open = 'a' })])
-    expect(capital).toContain('data-fx-year')
-    expect(text(capital)).toContain('Евро за год')
     // Нажатие строки — лист курса (`SalarySheet.next('rate')`), заголовок «Курс евро». `year` и `rate` — только у листа
     // зарплаты (у `MarkSheet` строки тоже есть `next`).
     const rate = await screen(A.pinia, Month, '/month', undefined, [
@@ -185,7 +182,7 @@ describe('e2e / понятность Блок 1 — настройки везд�
     server.data.payments = [...(server.data.payments ?? []), { id: 'sal-b-09', kind: 'salary', targetId: 'b', period: '2026-09', amount: 500_000, accountId: 'card', by: 'b', at: '2026-09-20T05:00:00.000Z', updatedAt: T0 }]
     const B = await as('member', 'b')
     const A = await as('member', 'a')
-    for (const [view, path] of [[Month, '/month'], [Money, '/money']] as const) {
+    for (const [view, path] of [[Month, '/month']] as const) {
       const b = await screen(on(B).pinia, view, path)
       expect(b, path).toMatch(/data-salary="b" data-can-mark="true"/)
       expect(rowOf(b, 'b'), path).toContain('data-salary-came-btn')
@@ -197,11 +194,11 @@ describe('e2e / понятность Блок 1 — настройки везд�
     }
     on(B)
     at('2026-10-18T07:01:00Z')
-    await screen(B.pinia, Money, '/money', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
+    await screen(B.pinia, Month, '/month', undefined, [screenMixin({}, (s) => (s.tap as () => void)())])
     const mine = salaries(B).filter((p) => p.targetId === 'b')
     expect(mine).toHaveLength(1)
     expect(mine[0]).toMatchObject({ kind: 'salary', targetId: 'b', period: KEY, amount: 500_000, accountId: 'card', by: 'b' })
-    const after = await screen(B.pinia, Money, '/money')
+    const after = await screen(B.pinia, Month, '/month')
     expect(rowOf(after, 'b')).toContain('data-came')
     expect(rowOf(after, 'b')).not.toContain('data-salary-came-btn')
     await B.store.syncHousehold(B.client)

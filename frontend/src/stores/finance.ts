@@ -38,6 +38,8 @@ import {
   salaryToAllocate,
   planExtras,
   planPuts,
+  planByFact,
+  type PlanByFact,
   wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
@@ -95,6 +97,7 @@ import type {
   FxExchange,
   DebtCard,
   TripExcluded,
+  Note,
 } from '@/types/finance'
 import type { MerchantRule, OpEdit } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -363,6 +366,16 @@ export const useFinanceStore = defineStore('finance', () => {
     const extras = planExtras(state, { ...ctx, rawCredits: householdDoc.value.credits })
     if (extras.freed || extras.closed) return key
     return salaryToAllocate(state, auth.slot)?.period ?? null
+  }
+  /**
+   * «Поставить план» по моим неделям (Блок 5 «Фидбек», Р-36, FB-21): предложение плана трат для меня — пока своего плана
+   * нет и выписки покрывают ≥ `PLAN_FACT_DAYS`; иначе или viewer — null. Функция, как `planCall`: зависит от сегодня.
+   */
+  const planFactCall = (): PlanByFact | null => {
+    const auth = useAuthStore()
+    if (auth.isViewer || !auth.slot) return null
+    const { state, ctx } = planInput(monthKey())
+    return planByFact(state, ctx, auth.slot, todayIso())
   }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
@@ -2130,6 +2143,48 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
+  /* ---------- заметки себе с датой (Блок 5 «Фидбек», Р-33): личный документ, партнёр не видит ---------- */
+  const NOTE_TEXT_MAX = 80
+  /** Живые заметки (без надгробий). */
+  const notes = computed(() => ((privateDoc.value.notes as Note[] | undefined) ?? []).filter((n) => !n.deletedAt))
+  const noteFields = (p: { text: string; date: string; amount?: number | null }) => ({
+    text: p.text.trim().slice(0, NOTE_TEXT_MAX),
+    date: p.date,
+    amount: p.amount && p.amount > 0 ? Math.round(p.amount) : null,
+  })
+  function writeNote(next: Note) {
+    mutatePrivateDoc((doc) => {
+      const list = (doc.notes as Note[] | undefined) ?? []
+      doc.notes = list.some((n) => n.id === next.id) ? list.map((n) => (n.id === next.id ? next : n)) : [...list, next]
+    })
+  }
+  /** Новая заметка: текст (≤ 80), дата `YYYY-MM-DD`, сумма по желанию (целое ≥ 0 — подпись, не трата). Возвращает id. */
+  function addNote(p: { text: string; date: string; amount?: number | null }): string {
+    const id = `nt_${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}`
+    writeNote({ id, ...noteFields(p), doneAt: null, updatedAt: new Date().toISOString() })
+    return id
+  }
+  /** Правка заметки (текст, дата, сумма). */
+  function setNote(id: string, p: { text: string; date: string; amount?: number | null }) {
+    const prev = notes.value.find((n) => n.id === id)
+    if (!prev) return
+    writeNote({ ...prev, ...noteFields(p), updatedAt: new Date().toISOString() })
+  }
+  /** ✓ в карточке: сделано (`doneAt` — ISO) или снять. */
+  function setNoteDone(id: string, on: boolean) {
+    const prev = notes.value.find((n) => n.id === id)
+    if (!prev || !!prev.doneAt === on) return
+    const t = new Date().toISOString()
+    writeNote({ ...prev, doneAt: on ? t : null, updatedAt: t })
+  }
+  /** Удалить — надгробие (переживает слияние). */
+  function removeNote(id: string) {
+    const prev = notes.value.find((n) => n.id === id)
+    if (!prev) return
+    const t = new Date().toISOString()
+    writeNote({ ...prev, deletedAt: t, updatedAt: t })
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2471,6 +2526,7 @@ export const useFinanceStore = defineStore('finance', () => {
     monthPlanOf,
     historyMonthsNow,
     planCall,
+    planFactCall,
     planStepNow,
     pausedGoalIds,
     saveLocalState,
@@ -2562,6 +2618,11 @@ export const useFinanceStore = defineStore('finance', () => {
     opEdits,
     setOpEdit,
     carryOpEdits,
+    notes,
+    addNote,
+    setNote,
+    setNoteDone,
+    removeNote,
     setSpendPlan,
     ensureFund,
     setFundMonths,

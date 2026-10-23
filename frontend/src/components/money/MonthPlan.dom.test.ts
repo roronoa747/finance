@@ -10,9 +10,10 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type HabitImage, type MonthPlanCtx, type ReviewCard, type ReviewCardTarget } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planByFact, planPuts, spendCompare, untilPayday, type HabitImage, type MonthPlanCtx, type ReviewCard, type ReviewCardTarget } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
+import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import type { AiAdvice, AiReview, Obligation, Payment, SyncDoc } from '@/types/finance'
@@ -130,6 +131,9 @@ const press = async (el: HTMLElement | null | undefined) => {
 }
 const norm = (s: string) => s.replace(/\s+/g, ' ')
 const section = (k: 'dues' | 'spend' | 'queue') => q<HTMLButtonElement>(`[data-section="${k}"]`)
+/** «Раскрыто» — у кнопки-названия строки (`aria-expanded`), не у div строки (критик Блока 5 «Фидбек»). */
+const expanded = (k: 'dues' | 'spend' | 'queue') => q(`[data-section="${k}"] [data-row-open]`)!.getAttribute('aria-expanded')
+const allCollapsed = () => all('[data-section] [data-row-open]').every((el) => el.getAttribute('aria-expanded') === 'false')
 const dialogButton = (label: string) => all('[role="dialog"] button').find((b) => txt(b).startsWith(label))
 const plans = (finance: ReturnType<typeof useFinanceStore>) => (finance.householdDoc.allocations ?? []).filter((a) => a.kind === 'plan' && !a.deletedAt)
 
@@ -151,8 +155,8 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(section('spend'))).toContain(norm(plain(plan.spendTotal)))
     expect(plan.duesTotal + plan.spendTotal).toBe(plan.outTotal)
     // Зарплата: в строке — ✓ у суммы; дата и «хватает ли» — в листе зарплаты (Р-116). Слов «✓ пришла» нет.
-    expect(q('[data-salary="a"] [data-came]')).not.toBeNull()
-    expect(q('[data-salary="b"] [data-came]')).toBeNull()
+    expect(q('[data-salary="a"][data-came]')).not.toBeNull()
+    expect(q('[data-salary="b"][data-came]')).toBeNull()
     expect(q('[data-salary] [data-salary-status]')).toBeNull()
     expect(q('[data-salary] [data-left]')).toBeNull()
     expect(txt(document.body)).not.toContain('✓ пришла')
@@ -166,7 +170,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     }
     // Оглавление: три строки, всё свёрнуто.
     expect(all('[data-section]').map((el) => el.dataset.section)).toEqual(['dues', 'spend', 'queue'])
-    expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(allCollapsed()).toBe(true)
     expect(q('[data-due]')).toBeNull()
     expect(q('[data-queue]')).toBeNull()
     expect(txt(section('dues'))).toContain(norm(plain(plan.duesTotal)))
@@ -178,11 +182,43 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(document.body)).not.toContain('Отложить по плану')
   })
 
+  it('FB-19 (Р-30): малое кольцо 112 без дуг зарплат, «Остаётся» справа, чипы в карточке, разделы в ней же с одной точкой; зарплаты ниже, пришла — подсветка без ✓', async () => {
+    const finance = await open()
+    const plan = planOf(finance)
+    const top = q('[data-month-top]')!
+    // Кольцо: одна дорожка + дуги частей (платежи · траты · цели), внешних дуг зарплат нет; размер 112.
+    const ring = top.querySelector<HTMLElement>('[data-month-ring]')!
+    expect(ring.style.width).toBe('112px')
+    expect(ring.querySelectorAll('circle[data-part]').length).toBe(3)
+    expect(ring.querySelectorAll('circle').length).toBe(4)
+    expect(ring.querySelector('circle')!.getAttribute('r')).toBe('88')
+    // «Остаётся» и число — в карточке рядом с кольцом (не в его центре), число ≤ 34 px.
+    expect(ring.textContent!.trim()).toBe('')
+    expect(txt(top.querySelector('[data-rest]'))).toBe(norm(money(plan.rest)))
+    expect(top.querySelector('[data-rest]')!.className).toContain('text-[29px]')
+    expect(top.querySelector('[data-rest-hint]')).not.toBeNull()
+    expect(top.querySelector('[data-afford-open]')).not.toBeNull()
+    // Разделы — в той же карточке: одна точка (цвет раздела), второй точки-призыва нет.
+    expect(top.querySelector('[data-sections]')).not.toBeNull()
+    expect(q('[data-section-dot]')).toBeNull()
+    for (const s of all('[data-section]')) expect(s.querySelectorAll('.rounded-full').length).toBe(1)
+    // Призыв у «Целей» (взносы ждут «Отложил») — подписью брендом.
+    expect(q('[data-section="queue"] [data-section-call]')!.className).toContain('text-brand')
+    expect(q('[data-section="dues"] [data-section-call]')).toBeNull()
+    // Карточка зарплат — после карточки с разделами; пришла — строка с `data-came` и `bg-ok-soft`, без ✓ и «N из M пришли»; ждущая — тихая сумма.
+    expect(top.compareDocumentPosition(q('[data-salary="a"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(q('[data-salary="a"]')!.className).toContain('bg-ok-soft')
+    expect(q('[data-salary="b"]')!.className).not.toContain('bg-ok-soft')
+    expect(txt(q('[data-salary="a"]'))).not.toContain('✓')
+    expect(q('[data-came-count]')).toBeNull()
+    expect(q('[data-salary="b"] b')!.className).toContain('text-ink-2')
+  })
+
   it('раздел раскрывается строкой и цветом круга, один за раз; цели — строки без фото и «Желаний»', async () => {
     const finance = await open()
     const plan = planOf(finance)
     await press(section('queue'))
-    expect(section('queue')!.getAttribute('aria-expanded')).toBe('true')
+    expect(expanded('queue')).toBe('true')
     expect(all('[data-queue]').map((el) => el.dataset.queue)).toEqual(plan.queue.map((x) => x.id))
     expect(q('[data-queue-list] img')).toBeNull()
     expect(txt(document.body)).not.toContain('Желания')
@@ -191,14 +227,14 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     // Цвет круга «Платежи» — открывает платежи, цели сворачиваются; остальные цвета бледнеют.
     q<SVGElement>('[data-part="dues"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush()
-    expect(section('dues')!.getAttribute('aria-expanded')).toBe('true')
-    expect(section('queue')!.getAttribute('aria-expanded')).toBe('false')
+    expect(expanded('dues')).toBe('true')
+    expect(expanded('queue')).toBe('false')
     expect(q('[data-queue]')).toBeNull()
     expect(q('[data-part="queue"]')!.getAttribute('opacity')).toBe('0.3')
     expect(q('[data-part="dues"]')!.getAttribute('opacity')).toBe('1')
     // Повторное нажатие — свернуть.
     await press(section('dues'))
-    expect(all('[data-section]').every((el) => el.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(allCollapsed()).toBe(true)
     await press(section('spend'))
     // AU-02: раскрытая «Траты» — разделы семьи (выписок нет — план), а не блоки участников.
     expect(q('[data-spend]')).toBeNull()
@@ -348,7 +384,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const mine = plan.queue.filter((x) => x.payer === 'a' && x.given > 0 && x.goalId)
     expect(mine.length).toBeGreaterThan(1)
     expect(finance.planCall()).toBe(KEY)
-    expect(q('[data-section="queue"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')).not.toBeNull()
     await press(section('queue'))
     const haves = new Map(finance.goals.map((g) => [g.id, g.have]))
     expect(txt(q('[data-put-all]'))).toBe(norm(`Отложил всё · ${money(mine.reduce((s, x) => s + x.given, 0))}`))
@@ -360,7 +396,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-put-all]')).toBeNull()
     expect(all('[data-put-done]')).toHaveLength(mine.length)
     expect(txt(q('[data-section="queue"] [data-section-meta]'))).toBe(`${mine.length} из ${mine.length} отложено`)
-    expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')).toBeNull()
     expect(finance.planCall()).toBeNull()
     // План считает от начала месяца — суммы строк прежние.
     expect(planOf(finance).queue.map((x) => x.given)).toEqual(plan.queue.map((x) => x.given))
@@ -456,7 +492,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(finance.planCall()).toBeNull()
     await press(section('queue'))
     expect(q('[data-put-all]')).toBeNull()
-    expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')).toBeNull()
     await press(q('[data-queue="trip"]'))
     expect(dialogButton('Отложил')).toBeTruthy()
   })
@@ -465,7 +501,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     const doc = familyDoc()
     const obligations = doc.obligations.map((o) => (o.id === 'rent' ? { ...o, versions: [{ from: '2000-01', amount: 220_000 }, { from: '2026-11', amount: 150_000 }] } : o))
     const finance = await open('member', { ...doc, obligations })
-    expect(q('[data-section="dues"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="dues"] [data-section-call]')).not.toBeNull()
     await press(section('dues'))
     const tip = q('[data-freed]')!
     expect(txt(tip)).toContain(norm(`С ноября свободно +${plain(70_000)} в месяц`))
@@ -477,7 +513,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     await press(button)
     expect(finance.goals.find((g) => g.id === 'trip')!.monthly).toBe(monthly + 70_000)
     expect(q('[data-freed]')).toBeNull()
-    expect(q('[data-section="dues"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="dues"] [data-section-call]')).toBeNull()
   })
 
   it('строка зарплаты — лист: своя и ждём — «Пришла зарплата»; чужая — без «Пришла»; пришедшая — отметка; у всех — «Изменить оклад»', async () => {
@@ -685,7 +721,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(document.body)).toContain('просмотр')
     expect(q('[data-extra-income]')).toBeNull()
     expect(finance.planCall()).toBeNull()
-    expect(q('[data-section-dot]')).toBeNull()
+    expect(q('[data-section-call]')).toBeNull()
     await press(section('dues'))
     expect(all('button').some((b) => b.getAttribute('aria-label')?.startsWith('Платит'))).toBe(false)
     await press(q('[data-due-id="obligation:rent"]'))
@@ -755,7 +791,7 @@ describe('PN-02: «Пришла» у своей строки зарплаты в
     expect(q('[role="dialog"]')).toBeNull()
     expect(salaries(finance)).toHaveLength(1)
     expect(salaries(finance)[0]).toMatchObject({ targetId: 'a', period: KEY, amount: 700_000, accountId: 'card', by: 'a' })
-    expect(q('[data-salary="a"] [data-came]')).not.toBeNull()
+    expect(q('[data-salary="a"][data-came]')).not.toBeNull()
     expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
     // Та же отметка, что в листе: лист — «пришла», без «Пришла зарплата», с «Другая сумма или снять».
     await press(q('[data-salary="a"] [data-row-open]'))
@@ -1014,7 +1050,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     const finance = await openSpend()
     const rows = compareOf(finance).rows
     expect(rows.map((r) => [r.categoryId, r.amount, r.over])).toEqual([['sc_food', 90_000, false], ['sc_cafe', 50_000, true]])
-    expect(q('[data-section="spend"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="spend"] [data-section-call]')).not.toBeNull()
     await press(section('spend'))
     expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe'])
     expect(all('[data-spend-dot]').map((el) => el.closest<HTMLElement>('[data-spend-row]')!.dataset.spendRow)).toEqual(['sc_cafe'])
@@ -1088,7 +1124,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
 
   it('без выписок — план строкой, точек нет; план партнёра — не мой раздел', async () => {
     await openSpend('member', [])
-    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-call]')).toBeNull()
     await press(section('spend'))
     expect(q('[data-spend-dot]')).toBeNull()
     expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(`план ${plain(20_000)}`))
@@ -1103,7 +1139,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(all('[data-spend-row]')).toHaveLength(0)
     expect(q('[data-spend-mine]')).toBeNull()
     expect(q('[data-spend-add]')).toBeNull()
-    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-call]')).toBeNull()
   })
 
   it('«+ Раздел» — лист «Траты на месяц»; сохранённый план — строкой раздела', async () => {
@@ -1137,7 +1173,9 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(q('[data-spend-person]')!.tagName).toBe('DIV')
     expect(txt(q('[data-spend-mine]'))).toBe('Мои разделы')
     // Заголовок — общее «потрачено» семьи, как было.
-    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(140_000)}`))
+    // Заголовок — призыв подписью (FB-19, Р-32): кафе выше обычного → «больше обычного» вместо «потрачено»; само «потрачено» — у строки участника.
+    expect(txt(q('[data-section="spend"] [data-section-call]'))).toBe('больше обычного')
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('больше обычного')
   })
 
   it('FB-12: партнёр — своя строка первой, свои разделы; разделов Ильяса нет; лист — «План» только свой', async () => {
@@ -1223,12 +1261,12 @@ describe('RZ-16: одна метка у заголовка раздела', () =
     useAuthStore().ai = true // ✦ — только с ИИ семьи
     await flush()
     // «Цели и фонды»: зарплата Ильяса пришла, взносы не отложены — точка; совет про «Отпуск» — ✦ у заголовка нет.
-    expect(q('[data-section="queue"] [data-section-dot]')).not.toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')).not.toBeNull()
     expect(q('[data-section="queue"] [data-section-mark]')).toBeNull()
-    expect(txt(section('queue'))).toContain('есть что сделать')
+    expect(txt(q('[data-section="queue"] [data-section-call]'))).toContain('отложено')
     expect(txt(section('queue'))).not.toContain('есть совет ИИ')
     // «Траты»: выше обычного нет — точки нет, совет про «Такси» — ✦ у заголовка.
-    expect(q('[data-section="spend"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="spend"] [data-section-call]')).toBeNull()
     expect(q('[data-section="spend"] [data-section-mark]')).not.toBeNull()
     expect(txt(section('spend'))).toContain('есть совет ИИ')
     // Раскрыл — ✦ у строки «Отпуск», как раньше.
@@ -1236,7 +1274,7 @@ describe('RZ-16: одна метка у заголовка раздела', () =
     expect(q('[data-queue="trip"] [data-advice-mark]')).not.toBeNull()
     // «Отложил всё» — точка ушла, у заголовка — ✦.
     await press(q('[data-put-all]'))
-    expect(q('[data-section="queue"] [data-section-dot]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')).toBeNull()
     expect(q('[data-section="queue"] [data-section-mark]')).not.toBeNull()
   })
 })
@@ -1411,5 +1449,191 @@ describe('FB-17: кнопки карточек отчёта — свой лис�
     expect(Number(sheet!.closest<HTMLElement>('.fixed')!.style.zIndex)).toBeGreaterThanOrEqual(60)
     await press(sheet!.querySelector<HTMLElement>('button[aria-label="Закрыть"]'))
     expect(q('[data-report]')).not.toBeNull()
+  })
+})
+
+/*
+ * FB-21 (Блок 5 «Фидбек», Р-35…Р-37): «нашли N в выписке» в «Платежах», «Поставить план» по неделям в строке «Траты»,
+ * «Месяц» без дохода. Сегодня — 12 сентября 2026 (сб); W36 = 31 авг – 6 сен, W35 = 24–30 авг, W34 = 17–23 авг.
+ */
+describe('FB-21: «нашли в выписке», «Поставить план», месяц без дохода', () => {
+  const opOf = (id: string, date: string, amount: number, merchant: string, categoryId: string | null = null): Operation => ({
+    id, bank: 'kaspi', date, amount: -amount, kind: 'purchase', merchant, categoryId, internal: false,
+  })
+  /** Семья без платежей: Apple Music дважды (±3 дня, та же сумма) — повтор; Magnum — нет. */
+  function seedFound() {
+    const store = useOperationsStore()
+    for (const o of [opOf('ap8', '2026-08-14', 4_990, 'APPLE.COM BILL'), opOf('ap9', '2026-09-10', 4_990, 'APPLE.COM BILL'), opOf('m9', '2026-09-08', 8_000, 'MAGNUM', 'sc_food')]) store.ops[o.id] = o
+  }
+
+  it('«нашли 1 в выписке» — подпись «Платежей», пока платежей месяца нет; раскрыто — строка с «В платежи» → форма → «Сохранить» — платёж, строка ушла', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] } as never)
+    const finance = await open('member', familyDoc({ obligations: [], credits: [], payments: [] }))
+    seedFound()
+    await flush()
+    expect(txt(q('[data-section="dues"] [data-section-meta]'))).toBe('нашли 1 в выписке')
+    expect(q('[data-section="dues"] [data-section-found]')!.getAttribute('data-section-found')).toBe('1')
+    await press(section('dues'))
+    expect(txt(q('[data-found-list]'))).toContain('Нашли в выписке')
+    const row = q('[data-found-row="ap9"]')!
+    expect(txt(row)).toContain('APPLE.COM BILL')
+    expect(txt(row)).toContain('≈ 10-го') // медиана дней 14 и 10 — нижняя
+    expect(txt(row)).toContain(norm(plain(4_990)))
+    expect(q('[data-found-row="m9"]')).toBeNull()
+    // Маленькая `xs` «В платежи» → форма регулярного платежа с заполнением (путь FB-09).
+    const pay = row.querySelector<HTMLElement>('[data-found-pay]')!
+    expect(pay.className).toContain('h-[26px]')
+    await press(pay)
+    // Имя заполнено из выписки — в поле формы (меняется там же).
+    expect(all('[role="dialog"] input').some((i) => (i as HTMLInputElement).value.includes('APPLE.COM'))).toBe(true)
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Добавить'))
+    await flush()
+    expect(finance.obligations.map((o) => o.name)).toEqual(['APPLE.COM BILL'])
+    expect(finance.merchantRules.some((r) => 'payment' in r.to)).toBe(true)
+    // Платёж заведён — строки «нашли» нет, подпись — обычная.
+    expect(q('[data-found-row="ap9"]')).toBeNull()
+    expect(txt(q('[data-section="dues"] [data-section-meta]'))).not.toContain('нашли')
+  })
+
+  /**
+   * «Поставить план»: выписка Ильяса 17 авг – 10 сен (25 дней ≥ 14), полные недели W34, W35, W36; по неделям — продукты
+   * 20 000 / 30 000 / 25 000 (→ 25 000 × 52 / 12 = 108 333 → 109 000), кафе 6 000 / 6 000 / 6 000 (→ 26 000), транспорт
+   * 3 000 / 0 / 3 000 (→ 8 667 → 9 000), развлечения 0 / 9 000 / 0 (→ 13 000), дом 0 / 0 / 4 500 (→ 6 500 → 7 000);
+   * итог 164 000. Своих строк плана у Ильяса нет (план есть только у Аруны).
+   */
+  const WEEK_OPS: Operation[] = [
+    opOf('f1', '2026-08-18', 20_000, 'Magnum', 'sc_food'), opOf('f2', '2026-08-26', 30_000, 'Magnum', 'sc_food'), opOf('f3', '2026-09-02', 25_000, 'Magnum', 'sc_food'),
+    opOf('c1', '2026-08-19', 6_000, 'Кофейня', 'sc_cafe'), opOf('c2', '2026-08-27', 6_000, 'Кофейня', 'sc_cafe'), opOf('c3', '2026-09-03', 6_000, 'Кофейня', 'sc_cafe'),
+    opOf('t1', '2026-08-20', 3_000, 'Yandex Go', 'sc_transport'), opOf('t3', '2026-09-04', 3_000, 'Yandex Go', 'sc_transport'),
+    opOf('e2', '2026-08-28', 9_000, 'Кино', 'sc_fun'),
+    opOf('h3', '2026-09-05', 4_500, 'Хозтовары', 'sc_home'),
+  ]
+  const planDoc = () =>
+    familyDoc({
+      spendPlans: [{ id: 'b:sc_food', by: 'b', categoryId: 'sc_food', amount: 150_000, updatedAt: T0 }],
+      spendTotals: periodsOf(WEEK_OPS).flatMap(({ kind, period }) => spendTotals(WEEK_OPS, 'a', kind, period, T0)),
+    })
+  const planUploads = [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-08-17', period_to: '2026-09-10', ops_count: 10, created_at: T0 }]
+
+  it('«Поставить план» — маленькая брендовая в строке «Траты», подпись «обычно в месяц», сумма — итог; лист: 3 строки + «ещё 2 раздела», «Поставить» → spendPlans мне, тост, кнопки нет', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    const finance = await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    const { state, ctx } = finance.planInput(KEY)
+    const p = planByFact(state, ctx, 'a', '2026-09-12')!
+    expect(p.rows.map((r) => [r.categoryId, r.amount])).toEqual([['sc_food', 109_000], ['sc_cafe', 26_000], ['sc_fun', 13_000], ['sc_transport', 9_000], ['sc_home', 7_000]])
+    expect(p.total).toBe(164_000)
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('обычно в месяц')
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    const btn = q('[data-plan-fact]')!
+    expect(btn.className).toContain('bg-brand')
+    expect(btn.className).toContain('h-[26px]')
+    // Раскрытия строки нажатие кнопки не трогает.
+    await press(btn)
+    expect(expanded('spend')).toBe('false')
+    const sheet = q('[data-plan-fact-sheet]')!
+    expect(all('[data-plan-fact-row]').map((el) => el.dataset.planFactRow)).toEqual(['sc_food', 'sc_cafe', 'sc_fun'])
+    expect(txt(q('[data-plan-fact-more]'))).toContain('ещё 2 раздела')
+    expect(txt(q('[data-plan-fact-more]'))).toContain(norm(plain(16_000)))
+    expect(txt(sheet)).toContain(norm(plain(164_000)))
+    await press(q('[data-plan-fact-more]'))
+    expect(all('[data-plan-fact-row]')).toHaveLength(5)
+    expect(q('[data-plan-fact-more]')).toBeNull()
+    await press(q('[data-plan-fact-save]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect((finance.householdDoc.spendPlans ?? []).filter((x) => x.by === 'a' && !x.deletedAt).map((x) => [x.categoryId, x.amount])).toEqual(p.rows.map((r) => [r.categoryId, r.amount]))
+    // План Аруны не тронут.
+    expect((finance.householdDoc.spendPlans ?? []).find((x) => x.by === 'b')).toMatchObject({ categoryId: 'sc_food', amount: 150_000 })
+    expect(txt(q('[data-plan-fact-done]'))).toBe('План поставлен')
+    expect(q('[data-plan-fact]')).toBeNull()
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).not.toBe('обычно в месяц')
+  })
+
+  it('семья с планом и viewer — ни «Поставить план», ни «нашли»; покрытие 13 дней — кнопки нет', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    await open('member', familyDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ ...planUploads[0], period_from: '2026-08-29' }] } as never)
+    await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    await open('viewer', planDoc())
+    seedFound()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    expect(q('[data-section-found]')).toBeNull()
+  })
+
+  it('без дохода (оклады 0): «Остаётся» и «—», без «Не хватает» и красного, подсказка «Доход месяца не указан.»; «+ Зарплата» → лист оклада; партнёру чужой оклад не предлагается', async () => {
+    const doc = familyDoc()
+    const finance = await open('member', { ...doc, people: doc.people.map((p) => ({ ...p, salary: 0 })), payments: [] })
+    expect(planOf(finance).income.total).toBe(0)
+    expect(txt(q('[data-rest-none]'))).toBe('—')
+    expect(q('[data-rest-none]')!.className).toContain('text-ink-2')
+    expect(q('[data-rest]')).toBeNull()
+    expect(txt(document.body)).not.toContain('Не хватает')
+    expect(q('[data-month-top] .text-warn')).toBeNull()
+    await press(q('button[aria-label="Остаётся"]'))
+    expect(txt(q('[role="note"]'))).toContain('Доход месяца не указан.')
+    await press(q('button[aria-label="Остаётся"]'))
+    // Кольцо — доли из сумм разделов, не из дохода (Х-23): база дуг = платежи + траты + цели.
+    const p = planOf(finance)
+    const base = p.duesTotal + p.spendTotal + p.queueTotal
+    expect(base).toBeGreaterThan(0)
+    const arcs = all('[data-month-ring] circle[data-part]')
+    expect(arcs.map((el) => el.dataset.part)).toEqual(['dues', 'spend', 'queue'].filter((k) => (p as unknown as Record<string, number>)[`${k}Total`] > 0))
+    const C = 2 * Math.PI * 88
+    const arcLen = (el: HTMLElement) => Number(el.getAttribute('stroke-dasharray')!.split(' ')[0]) + 2
+    expect(arcLen(arcs[0])).toBeCloseTo((C * p.duesTotal) / base, 6)
+    expect(arcs.reduce((s, el) => s + arcLen(el), 0)).toBeCloseTo(C, 6)
+    await press(q('[data-add-salary]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+    expect(txt(q('[role="dialog"]'))).toContain('Ильяс')
+    app?.unmount()
+    document.body.innerHTML = ''
+    // Свой оклад есть, у партнёра нет — «+ Зарплата» не показывается (его дело).
+    await open('member', { ...doc, people: doc.people.map((p) => (p.id === 'b' ? { ...p, salary: 0 } : p)) })
+    expect(q('[data-add-salary]')).toBeNull()
+    expect(q('[data-rest-none]')).toBeNull()
+  })
+
+  it('Х-23: без дохода и до плана — кольцо долями из сумм строк («обычно в месяц» 164 000 у «Трат»), не из плана семьи; с доходом — «Траты» по плану', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    const doc = planDoc()
+    const finance = await open('member', { ...doc, people: doc.people.map((p) => ({ ...p, salary: 0 })), payments: [] })
+    await useOperationsStore().loadUploads()
+    await flush()
+    const p = planOf(finance)
+    expect(p.income.total).toBe(0)
+    expect(txt(q('[data-rest-none]'))).toBe('—')
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    expect(p.spendTotal).toBe(150_000) // план Аруны — в «Остаётся», в строке «Трат» — «обычно» Ильяса
+    const C = 2 * Math.PI * 88
+    const arcLen = (el: HTMLElement) => Number(el.getAttribute('stroke-dasharray')!.split(' ')[0]) + 2
+    const arcs = all('[data-month-ring] circle[data-part]')
+    expect(arcs.map((el) => el.dataset.part)).toEqual(['dues', 'spend'])
+    const base = p.duesTotal + 164_000
+    expect(arcLen(arcs[1])).toBeCloseTo((C * 164_000) / base, 6)
+    expect(arcLen(arcs[0]) + arcLen(arcs[1])).toBeCloseTo(C, 6)
+    app?.unmount()
+    document.body.innerHTML = ''
+    // Доход есть — доля «Трат» из плана семьи (150 000 из дохода), как «Остаётся».
+    const withIncome = await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    const pi = planOf(withIncome)
+    expect(pi.income.total).toBeGreaterThan(0)
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    const spend = q('[data-month-ring] circle[data-part="spend"]')!
+    expect(arcLen(spend)).toBeCloseTo((C * 150_000) / pi.income.total, 6)
   })
 })

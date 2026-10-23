@@ -1,8 +1,8 @@
 import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
-import { isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
-import type { RecurringPrefill } from '@/lib/statements/firstRun'
+import { dayNumber, isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
+import type { IncomeCandidate, RecurringPrefill } from '@/lib/statements/firstRun'
 import type { HabitId, HabitTotal, MerchantRule, Operation, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import { HABITS } from '@/lib/statements/habits'
 import {
@@ -4071,20 +4071,8 @@ const USUAL_LOOKBACK = 6
  * бы треть трат и заниженное «обычно». Загрузки встык и внахлёст склеиваются; дыра хоть в день — не полный.
  */
 export function monthCovered(key: string, uploads: UploadPeriod[], by: PersonId): boolean {
-  const start = `${key}-01`
   const end = `${key}-${String(daysInMonth(key)).padStart(2, '0')}`
-  const mine = uploads
-    .filter((u) => u.slot === by)
-    .map((u) => ({ from: u.period_from.slice(0, 10), to: u.period_to.slice(0, 10) }))
-    .filter((u) => u.to >= start && u.from <= end)
-    .sort((a, b) => a.from.localeCompare(b.from))
-  let next = start // первый ещё не покрытый день
-  for (const u of mine) {
-    if (u.from > next) return false
-    if (u.to >= next) next = addDaysIso(u.to, 1)
-    if (next > end) return true
-  }
-  return false
+  return spansCover(uploadSpans(uploads, by), { from: `${key}-01`, to: end })
 }
 
 /**
@@ -4123,6 +4111,106 @@ export function usualSpend(
     for (const r of monthSpendByCategory(people, totals, categories, m, uploads, by).rows) sums.set(r.categoryId, (sums.get(r.categoryId) ?? 0) + r.amount)
   }
   return { months, amounts: new Map([...sums].map(([id, sum]) => [id, Math.round(sum / months.length)])) }
+}
+
+/* ---------------- «Поставить план» по неделям (Блок 5 «Фидбек», Р-36, FB-21) ---------------- */
+
+/** Сколько дней своих выписок нужно, чтобы предложить план по факту (владелец правит числом). */
+export const PLAN_FACT_DAYS = 14
+/** Полных недель для «обычно по неделям»: не больше последних `USUAL_WEEKS_MAX`, не меньше `USUAL_WEEKS_MIN`. */
+export const USUAL_WEEKS_MAX = 8
+export const USUAL_WEEKS_MIN = 2
+
+type DateSpan = { from: string; to: string }
+
+/**
+ * Периоды своих загрузок, склеенные встык и внахлёст, по возрастанию; с `until` — обрезанные этим днём (не позже сегодня).
+ * Одно место для «полного» месяца (`monthCovered`), покрытия дней и полных недель «Поставить план» (критик Блока 5 «Фидбек»).
+ */
+function uploadSpans(uploads: UploadPeriod[], by: PersonId, until?: string): DateSpan[] {
+  const cut = (to: string) => (until && to > until ? until : to)
+  const mine = uploads
+    .filter((u) => u.slot === by)
+    .map((u) => ({ from: u.period_from.slice(0, 10), to: cut(u.period_to.slice(0, 10)) }))
+    .filter((u) => u.from <= u.to)
+    .sort((a, b) => a.from.localeCompare(b.from))
+  const out: DateSpan[] = []
+  for (const u of mine) {
+    const last = out[out.length - 1]
+    if (last && u.from <= addDaysIso(last.to, 1)) last.to = u.to > last.to ? u.to : last.to
+    else out.push({ ...u })
+  }
+  return out
+}
+
+/** Период `r` целиком внутри одного из склеенных периодов (дыра хоть в день — нет). */
+const spansCover = (spans: DateSpan[], r: DateSpan) => spans.some((u) => u.from <= r.from && u.to >= r.to)
+
+/** Сколько дней покрывают мои выписки (объединение периодов, не позже `today`). */
+export function coveredDays(uploads: UploadPeriod[], by: PersonId, today: string): number {
+  return uploadSpans(uploads, by, today).reduce((s, u) => s + (dayNumber(u.to) - dayNumber(u.from) + 1), 0)
+}
+
+/**
+ * «Обычно по неделям» (Р-36): мои полные недели — понедельник–воскресенье целиком внутри моих загрузок и неделя кончилась
+ * до `today` — не больше `USUAL_WEEKS_MAX` последних; меньше `USUAL_WEEKS_MIN` — null. Сумма раздела за неделю — итоги
+ * `week` через `spentOf` (без разовых; раздел без трат в неделе — 0); среднее за неделю → в месяц × 52 / 12, вверх до
+ * тысячи. Целые тенге.
+ */
+export function usualWeekly(
+  totals: SpendTotal[],
+  categories: SpendCategory[],
+  uploads: UploadPeriod[],
+  by: PersonId,
+  today: string,
+): { weeks: string[]; amounts: Map<string, number> } | null {
+  const spans = uploadSpans(uploads, by, today)
+  if (!spans.length) return null
+  const weeks: string[] = []
+  let w = weekKey(today)
+  if (weekRange(w).to >= today) w = prevWeekKey(w)
+  const first = spans[0].from
+  while (weeks.length < USUAL_WEEKS_MAX && weekRange(w).to >= first) {
+    if (spansCover(spans, weekRange(w))) weeks.push(w)
+    w = prevWeekKey(w)
+  }
+  if (weeks.length < USUAL_WEEKS_MIN) return null
+  const live = categories.filter(alive)
+  const sums = new Map<string, number>()
+  for (const t of totals) {
+    if (t.deletedAt || t.by !== by || t.kind !== 'week' || !weeks.includes(t.period)) continue
+    const spent = spentOf(t, live)
+    if (spent > 0) sums.set(t.categoryId, (sums.get(t.categoryId) ?? 0) + spent)
+  }
+  const amounts = new Map([...sums].map(([id, sum]) => [id, Math.ceil(((sum / weeks.length) * 52) / 12 / 1000) * 1000]))
+  return { weeks, amounts }
+}
+
+export type PlanByFact = { rows: { categoryId: string; name: string; amount: number }[]; total: number }
+
+/**
+ * «Поставить план» (Р-36): предложение плана трат по моим неделям — только когда у `by` нет живой строки плана, мои
+ * загрузки покрывают ≥ `PLAN_FACT_DAYS` дней и полных недель хватает (`usualWeekly`). Строки — без «Не разобрано»,
+ * разделов платежей (`plannedElsewhere`), людей и наличных (`SPEND_LAST`) и с суммой > 0, по убыванию; пусто — null.
+ */
+export function planByFact(
+  state: Pick<MonthPlanState, 'spendPlans'>,
+  ctx: Pick<MonthPlanCtx, 'totals' | 'spendCategories' | 'uploads'>,
+  by: PersonId,
+  today: string,
+): PlanByFact | null {
+  if ((state.spendPlans ?? []).some((p) => p.by === by && !p.deletedAt)) return null
+  if (coveredDays(ctx.uploads, by, today) < PLAN_FACT_DAYS) return null
+  const usual = usualWeekly(ctx.totals, ctx.spendCategories, ctx.uploads, by, today)
+  if (!usual) return null
+  const live = ctx.spendCategories.filter(alive)
+  const named = liveSpendCategories(ctx.spendCategories)
+  const rows = [...usual.amounts]
+    .filter(([id, amount]) => amount > 0 && id !== UNKNOWN_CATEGORY && !plannedElsewhere(id, live) && !SPEND_LAST.includes(id))
+    .map(([categoryId, amount]) => ({ categoryId, name: spendCategoryName(named, categoryId), amount }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name))
+  if (!rows.length) return null
+  return { rows, total: rows.reduce((s, r) => s + r.amount, 0) }
 }
 
 /** Порог точки «больше обычного» (Р-5, дефолт составителя): выше обычного и на 10 %, и на 5 000 ₸ — мелочь не мигает. */
@@ -5154,6 +5242,13 @@ export type MyWeek = {
   delta: number
   /** На сколько процентов больше или меньше прошлой недели, целое ≥ 0; null — прошлой недели нет. */
   pct: number | null
+  /**
+   * План недели (FB-19, Р-31): сумма моих строк плана месяца недели × 7 / дней в месяце, целое; null — строк плана нет
+   * (ни полосы, ни подписи на «Неделе»).
+   */
+  plan: number | null
+  /** Остаток недели: `plan − total` (неделя целиком — с «Не разобрано» и разовыми); меньше нуля — сверх плана; null — плана нет. */
+  rest: number | null
   /** Разделы: с тратами за неделю и разделы плана; от большего к меньшему. */
   rows: MyWeekRow[]
 }
@@ -5230,7 +5325,20 @@ export function myWeek(
 
   const total = mapTotal(now)
   const prev = mapTotal(before)
-  return { week, range, month, total, prev, delta: total - prev, pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null, rows }
+  // План недели (Р-31): доля месячного плана по дням — 775 000 на октябрь (31 день) → 175 000 в неделю.
+  const plan = planned.length ? Math.round((planned.reduce((s, r) => s + r.plan, 0) * 7) / daysInMonth(month)) : null
+  return {
+    week,
+    range,
+    month,
+    total,
+    prev,
+    delta: total - prev,
+    pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null,
+    plan,
+    rest: plan === null ? null : plan - total,
+    rows,
+  }
 }
 
 /**
@@ -5619,7 +5727,7 @@ export function monthSpentByFact(totals: SpendTotal[], spendCategories: SpendCat
     .reduce((a, t) => a + factOf(t, live), 0)
 }
 
-export type DecisionKind = 'match' | 'unknownBatch' | 'keep' | 'monthEnd'
+export type DecisionKind = 'income' | 'match' | 'unknownBatch' | 'keep' | 'monthEnd'
 
 /** Вопрос листа «! N» «Недели» (`decisionQueue`): тексты DESIGN.md §6, ключ и данные для ответа на месте. */
 export type Decision = {
@@ -5639,6 +5747,16 @@ export type Decision = {
   match?: MatchCandidate
   /** Незнакомые продавцы пачкой (Р-58) — по сумме, сначала крупные. */
   groups?: UnknownGroup[]
+  /** Приход, похожий на зарплату (Блок 5 «Фидбек», Р-35): «Это ваш доход?» — первым в очереди, пока оклада нет. */
+  income?: IncomeCandidate
+}
+
+/** «по пятницам» — недельный приход (PN-24); иначе «24-го». */
+const BY_WEEKDAY = ['', 'по понедельникам', 'по вторникам', 'по средам', 'по четвергам', 'по пятницам', 'по субботам', 'по воскресеньям']
+/** Подпись карточки «Это ваш доход?»: сумма · когда · отправитель (· сколько раз). */
+export function incomeMeta(c: IncomeCandidate): string {
+  const when = c.rhythm === 'week' && c.weekday ? BY_WEEKDAY[c.weekday] : `${c.day}-го`
+  return `${money(c.amount)} · ${when} · ${c.name}${c.count > 1 ? ` · ${c.count} ${plural(c.count, 'раз', 'раза', 'раз')}` : ''}`
 }
 
 /**
@@ -5659,12 +5777,28 @@ export function decisionQueue(
     now?: { day: number; key: string }
     /** Неделя пачки «Без раздела» (FB-01, Р-15 а): ключ `unknownBatch:<неделя>` — «Потом» новой недели не прячет. */
     week?: string
+    /**
+     * Приход из своих операций, похожий на зарплату (Блок 5 «Фидбек», Р-35; раньше — вопрос первого запуска): экран
+     * передаёт, пока у участника оклад 0 и ключ не отвечен; вопрос — первым.
+     */
+    income?: IncomeCandidate | null
   },
 ): Decision[] {
   if (ctx.canEdit === false) return []
   const now = ctx.now ?? today()
   const payments = state.payments ?? []
   const out: Decision[] = []
+
+  if (ctx.income) {
+    out.push({
+      kind: 'income',
+      key: `income:${ctx.income.key}`,
+      question: 'Это ваш доход?',
+      meta: incomeMeta(ctx.income),
+      actions: { primary: 'Да, это зарплата', secondary: 'Нет', ghost: 'Потом' },
+      income: ctx.income,
+    })
+  }
 
   for (const c of ctx.matches ?? []) {
     out.push({

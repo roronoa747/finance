@@ -144,9 +144,9 @@ describe('B2C-52: демо — итоги из демо-операций той 
     const html = text(await renderScreen(Week, '/week', undefined, [screenMixin({ questionsOpen: true })]))
     expect(html).toContain(`${weekRangeLabel(pic.range)} ${text(money(own.total))}`)
     expect(html).not.toMatch(/[↑↓] [0-9]+%/)
-    // Вопросы — «Разобрать» в строке «Не разобрано» с подписью «N вопрос(а/ов)» (Р-116; лист уходит в body).
+    // Вопросы — строка «Не разобрано» с подписью «N вопрос(а/ов)» сама кнопка (Р-116, FB-19; лист уходит в body).
     expect(html).toMatch(/Не разобрано [1-9][0-9]* вопрос/)
-    expect(html).toContain('Разобрать')
+    expect(html).not.toContain('Разобрать')
     expect(html).not.toMatch(/! [1-9]/)
 
     // «Мечты»: главная мечта, цели и желания строками; строки «Свободно» нет — она в подсказке «Месяца» (Р-116).

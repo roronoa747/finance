@@ -49,6 +49,21 @@ describe('router/landing — первый запуск', () => {
     expect(landingPath(auth, finance)).toBe('/')
   })
 
+  it('FB-21: семья «мечта без оклада» после первого запуска «сначала траты» — главный (данные есть: цель; участник отмечен)', () => {
+    const auth = useAuthStore()
+    const plan = planFamilyDoc()
+    const finance = family('member', 'a', {
+      ...defaultSyncDoc(),
+      setupDoneAt: '2026-09-24T07:00:00.000Z',
+      people: [{ ...plan.people[0], salary: 0, onboardedAt: '2026-09-24T07:00:00.000Z' }],
+      goals: [plan.goals[0]],
+    })
+    expect(landingPath(auth, finance)).toBe('/')
+    // Та же семья до «Готово» (`setupDoneAt` нет, участник не отмечен) — ещё первый запуск.
+    finance.setHouseholdDoc({ ...finance.householdDoc, setupDoneAt: null, people: [{ ...plan.people[0], salary: 0 }] }, 2)
+    expect(landingPath(auth, finance)).toBe('/start')
+  })
+
   // PV-06 (ушёл вместе с мастером; ревью Блока 3 Н-13): надгробия — не данные. Иначе семья с
   // удалённой целью и удалённым обязательством миновала бы первый запуск.
   it('landingPath: семья только с надгробиями (удалённая цель и удалённое обязательство) → /start', () => {

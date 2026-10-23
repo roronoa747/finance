@@ -31,7 +31,6 @@ const parts = computed(() => [
   { key: 'spent', amount: past.value.spent ?? 0, color: '--s8' },
   { key: 'saved', amount: past.value.put, color: '--s3' },
 ])
-const income = computed(() => past.value.cameBy.map((x) => ({ ...x, came: true })))
 
 /*
  * Лист раздела прошлого месяца по адресу `?month=<месяц>&cat=<id>` — строка «Куда ушло» и «Открыть» отчёта за месяц
@@ -74,10 +73,14 @@ function openCatHand(id: string) {
 
 <template>
   <div class="flex flex-col gap-3" data-month-past>
-    <MonthRing :income="income" :parts="parts" :total="past.came" :size="150">
-      <span class="type-section">Осталось</span>
-      <span class="font-num text-[19px] font-bold num" :class="past.left < 0 ? 'text-warn' : 'text-ink'">{{ money(past.left) }}</span>
-    </MonthRing>
+<!-- Малое кольцо без дуг зарплат (Блок 5 «Фидбек», Р-30): «Осталось» — справа от кольца, как на текущем месяце. -->
+    <Card tight class="flex items-center gap-4">
+      <MonthRing :parts="parts" :total="past.came" />
+      <div class="flex min-w-0 flex-col gap-1">
+        <span class="text-[13px] font-semibold text-ink-2">Осталось</span>
+        <span class="font-num text-[29px] font-bold leading-none num" :class="past.left < 0 ? 'text-warn' : 'text-ink'">{{ money(past.left) }}</span>
+      </div>
+    </Card>
 
     <Card class="flex flex-col gap-2">
       <div class="flex items-baseline justify-between text-[15px] text-ink"><span>Пришло</span><b class="font-num num">{{ money(past.came) }}</b></div>

@@ -3,7 +3,7 @@ import type { PdfRow } from './pdf'
 import { parseStatement } from './parsers'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
-import { QUESTION_LIMIT, recurringOf, beyondLimit, detectIncome, detectRecurring, firstRunQuestions, paymentOpOfMonth, salaryOpOfMonth } from './firstRun'
+import { QUESTION_LIMIT, recurringOf, beyondLimit, detectIncome, detectRecurring, firstRunQuestions, foundPayments, paymentOpOfMonth, salaryOpOfMonth } from './firstRun'
 
 /**
  * Первый запуск из выписки (B2C-19): доход по регулярности и размеру, повторы по продавцу и
@@ -202,5 +202,30 @@ describe('recurringOf — «В платежи» у повтора продавц
   it('приход, перевод человеку и внутренний — null', () => {
     expect(recurringOf(at('i1', '2026-10-10', 5_000, 'APPLE.COM BILL'), APPLE, NONE)).toBeNull()
     expect(recurringOf(at('p1', '2026-10-10', -5_000, 'Дана К.', { counterparty: 'Дана К.', kind: 'transfer-out' }), APPLE, NONE)).toBeNull()
+  })
+})
+
+describe('foundPayments — «нашли N в выписке» (FB-21, Р-35)', () => {
+  const at = (id: string, date: string, amount: number, merchant: string, extra: Partial<Operation> = {}): Operation =>
+    ({ id, bank: 'kaspi', date, amount, kind: 'purchase', merchant, categoryId: null, internal: false, ...extra }) as Operation
+  const NONE = { rules: [], payments: [], today: '2026-10-20' }
+  const APPLE = [at('a1', '2026-08-14', -4_990, 'APPLE.COM BILL'), at('a2', '2026-09-15', -4_990, 'APPLE.COM BILL'), at('a3', '2026-10-13', -4_990, 'APPLE.COM BILL')]
+  const GYM = [at('g2', '2026-09-06', -15_000, 'SPORT CLUB'), at('g3', '2026-10-05', -15_000, 'SPORT CLUB')]
+  const ONE = [at('m1', '2026-10-05', -8_000, 'MAGNUM ALMATY', { categoryId: 'sc_food' })]
+
+  it('одна строка на группу, по сумме вниз; opId — последняя строка группы; разовый продавец — мимо', () => {
+    const found = foundPayments([...APPLE, ...GYM, ...ONE], NONE)
+    expect(found.map((f) => [f.name, f.amount, f.day, f.kind, f.opId])).toEqual([
+      ['SPORT CLUB', 15_000, 5, 'obligation', 'g3'],
+      ['APPLE.COM BILL', 4_990, 14, 'subscription', 'a3'],
+    ])
+    expect(new Set(found.map((f) => f.key)).size).toBe(2)
+  })
+  it('группа с правилом payment не выходит; уже отмеченная строка — не выходит; старше 3 месяцев — мимо', () => {
+    const rules = [{ id: 'r1', match: { merchant: normalizeMerchant('APPLE.COM BILL') }, to: { payment: { kind: 'obligation', targetId: 'o1', categoryId: 'sc_subscriptions' } }, updatedAt: T0 }] as MerchantRule[]
+    expect(foundPayments([...APPLE, ...GYM], { ...NONE, rules }).map((f) => f.name)).toEqual(['SPORT CLUB'])
+    expect(foundPayments([...APPLE, ...GYM], { ...NONE, payments: [{ opId: 'g3' }] }).map((f) => f.name)).toEqual(['APPLE.COM BILL'])
+    const old = [at('g0', '2026-05-05', -15_000, 'SPORT CLUB'), at('g1', '2026-06-05', -15_000, 'SPORT CLUB')]
+    expect(foundPayments(old, NONE)).toEqual([])
   })
 })

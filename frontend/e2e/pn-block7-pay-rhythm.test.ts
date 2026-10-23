@@ -73,6 +73,13 @@ const rowOf = (html: string, slot: 'a' | 'b') => {
 const tap = () => [screenMixin({}, (s) => (s.tap as () => void)())]
 const incomeOf = (p: Phone, person: 'a' | 'b') => on(p).store.monthPlanOf(KEY).income.byPerson.find((x) => x.person === person)!
 const salaries = (p: Phone, person: 'a' | 'b' = 'a') => p.store.payments.filter((x) => !x.deletedAt && x.kind === 'salary' && x.targetId === person && x.period.startsWith(KEY))
+/** Лист зарплаты участника: «N из M пришли» и приходы живут там (FB-19 — в строке «Месяца» их больше нет). */
+const status = async (p: Phone, slot: 'a' | 'b') => {
+  const html = await screen(on(p).pinia, Month, '/month', undefined, [screenMixin({ salaryFor: slot })])
+  const i = html.indexOf('data-salary-status')
+  expect(i, `лист зарплаты ${slot}`).toBeGreaterThan(-1)
+  return text(html.slice(i, html.indexOf('</div>', i)))
+}
 
 describe('e2e / понятность Блок 7 — ритм зарплаты', () => {
   const storage = new Map<string, string>()
@@ -101,11 +108,15 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
   it('(а) + (е): неделя — план 750 000, «0 из 5»; «Пришла» — 2026-10-02 на карту, «✓ 1 из 5», 150 000 факт + 600 000 ожидание; партнёр после синка видит то же', async () => {
     const A = await phone(server, st, 'a')
     expect(incomeOf(A, 'a')).toMatchObject({ amount: 750_000, eventCount: 5, cameCount: 0, came: false })
-    for (const [view, path] of [[Month, '/month'], [Money, '/money']] as const) {
+    // FB-19: «N из M пришли» — в листе зарплаты, в строке — «Пришла» и подсветка только когда пришли все.
+    expect(await screen(on(A).pinia, Money, '/money')).not.toContain('data-salary=') // FB-20: зарплат на «Капитале» нет
+    for (const [view, path] of [[Month, '/month']] as const) {
       const row = rowOf(await screen(on(A).pinia, view, path), 'a')
-      expect(text(row), path).toContain('0 из 5')
+      expect(text(row), path).not.toContain('пришли')
       expect(row, path).toContain('data-salary-came-btn')
+      expect(row, path).not.toContain('data-came')
     }
+    expect(await status(A, 'a')).toContain('0 из 5 пришли')
 
     at('2026-10-02T07:01:00Z')
     await screen(on(A).pinia, Month, '/month', undefined, tap())
@@ -115,8 +126,8 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(inc.events.map((e) => [e.period, e.came])).toEqual([
       ['2026-10-02', true], ['2026-10-09', false], ['2026-10-16', false], ['2026-10-23', false], ['2026-10-30', false],
     ])
-    expect(text(rowOf(await screen(A.pinia, Month, '/month'), 'a'))).toContain('✓ 1 из 5')
-    expect(text(rowOf(await screen(A.pinia, Money, '/money'), 'a'))).toContain('✓ 1 из 5')
+    expect(rowOf(await screen(A.pinia, Month, '/month'), 'a')).not.toContain('data-came')
+    expect(await status(A, 'a')).toContain('1 из 5 пришли')
     // Второе нажатие в тот же день — следующая пятница ещё не близко (7 дней): кнопки нет, записей не прибавилось.
     expect(rowOf(await screen(A.pinia, Month, '/month'), 'a')).not.toContain('data-salary-came-btn')
 
@@ -126,8 +137,8 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(salaries(B).map((p) => p.period)).toEqual(['2026-10-02'])
     expect(incomeOf(B, 'a')).toMatchObject({ amount: 750_000, cameCount: 1, eventCount: 5 })
     const rowB = rowOf(await screen(on(B).pinia, Month, '/month'), 'a')
-    expect(text(rowB)).toContain('✓ 1 из 5')
     expect(rowB).not.toContain('data-salary-came-btn')
+    expect(await status(B, 'a')).toContain('1 из 5 пришли')
   })
 
   it('(б): аванс — два прихода; 12 октября «до зарплаты» — аванс Аруны 15-го (3 дня), а не пятница Ильяса 16-го; после аванса — пятница', async () => {
@@ -142,7 +153,7 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     ])
     const near = untilPayday({ people: B.store.people, payments: B.store.payments }, { key: KEY, day: 12 })!
     expect(near).toMatchObject({ who: { id: 'b' }, period: '2026-10-15', inDays: 3, income: 200_000, kind: 'advance' })
-    expect(text(rowOf(await screen(B.pinia, Month, '/month'), 'b'))).toContain('0 из 2')
+    expect(await status(B, 'b')).toContain('0 из 2 пришли')
 
     at('2026-10-15T07:00:00Z')
     await screen(on(B).pinia, Month, '/month', undefined, tap())
@@ -211,7 +222,7 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(untilPayday({ people: A.store.people, payments: A.store.payments }, { key: KEY, day: 12 })).toMatchObject({ who: { id: 'b' }, key: KEY, period: KEY, inDays: 8, income: 500_000 })
     await screen(on(A).pinia, Month, '/month', undefined, tap())
     expect(salaries(A).map((p) => [p.period, p.amount, p.accountId])).toEqual([[KEY, 700_000, 'card']])
-    expect(text(rowOf(await screen(A.pinia, Month, '/month'), 'a'))).toContain('✓')
+    expect(rowOf(await screen(A.pinia, Month, '/month'), 'a')).toContain('data-came')
   })
 
   /**
@@ -236,7 +247,7 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(incomeOf(A, 'a').events.map((e) => e.day)).toEqual(['2026-10-07', '2026-10-14', '2026-10-21', '2026-10-28'])
     const row = text(rowOf(await screen(on(A).pinia, Month, '/month'), 'a'))
     expect(row).toMatch(/≈\s480\s000/)
-    expect(row).toContain('✓ 2 из 4 пришли')
+    expect(await status(A, 'a')).toContain('2 из 4 пришли')
 
     // «Пришла» у плавающей — только лист: одной отметки без суммы нет.
     expect(text(await screen(A.pinia, Month, '/month', undefined, tap()))).toContain('Отметить зарплату')
@@ -249,7 +260,7 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(incomeOf(A, 'a')).toMatchObject({ amount: 120_000 + 120_000 + 130_000 + 123_333, cameCount: 3, came: false })
     const after = text(rowOf(await screen(A.pinia, Month, '/month'), 'a'))
     expect(after).toMatch(/≈\s493\s333/)
-    expect(after).toContain('✓ 3 из 4 пришли')
+    expect(await status(A, 'a')).toContain('3 из 4 пришли')
 
     // Аруна: аванс 15-го прошёл и не отмечен — «Пришла» в её строке; прошлого счёта нет — лист со счётом.
     await on(A).store.syncHousehold(A.client)
@@ -262,7 +273,7 @@ describe('e2e / понятность Блок 7 — ритм зарплаты', 
     expect(salaries(B, 'b')).toEqual([])
     await screen(B.pinia, Month, '/month', undefined, [...tap(), confirmSalarySheet('200 000')])
     expect(salaries(B, 'b').map((p) => [p.period, p.amount, p.accountId])).toEqual([['2026-10-15', 200_000, 'card']])
-    expect(text(rowOf(await screen(B.pinia, Month, '/month'), 'b'))).toContain('✓ 1 из 2 пришли')
+    expect(await status(B, 'b')).toContain('1 из 2 пришли')
     // «До зарплаты» — последняя среда Ильяса (7 дней), раньше остатка Аруны 30-го; ждём среднее.
     expect(untilPayday({ people: B.store.people, payments: B.store.payments }, { key: KEY, day: 21 })).toMatchObject({
       who: { id: 'a' }, period: '2026-10-28', inDays: 7, income: 123_333, kind: 'week',

@@ -10,7 +10,9 @@ import { useAiStore } from '@/stores/ai'
 import { demoReview as demoReviewOf } from '@/lib/demo'
 import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
-import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey, todayIso } from '@/lib/dates'
+import { foundPayments } from '@/lib/statements/firstRun'
+import { spendColor } from '@/lib/palette'
 import {
   DEBT_CARD,
   closerDays,
@@ -26,6 +28,7 @@ import {
   monthSalaries,
   monthSubscriptions,
   pendingPuts,
+  planByFact,
   planExtras,
   planPutSaves,
   planPuts,
@@ -72,6 +75,7 @@ import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
+import SalaryDialog from '@/components/SalaryDialog.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
 import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
@@ -82,10 +86,12 @@ import { templateById } from '@/lib/goalTemplates'
 import { attachTemplate } from '@/lib/photos/goalPhoto'
 
 /**
- * «План · Месяц» (Блок 15, Р-90; макет week-month.html, ворота B2C-91): круг — оглавление. Под кругом зарплаты и
- * три строки-раздела — Платежи · Траты · Цели и фонды; раздел раскрывается под кругом нажатием цвета круга или
- * строки, один за раз, по умолчанию всё свёрнуто. Месяц — список дел одним языком (правило 12 «Смысловой флоу»):
- * платёж — «Оплатил» ✓ (Р-94), цель — «Отложил» ✓, зарплата — «Пришла» ✓ (Р-97); действие — нажатием своей строки,
+ * «План · Месяц» (Блок 15, Р-90; вид — Блок 5 «Фидбек», Р-30, Р-32, Figma «Месяц · Б» `18:105`): верхняя карточка —
+ * малое кольцо-оглавление слева, «Остаётся» крупно справа с чипами «Хватит?» / «✦ Разбор», под чертой три строки-раздела
+ * — Платежи · Траты · Цели и фонды (одна точка цвета раздела; призыв — подписью брендом); раздел раскрывается под строкой
+ * нажатием цвета кольца или строки, один за раз, по умолчанию всё свёрнуто. Ниже — карточка зарплат: пришла — строка
+ * подсвечена `--ok-soft`. Месяц — список дел одним языком (правило 12 «Смысловой флоу»):
+ * платёж — «Оплатил» ✓ (Р-94), цель — «Отложил» ✓, зарплата — «Пришла» (Р-97); действие — нажатием своей строки,
  * лист с одной кнопкой. Подписки — одной строкой (Р-93), цели — короткими строками без фото (Р-92). Управление
  * Блока 14 — то же: плательщик, вкл/выкл, ⋮⋮; траты — строки «факт / план» участников и свои разделы, свой план — в листе раздела (FB-12). Всё считает `finance.ts`; здесь — показ и правки
  * документа через стор. Viewer — тот же план без переключателей, плательщиков, листов и кнопок.
@@ -118,11 +124,14 @@ const monthName = computed(() => MONTHS_NOM[parseMonthKey(props.monthKey).month]
 type Section = 'dues' | 'spend' | 'queue'
 const opened = ref<Section | null>(null)
 const toggleSection = (k: string) => (opened.value = opened.value === k ? null : (k as Section))
-const parts = computed(() => [
-  { key: 'dues', amount: plan.value.duesTotal, color: '--s1' },
-  { key: 'spend', amount: plan.value.spendTotal, color: '--s8' },
-  { key: 'queue', amount: plan.value.queueTotal, color: '--s3' },
-])
+/**
+ * Доли кольца — суммы разделов. С доходом «Траты» — план (`spendTotal`, как считает «Остаётся»); без дохода (Х-23,
+ * владелец 2026-10-23) — та же сумма, что в строке «Траты» («обычно в месяц» до плана), иначе кольцо пустое при числах
+ * в строках.
+ */
+const parts = computed(() =>
+  sections.value.map((s) => ({ key: s.key, amount: s.key === 'spend' && !noIncome.value ? plan.value.spendTotal : s.total, color: s.color })),
+)
 
 /* ---------- список дел: «Отложил» (Р-97) и деньги сверх плана (Р-86) ---------- */
 const puts = computed(() => planPuts(state.value, plan.value))
@@ -180,35 +189,45 @@ const lines = computed(() => {
   const list = participantLines(plan.value, people.value, canEdit.value ? me.value : null)
   return list.length > 1 || !canEdit.value ? list : []
 })
+/**
+ * Строки разделов: `dot` — есть что сделать, тогда подпись — призыв `call` брендом (Р-32: вместо второй точки):
+ * «Платежи» — освободившийся платёж; «Траты» — раздел выше обычного; «Цели и фонды» — закрытый долг или взносы, что
+ * ждут «Отложил» (подпись «K из M отложено» и есть призыв).
+ */
+const queueMeta = computed(() => (puts.value.length ? `${puts.value.filter((p) => p.done).length} из ${puts.value.length} отложено` : 'взносов нет'))
 const sections = computed(() => [
   {
     key: 'dues' as const,
     name: 'Платежи',
     color: '--s1',
     total: plan.value.duesTotal,
-    meta: `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
+    // Платежей месяца нет, а повторы в выписке есть (Р-35) — «нашли N в выписке».
+    meta: foundMeta.value ? `нашли ${found.value.length} в выписке` : `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
     dot: !!extras.value.freed,
+    call: 'освободился платёж',
   },
   {
     key: 'spend' as const,
     name: 'Траты',
     color: '--s8',
-    total: plan.value.spendTotal,
-    meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
-    dot: compare.value.rows.some((r) => r.over),
-    dotLabel: 'больше обычного',
+    // «Поставить план» (Р-36): подпись «обычно в месяц», сумма — итог расчёта.
+    total: planFact.value ? planFact.value.total : plan.value.spendTotal,
+    meta: planFact.value ? 'обычно в месяц' : spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
+    dot: !planFact.value && compare.value.rows.some((r) => r.over),
+    call: 'больше обычного',
   },
   {
     key: 'queue' as const,
     name: 'Цели и фонды',
     color: '--s3',
     total: plan.value.queueTotal,
-    meta: puts.value.length ? `${puts.value.filter((p) => p.done).length} из ${puts.value.length} отложено` : 'взносов нет',
+    meta: queueMeta.value,
     dot: pending.value.length > 0 || !!extras.value.closed,
+    call: extras.value.closed && !pending.value.length ? 'долг закрыт' : queueMeta.value,
   },
 ])
 
-/* ---------- зарплаты: ✓ у суммы; нажатие строки — лист: «Пришла» у своей, «Изменить оклад» ---------- */
+/* ---------- зарплаты: пришла — подсветка строки; нажатие строки — лист: «Пришла» у своей, «Изменить оклад» ---------- */
 const salaries = computed(() =>
   monthSalaries(plan.value, { people: finance.people, payments: finance.payments }).map((s) => ({
     ...s,
@@ -623,6 +642,34 @@ function saveDebt() {
 }
 const debtName = computed(() => plan.value.queue.find((q) => q.id === DEBT_CARD)?.name ?? '')
 
+/* ---------- Блок 5 «Фидбек», FB-21: «нашли в выписке» (Р-35), «Поставить план» (Р-36), месяц без дохода (Р-37) ---------- */
+/** Повторы из своих выписок, ещё не платежи, — только текущий месяц и участнику. */
+const found = computed(() =>
+  canEdit.value && props.monthKey === monthNow() ? foundPayments(ops.shown, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() }) : [],
+)
+/** Подпись «нашли N в выписке» — когда платежей месяца нет и повторы есть. */
+const foundMeta = computed(() => plan.value.dues.length === 0 && found.value.length > 0)
+/** Предложение плана по моим неделям: только текущий месяц, пока своего плана нет. */
+const planFact = computed(() => (canEdit.value && props.monthKey === monthNow() ? planByFact(state.value, ctx.value, me.value, todayIso()) : null))
+const PLAN_FACT_TOP = 3
+const planFactOpen = ref(false)
+const planFactAll = ref(false)
+watch(planFactOpen, () => (planFactAll.value = false))
+const planFactRows = computed(() => (planFact.value ? (planFactAll.value ? planFact.value.rows : planFact.value.rows.slice(0, PLAN_FACT_TOP)) : []))
+const spendColorOf = (id: string) => spendColor(categories.value.find((c) => c.id === id) ?? null)
+const { note: planFactNote, flash: flashPlanFact } = useFlash()
+function savePlanFact() {
+  const p = planFact.value
+  planFactOpen.value = false
+  if (!p) return
+  for (const r of p.rows) finance.setSpendPlan(me.value, r.categoryId, r.amount)
+  flashPlanFact('План поставлен')
+}
+/** Дохода месяца нет (Р-37): «Остаётся» и «—»; свой оклад не указан — «+ Зарплата». */
+const noIncome = computed(() => plan.value.income.total === 0)
+const noSalary = computed(() => canEdit.value && (people.value.find((p) => p.id === me.value)?.salary ?? 0) === 0)
+const salaryEdit = ref<PersonId | null>(null)
+
 // Фонда ещё нет (Р-82): тихая строка «+ Запас» / «+ Подушка» — заводит и открывает его взнос.
 const missingFunds = computed(() =>
   canEdit.value ? (['reserve', 'cushion'] as const).filter((k) => !plan.value.queue.some((q) => q.kind === 'fund' && q.fund === k)) : [],
@@ -635,116 +682,90 @@ function addFund(kind: 'reserve' | 'cushion') {
 
 <template>
   <div class="flex flex-col gap-3">
-    <!-- Круг месяца — оглавление: обе зарплаты снаружи, платежи · траты · цели внутри; цвет раскрывает раздел -->
-    <MonthRing :income="plan.income.byPerson" :parts="parts" :total="plan.income.total" :active="opened" pickable @pick="toggleSection">
-      <!-- «из N», «Свободно» по выпискам и дни до зарплаты — в подсказке у слова (Р-116), крупно — одно число. -->
-      <span class="relative z-10 flex items-center gap-1" @click.stop>
-        <span class="type-section">{{ plan.short > 0 ? 'Не хватает' : 'Остаётся' }}</span>
-        <Hint label="Остаётся" data-rest-hint>
-          <span class="block num">Из {{ money(plan.income.total) }} дохода месяца.</span>
-          <span v-if="free.byFact" class="block num" data-free>Свободно по выпискам — {{ money(free.amount) }}.</span>
-          <span v-if="paydayText" class="block" data-payday>{{ paydayText }}.</span>
-        </Hint>
-      </span>
-      <span v-if="plan.short > 0" class="font-num text-[24px] font-bold leading-tight num text-warn">{{ money(plan.short) }}</span>
-      <span v-else class="font-num text-[24px] font-bold leading-tight num text-ink" data-rest>{{ money(plan.rest) }}</span>
-      <!--
-        Действие у своего предмета (правило 12): «Хватит?» — у остатка; слот кольца не ловит нажатия — кнопкам свои.
-        С разбором ИИ обе кнопки — строкой под кольцом (Р-22): «Хватит?» и «✦ Разбор» рядом в круг 150 px не помещаются.
-      -->
-      <span v-if="!reviewShown" class="pointer-events-auto relative z-10 mt-1 flex items-center">
-        <Button variant="secondary" size="sm" data-afford-open @click.stop="affordOpen = true">Хватит?</Button>
-      </span>
-    </MonthRing>
-    <!-- Пилюля «✦ Разбор» (Р-3, Р-22, RZ-08): заметный вход в отчёт; точка — разбор новый на этом телефоне. -->
-    <div v-if="reviewShown" class="-mt-1 flex items-center justify-center gap-2">
-      <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        class="relative gap-1.5"
-        :aria-label="review || !reviewAi ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
-        data-review-open
-        @click="openReview"
-      >
-        <PhSparkle v-if="reviewAi" :size="14" weight="fill" class="text-brand" aria-hidden="true" data-review-sparkle />Разбор
-        <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
-      </Button>
-    </div>
-
     <!--
-      Зарплаты: ✓ у суммы — пришла, валютная — «1 500 €» под суммой; строка нажимается — лист зарплаты (дата, «хватает
-      ли», обмены — там, Р-116); «Обменял» — у своей пришедшей валютной, в строке; «Пришла» — у своей открытой, в
-      строке (PN-02, правило 12: действие у предмета; та же отметка, что в листе — `useSalaryTap`).
+      Верхняя карточка (Блок 5 «Фидбек», Р-30, Figma `18:119`): малое кольцо-оглавление слева (платежи · траты · цели
+      долями дохода; цвет раскрывает раздел), справа «Остаётся» с подсказкой, число крупно (≤ 34 px) и чипы «Хватит?» /
+      «✦ Разбор»; под чертой в той же карточке — три строки разделов. Подсказка — над карточкой: под ней на 390 px она
+      ушла бы под панель вкладок; подсказка стоит у своего предмета — разделов, «Хватит?» и кольцо её не гасят.
     -->
-    <Card v-if="salaries.length || canEdit" tight class="flex flex-col gap-2.5">
-      <template v-for="(s, i) in salaries" :key="s.person">
-        <div v-if="i > 0" class="h-px bg-line" />
-        <div
-          class="press relative flex cursor-pointer items-center gap-2.5"
-          :data-salary="s.person"
-          :data-can-mark="s.canMark || undefined"
-          @click="salaryFor = s.person"
-        >
-          <Avatar :id="s.person" :name="s.name" />
-          <!-- Лист открывает и viewer — только чтение: дата и «хватает» живут лишь там (критик Б17). -->
-          <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
-            <span class="truncate text-[16px] font-semibold text-ink">{{ s.name }}</span>
-          </button>
-          <span v-if="s.came && s.foreign" class="relative z-10 shrink-0" @click.stop>
-            <SalaryExchange :person-id="s.person" :period="monthKey" part="button" />
-          </span>
-          <!--
-            Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки.
-            Кнопка — в слоте «Обменял», слева от суммы (/ux Блока 1 «понятность»): суммы строк в одной колонке
-            и до, и после отметки, число не прыгает.
-          -->
-          <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
-            <SalaryRow button small :person-id="s.person" :period="monthKey" />
-          </span>
-          <div class="flex flex-col items-end">
-            <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">
-              <span v-if="s.came && s.rhythm === 'month'" class="font-extrabold text-ok" data-came>✓ </span>{{ s.floating && !s.came ? '≈ ' : '' }}{{ money(s.amount) }}
-            </b>
-            <!-- Аванс и неделя (Б7): «✓ 2 из 4 пришли» под суммой месяца вместо одной галочки (слово — /ux Б7: «2 из 4» без него не читалось); плавающая — «≈» до прихода. -->
-            <span v-if="s.rhythm !== 'month'" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-came-count><span v-if="s.cameCount" class="font-extrabold text-ok">✓ </span>{{ s.cameCount }} из {{ s.eventCount }} пришли</span>
-            <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
+    <Card flush class="px-3.5" data-month-top>
+        <div class="flex items-center gap-4 py-3.5">
+          <MonthRing :parts="parts" :total="plan.income.total" :active="opened" pickable @pick="toggleSection" />
+          <div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+            <!-- «из N», «Свободно» по выпискам и дни до зарплаты — в подсказке у слова (Р-116), крупно — одно число. -->
+            <!-- Дохода месяца нет (Р-37: оклад не указан) — «Остаётся» и «—», без «Не хватает» и красного; кольцо — доли из сумм разделов (Х-23). -->
+            <span class="flex items-center gap-1">
+              <span class="text-[13px] font-semibold text-ink-2">{{ plan.short > 0 && !noIncome ? 'Не хватает' : 'Остаётся' }}</span>
+              <Hint label="Остаётся" data-rest-hint>
+                <span v-if="noIncome" class="block">Доход месяца не указан.</span>
+                <span v-else class="block num">Из {{ money(plan.income.total) }} дохода месяца.</span>
+                <span v-if="free.byFact" class="block num" data-free>Свободно по выпискам — {{ money(free.amount) }}.</span>
+                <span v-if="paydayText" class="block" data-payday>{{ paydayText }}.</span>
+              </Hint>
+            </span>
+            <span v-if="noIncome" class="font-num text-[29px] font-bold leading-none num text-ink-2" data-rest-none>—</span>
+            <span v-else-if="plan.short > 0" class="font-num text-[29px] font-bold leading-none num text-warn">{{ money(plan.short) }}</span>
+            <span v-else class="font-num text-[29px] font-bold leading-none num text-ink" data-rest>{{ money(plan.rest) }}</span>
+            <!--
+              Действие у своего предмета (правило 12): «Хватит?» — у остатка; «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
+              вход в отчёт, точка — разбор новый на этом телефоне.
+            -->
+            <span class="mt-0.5 flex flex-wrap items-center gap-1.5">
+              <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
+              <Button
+                v-if="reviewShown"
+                variant="secondary"
+                size="sm"
+                class="relative gap-1.5"
+                :aria-label="review || !reviewAi ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
+                data-review-open
+                @click="openReview"
+              >
+                <PhSparkle v-if="reviewAi" :size="14" weight="fill" class="text-brand" aria-hidden="true" data-review-sparkle />Разбор
+                <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
+              </Button>
+            </span>
           </div>
         </div>
-      </template>
-      <template v-if="canEdit">
-        <div v-if="salaries.length" class="h-px bg-line" />
-        <div><Button variant="ghost" size="sm" class="-ml-2" data-extra-income @click="incomeOpen = true">+ Внеплановый доход</Button></div>
-      </template>
-    </Card>
 
-    <!-- Три раздела: строка — сумма и «N из M»; раскрытие — под кругом, один за раз. Подсказка — над ними: под ними на 390 px она ушла бы под панель вкладок. -->
-    <Tip id="tab-month" :text="tipText" above>
-      <Card flush class="px-3.5 py-0.5" data-sections>
+        <!--
+          Три раздела под чертой: одна точка — цвет раздела; призыв («освободился платёж», «больше обычного», ждут
+          «Отложил») — подписью брендом (Р-32: вторая точка справа сбивала), ✦ совета ИИ — после имени; раскрытие — под
+          строкой, один за раз.
+        -->
+        <Tip id="tab-month" :text="tipText" above>
+        <div class="border-t border-line py-0.5" data-sections>
         <template v-for="s in sections" :key="s.key">
-          <button
-            type="button"
-            class="press flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
-            :aria-expanded="opened === s.key"
+          <!--
+            Строка — div с кнопкой-названием на всю строку (`row-open`): рядом живёт маленькая «Поставить план» (Р-36),
+            кнопки в кнопке нет; «раскрыто» для читалки — у кнопки (критик Блока 5: `aria-expanded` на div без роли не читается).
+          -->
+          <div
+            class="press relative flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
             :data-section="s.key"
             @click="toggleSection(s.key)"
           >
             <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
-              <span class="text-[16.5px] font-bold text-ink">
+              <button type="button" class="row-open text-left text-[16.5px] font-bold text-ink" :aria-expanded="opened === s.key" data-row-open>
                 {{ s.name
-                }}<template v-if="s.dot"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-section-dot aria-hidden="true" /><span class="sr-only">, {{ 'dotLabel' in s ? s.dotLabel : 'есть что сделать' }}</span></template
+                }}<template v-if="s.dot"><span class="sr-only">, {{ s.call }}</span></template
                 ><template v-else-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
-              </span>
-              <span class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
+              </button>
+              <span v-if="s.dot" class="text-[12.5px] font-semibold text-brand num" data-section-meta data-section-call>{{ s.call }}</span>
+              <span v-else class="text-[12.5px] text-ink-2 num" data-section-meta :data-section-found="s.key === 'dues' && foundMeta ? found.length : undefined">{{ s.meta }}</span>
+            </span>
+            <!-- «Поставить план» (Р-36): маленькая брендовая у своего предмета — строки «Траты», пока своего плана нет. -->
+            <span v-if="s.key === 'spend' && planFact" class="relative z-10 shrink-0" @click.stop>
+              <Button size="xs" data-plan-fact @click="planFactOpen = true">Поставить план</Button>
             </span>
             <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
             <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
-          </button>
+          </div>
 
           <!-- Платежи: по дням; подписки — одной строкой -->
           <div v-if="opened === 'dues' && s.key === 'dues'" class="pb-2.5" data-dues>
-            <p v-if="!dueLines.length" class="py-2 type-meta">Платежей нет</p>
+            <p v-if="!dueLines.length && !found.length" class="py-2 type-meta">Платежей нет</p>
             <template v-for="l in dueLines" :key="l.key">
               <DueRow
                 v-if="l.due"
@@ -810,6 +831,22 @@ function addFund(kind: 'reserve' | 'cushion') {
                 <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onFreed">К «{{ extras.freed.name }}»</Button>
               </div>
             </template>
+            <!--
+              «Нашли в выписке» (Блок 5 «Фидбек», Р-35, FB-21; раньше — вопросы «Записать?» первого запуска): повторы
+              продавцов из своих выписок, которые ещё не платежи, — под платежами месяца; «В платежи» — форма с заполнением
+              (путь FB-09), после записи строка уходит.
+            -->
+            <div v-if="found.length" :class="dueLines.length ? 'mt-1 border-t border-line pt-1' : ''" data-found-list>
+              <p class="py-1.5 text-[12.5px] text-ink-2">Нашли в выписке</p>
+              <div v-for="f in found" :key="f.key" class="flex items-center gap-2.5 py-2" :data-found-row="f.opId">
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-[15px] font-semibold text-ink">{{ f.name }}</span>
+                  <span class="block text-[12.5px] text-ink-2 num">≈ {{ f.day }}-го</span>
+                </span>
+                <span class="font-num text-[15px] font-semibold num text-ink">{{ plain(f.amount) }}</span>
+                <Button variant="secondary" size="xs" class="shrink-0" :data-found-pay="f.opId" @click="payOp = f.opId">В платежи</Button>
+              </div>
+            </div>
           </div>
 
           <!--
@@ -986,8 +1023,57 @@ function addFund(kind: 'reserve' | 'cushion') {
             <p v-if="!queueIds.length && !missingFunds.length" class="py-3 type-meta">Целей нет</p>
           </div>
         </template>
-      </Card>
-    </Tip>
+        </div>
+        </Tip>
+    </Card>
+
+    <!--
+      Зарплаты — ниже разделов (Figma `18:167`): строка нажимается — лист зарплаты (дата, «хватает ли», приходы по ритму
+      «N из M пришли», обмены — там, Р-116); пришла (месячный ритм — `came`; по ритму — все приходы) — строка подсвечена
+      `--ok-soft` (владелец 2026-10-23: без ✓ и «0 из 2 пришли»); ждущая — сумма тихая («≈» у плавающей). «Обменял» — у
+      своей пришедшей валютной, в строке; «Пришла» — у своей открытой, в строке (PN-02, правило 12: действие у предмета;
+      та же отметка, что в листе — `useSalaryTap`).
+    -->
+    <Card v-if="salaries.length || canEdit" tight class="flex flex-col gap-1">
+      <template v-for="(s, i) in salaries" :key="s.person">
+        <div v-if="i > 0" class="mx-0 h-px bg-line" />
+        <div
+          class="press relative -mx-2 flex cursor-pointer items-center gap-2.5 rounded-[12px] px-2 py-2"
+          :class="s.came && 'bg-ok-soft'"
+          :data-salary="s.person"
+          :data-can-mark="s.canMark || undefined"
+          :data-came="s.came || undefined"
+          @click="salaryFor = s.person"
+        >
+          <Avatar :id="s.person" :name="s.name" :size="30" />
+          <!-- Лист открывает и viewer — только чтение: дата и «хватает» живут лишь там (критик Б17). -->
+          <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" data-row-open>
+            <span class="truncate text-[16px] font-semibold text-ink">{{ s.name }}</span>
+          </button>
+          <span v-if="s.came && s.foreign" class="relative z-10 shrink-0" @click.stop>
+            <SalaryExchange :person-id="s.person" :period="monthKey" part="button" />
+          </span>
+          <!--
+            Одна отметка на счёт прошлого раза, лист строки не открывает; без прошлого счёта — лист отметки.
+            Кнопка — в слоте «Обменял», слева от суммы (/ux Блока 1 «понятность»): суммы строк в одной колонке
+            и до, и после отметки, число не прыгает.
+          -->
+          <span v-if="s.canMark" class="relative z-10 shrink-0" @click.stop>
+            <SalaryRow button small :person-id="s.person" :period="monthKey" />
+          </span>
+          <div class="flex flex-col items-end">
+            <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">{{ s.floating && !s.came ? '≈ ' : '' }}{{ money(s.amount) }}</b>
+            <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
+          </div>
+        </div>
+      </template>
+      <template v-if="canEdit">
+        <div v-if="salaries.length" class="h-px bg-line" />
+        <!-- Свой оклад не указан (Р-37) — тихая «+ Зарплата» → «Изменить оклад» (`SalaryDialog`); партнёр без оклада — его дело. -->
+        <div v-if="noSalary"><Button variant="ghost" size="sm" class="-ml-2" data-add-salary @click="salaryEdit = me">+ Зарплата</Button></div>
+        <div><Button variant="ghost" size="sm" class="-ml-2" data-extra-income @click="incomeOpen = true">+ Внеплановый доход</Button></div>
+      </template>
+    </Card>
 
     <!-- Итога «Отложим · Потратим · Остаётся» нет (Р-116): повтор кольца и строк разделов. -->
 
@@ -1133,7 +1219,42 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
     </Sheet>
 
+    <!-- «+ Зарплата» без оклада (Р-37) — тот же лист, что «Изменить оклад» -->
+    <SalaryDialog v-if="canEdit" :id="salaryEdit" @close="salaryEdit = null" />
+
+    <!--
+      «План трат» (Р-36, Figma `19:178`): разделы из «обычно по неделям» — первые 3 и тихая «ещё N разделов · Σ»,
+      внизу одна брендовая «Поставить» (подтверждение в листе — правило 12) → план мне по каждой строке, тост.
+    -->
+    <Sheet :open="planFactOpen && !!planFact" title="План трат" @close="planFactOpen = false">
+      <template v-if="planFact">
+        <div class="flex flex-col" data-plan-fact-sheet>
+          <div v-for="r in planFactRows" :key="r.categoryId" class="flex items-center gap-2.5 border-t border-line py-2.5 first:border-t-0" :data-plan-fact-row="r.categoryId">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: spendColorOf(r.categoryId) }" aria-hidden="true">{{ r.name.slice(0, 1).toUpperCase() }}</span>
+            <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink">{{ plain(r.amount) }}</span>
+          </div>
+          <button
+            v-if="!planFactAll && planFact.rows.length > PLAN_FACT_TOP"
+            type="button"
+            class="press flex w-full cursor-pointer items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[14.5px] text-ink-2 num"
+            data-plan-fact-more
+            @click="planFactAll = true"
+          >
+            <span>ещё {{ planFact.rows.length - PLAN_FACT_TOP }} {{ plural(planFact.rows.length - PLAN_FACT_TOP, 'раздел', 'раздела', 'разделов') }}</span>
+            <span>{{ plain(planFact.rows.slice(PLAN_FACT_TOP).reduce((s, r) => s + r.amount, 0)) }}</span>
+          </button>
+          <div class="flex items-center justify-between gap-2 border-t border-line pt-3 text-[13px] text-ink-2 num">
+            <span>обычно в месяц</span>
+            <b class="font-num text-[16px] font-bold text-ink">{{ plain(planFact.total) }}</b>
+          </div>
+        </div>
+        <Button size="lg" class="mt-4 w-full" data-plan-fact-save @click="savePlanFact">Поставить</Button>
+      </template>
+    </Sheet>
+
     <!-- «Ближе на N дней» (PN-09): тост после «Отложил», в оболочке — над вкладками -->
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
+    <Toast v-else-if="planFactNote"><span data-plan-fact-done>{{ planFactNote }}</span></Toast>
   </div>
 </template>

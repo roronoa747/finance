@@ -929,7 +929,7 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [], notes: [] })
   })
 
   it('FB-02: правки операций (opEdits) — по id операции, позднее побеждает; снятая заметка (null) не воскресает', () => {
@@ -941,6 +941,18 @@ describe('B2C-05: личный документ с двух устройств �
     // Порядок устройств не важен.
     const back = mergePrivateDocs(laptop, phone).opEdits as typeof merged
     expect(back.find((e) => e.id === 'op1')).toEqual(merged.find((e) => e.id === 'op1'))
+  })
+
+  it('FB-20: заметки себе (notes) — по id, позднее побеждает (✓ с другого телефона), надгробие побеждает; незнакомые ключи целы', () => {
+    const phone = { notes: [{ id: 'n1', text: 'страховка', date: '2026-11-12', doneAt: null, updatedAt: T1 }, { id: 'n2', text: 'шины', date: '2026-10-20', updatedAt: T1 }], later: { x: 1 } }
+    const laptop = { notes: [{ id: 'n1', text: 'страховка', date: '2026-11-12', doneAt: T2, updatedAt: T2 }, { id: 'n2', text: 'шины', date: '2026-10-20', deletedAt: T1, updatedAt: T1 }, { id: 'n3', text: 'подарок', date: '2026-10-25', updatedAt: T1 }] }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const list = merged.notes as { id: string; doneAt?: string | null; deletedAt?: string }[]
+      expect(list.map((n) => n.id).sort()).toEqual(['n1', 'n2', 'n3'])
+      expect(list.find((n) => n.id === 'n1')!.doneAt).toBe(T2)
+      expect(list.find((n) => n.id === 'n2')!.deletedAt).toBe(T1)
+      expect(merged.later).toEqual({ x: 1 })
+    }
   })
 
   it('FB-16: свои разборы v4 (aiReviews) — по id; надгробие обрезки побеждает позднюю правку', () => {

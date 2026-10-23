@@ -85,7 +85,7 @@ const payFor = ref<string | null>(null)
               <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
               <PhCaretRight v-else-if="!o.recurring" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
             </button>
-            <Button v-if="o.recurring" variant="secondary" size="sm" class="shrink-0" :data-section-pay="o.id" @click="payFor = o.id">В платежи</Button>
+            <Button v-if="o.recurring" variant="secondary" size="xs" class="shrink-0" :data-section-pay="o.id" @click="payFor = o.id">В платежи</Button>
           </div>
         </template>
       </div>

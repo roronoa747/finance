@@ -6,7 +6,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
  * предмета — `soft` (бренд тихо) или `secondary`.
  *
  * Размер — по уровню (Р-117, макет Блока 17), не по месту: главная (подтверждение листа, пустой экран)
- * — `default` 52 px (`lg` — то же); вторая — `md` 44 px; в строке — `sm` 32 px. `xs` и `icon*` — значки.
+ * — `default` 52 px (`lg` — то же); вторая — `md` 44 px; в строке — `sm` 32 px; маленькая брендовая в строке списка
+ * («Пришла», «Поставить план», «В платежи» — Блок 5 «Фидбек», Р-30, владелец: ≈ 26 px, текст 12.5) — `xs`. `icon*` — значки.
  */
 export const buttonVariants = cva(
   'inline-flex shrink-0 items-center justify-center gap-2 rounded-pill font-semibold whitespace-nowrap press outline-none focus-visible:ring-[3px] focus-visible:ring-brand/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*=\'size-\'])]:size-[18px] cursor-pointer select-none',
@@ -26,7 +27,7 @@ export const buttonVariants = cva(
         lg: 'h-13 px-6 text-[15.5px]',
         md: 'h-11 px-4 text-[15px]',
         sm: 'h-8 gap-1 px-3 text-[13.5px] [&_svg:not([class*=\'size-\'])]:size-[15px]',
-        xs: 'h-7 gap-1 px-2.5 text-[12px] [&_svg:not([class*=\'size-\'])]:size-3',
+        xs: 'h-[26px] gap-1 px-2.5 text-[12.5px] [&_svg:not([class*=\'size-\'])]:size-3',
         icon: 'size-12',
         'icon-xs': 'size-7 [&_svg:not([class*=\'size-\'])]:size-3',
         'icon-sm': 'size-9',

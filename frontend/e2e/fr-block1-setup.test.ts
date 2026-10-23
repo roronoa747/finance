@@ -10,20 +10,23 @@ import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { useEventsStore } from '../src/stores/events'
 import { useOperationsStore } from '../src/stores/operations'
 import { landingPath } from '../src/router/landing'
-import { creditBalance } from '../src/lib/finance'
 import { readStatementFiles } from '../src/lib/statements/read'
+import { matchCategory } from '../src/lib/statements/matching'
 import type { PdfRow } from '../src/lib/statements/pdf'
 import { parseStatement } from '../src/lib/statements/parsers'
 import type { SyncDoc } from '../src/types/finance'
 import Start from '../src/views/Start.vue'
+import Week from '../src/views/Week.vue'
+import Month from '../src/views/Month.vue'
 import { at, backend, fakeServer, fakeStatements, statementsFor, type FakeServer } from './support/family'
 
 /**
- * Бэклог «первый», Блок 1 (FR-04): критерии брифа сценариями первого запуска — экран смонтирован по-настоящему,
- * с роутером (адрес шага), документ уходит на Go-мок. (а) новая семья без выписки: вступление → мечта → зарплата →
- * «Пропустить» партнёра; (б) «Пропустить» вступления и мечты → «Мечты» без целей; (в) выписка Kaspi опцией у зарплаты →
- * вопросы → тот же документ, что в части 4 Блока 3 B2C; (г) партнёр по коду: вступление → зарплата → главный;
- * (д) перезагрузка посреди и старые адреса прежнего потока.
+ * Бэклог «первый», Блок 1 (FR-04), после Блока 5 «Фидбек» (FB-21, Р-35 — первый запуск «сначала траты»): критерии
+ * брифа сценариями первого запуска — экран смонтирован по-настоящему, с роутером (адрес шага), документ уходит на
+ * Go-мок. (а) новая семья без выписки: вступление → мечта → «Тратьте как обычно» («Позже») → «Пропустить» партнёра;
+ * (б) «Пропустить» вступления и мечты → «Мечты» без целей; (в) выписка Kaspi на шаге трат → партнёр → «Неделя»;
+ * доход — вопрос «Недели», повторы — «нашли в выписке» в «Месяце»; (г) партнёр по коду: вступление → траты → главный;
+ * (д) перезагрузка посреди и старые адреса прежних потоков. Зарплату первый запуск не спрашивает.
  */
 
 // PDF читает pdf.js в браузере — здесь разбор фикстуры; фото шаблона — без сети.
@@ -47,6 +50,8 @@ beforeEach(() => {
   // Фоновый синк стора идёт в настоящий клиент — сети нет, запрос не отвечает; синк телефона — явный, в мок.
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
   vi.spyOn(apiClient, 'pushPrivateDoc').mockRejectedValue(new TypeError('fetch failed'))
+  vi.spyOn(apiClient, 'listOperations').mockResolvedValue({ operations: [], next: null })
+  vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] })
   server = fakeServer(defaultSyncDoc())
 })
 
@@ -81,8 +86,8 @@ async function phone(slot: 'a' | 'b'): Promise<Phone> {
   return { pinia, client, finance }
 }
 
-/** Первый запуск по адресу (как после «С кем ведём?» — `landingPath` → `/start`); перезагрузка — новый монтаж. */
-async function open(p: Phone, path: string): Promise<Router> {
+/** Экран по адресу (первый запуск — как после «С кем ведём?», `landingPath` → `/start`); перезагрузка — новый монтаж. */
+async function open(p: Phone, path: string, view: typeof Start | typeof Week | typeof Month = Start): Promise<Router> {
   app?.unmount()
   document.body.innerHTML = ''
   setActivePinia(p.pinia)
@@ -91,18 +96,17 @@ async function open(p: Phone, path: string): Promise<Router> {
   await router.isReady()
   const root = document.createElement('div')
   document.body.appendChild(root)
-  app = createApp(Start)
+  app = createApp(view)
   app.use(p.pinia)
   app.use(router)
   app.mount(root)
+  await nextTick()
   await nextTick()
   return router
 }
 
 const page = () => document.body.textContent ?? ''
 const button = (label: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === label)
-const field = (label: string) =>
-  [...document.querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent?.trim() === label)!.querySelector('input')!
 const head = () => document.querySelector('[data-start-head]')!.textContent?.replace(/\s+/g, ' ').trim()
 const title = () => document.querySelector('h1')?.textContent?.trim()
 /** Переход роутера (ленивые экраны — динамический импорт) и перерисовка. */
@@ -114,7 +118,14 @@ async function settle() {
 async function tap(label: string) {
   const b = button(label)
   expect(b, `кнопка «${label}»`).toBeDefined()
+  vi.setSystemTime(new Date(Date.now() + 1000))
   b!.click()
+  await settle()
+}
+async function press(el: HTMLElement | null, what: string) {
+  expect(el, what).not.toBeNull()
+  vi.setSystemTime(new Date(Date.now() + 1000))
+  el!.click()
   await settle()
 }
 async function type(input: HTMLInputElement, value: string) {
@@ -143,8 +154,18 @@ async function throughIntro(router: Router) {
   return router.currentRoute.value.path
 }
 
-describe('e2e / бэклог «первый», Блок 1 — первый запуск без выписки (FR-01…FR-03)', () => {
-  it('(а) новая семья: вступление → мечта из шаблона → зарплата руками → «Пропустить» партнёра → «Мечты»; документ: цель главная, оклад и день, setupDoneAt, onboardedAt; события first_run_goal, first_run_done', async () => {
+/** Мечта из шаблона «Машина» на 3 000 000 — «Дальше» ведёт к тратам. */
+async function makeDream(router: Router) {
+  await tap('Машина')
+  // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
+  await tap('Выбрать это')
+  await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
+  await tap('Дальше')
+  expect(router.currentRoute.value.path).toBe('/start/spend')
+}
+
+describe('e2e / бэклог «первый», Блок 1 — первый запуск без выписки (FR-01…FR-03; FB-21)', () => {
+  it('(а) новая семья: вступление → мечта из шаблона → «Тратьте как обычно» («Позже») → «Пропустить» партнёра → «Мечты»; документ: цель главная, оклада нет, setupDoneAt, onboardedAt; события first_run_goal, first_run_done', async () => {
     const A = await phone('a')
     expect(landingPath(useAuthStore(), A.finance)).toBe('/start')
     const router = await open(A, '/start')
@@ -152,28 +173,24 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
 
     expect(head()).toContain('1 из 3')
     await tap('Машина')
-    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
     await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     expect(page()).toContain('будет вашей в')
     expect(page()).not.toContain('при остатке')
-    // `/ux`: в первом запуске дальше зарплата — кнопка «Дальше», а не «Готово — к мечте».
+    // `/ux`: в первом запуске дальше траты — кнопка «Дальше», а не «Готово — к мечте».
     expect(page()).not.toContain('Готово — к мечте')
     await tap('Дальше')
-    expect(router.currentRoute.value.path).toBe('/start/salary')
+    expect(router.currentRoute.value.path).toBe('/start/spend')
     expect(events()).toEqual(['first_run_goal'])
 
-    // Зарплата — без выписки: главная «Дальше», выписка — тихой кнопкой; «Пропустить» здесь нет.
-    expect(title()).toBe('Зарплата')
+    // «Тратьте как обычно»: фото мечты, одна брендовая «Загрузить выписку», тихое «Позже»; полей зарплаты нет.
+    expect(title()).toBe('Тратьте как обычно')
     expect(head()).toContain('2 из 3')
-    expect(button('Пропустить')).toBeUndefined()
-    expect(button('Есть PDF из банка')).toBeDefined()
-    await type(field('Зарплата в месяц, ₸'), '450000')
-    // День — поле с записью по уходу фокуса (`NumFieldBlur`).
-    await type(field('День зарплаты'), '12')
-    field('День зарплаты').dispatchEvent(new Event('blur'))
-    await nextTick()
-    await tap('Дальше')
+    expect(page()).toContain('Машина')
+    expect(button('Пропустить')).toBeDefined()
+    expect(button('Загрузить выписку')).toBeDefined()
+    expect(page()).not.toContain('Зарплата в месяц')
+    await tap('Позже')
     expect(router.currentRoute.value.path).toBe('/start/invite')
     expect(head()).toContain('3 из 3')
 
@@ -181,7 +198,8 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     expect(router.currentRoute.value.path).toBe('/')
     expect(A.finance.goals.map((g) => g.name)).toEqual(['Машина'])
     expect(A.finance.queue[0].goal?.name).toBe('Машина')
-    expect(A.finance.people).toEqual([expect.objectContaining({ id: 'a', name: 'Алихан', salary: 450_000, payday: 12, onboardedAt: '2025-07-27T07:00:00.000Z' })])
+    expect(A.finance.people).toEqual([expect.objectContaining({ id: 'a', name: 'Алихан', onboardedAt: expect.stringMatching(/^2025-07-27T07:00/) })])
+    expect(A.finance.people[0].salary ?? 0).toBe(0)
     expect(A.finance.setupDone).toBe(true)
     expect(A.finance.householdDoc.spendTotals ?? []).toEqual([])
     expect(events()).toEqual(['first_run_goal', 'first_run_done'])
@@ -190,10 +208,10 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     await synced(A)
     expect(server.data.setupDoneAt).toBeTruthy()
     expect(server.data.goals.map((g) => g.name)).toEqual(['Машина'])
-    expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 450_000, payday: 12 })])
+    expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', name: 'Алихан' })])
   })
 
-  it('(б) «Пропустить» на вступлении и на мечте → зарплата → «Пропустить» партнёра → «Мечты» без целей; first_run_goal не пишется', async () => {
+  it('(б) «Пропустить» на вступлении и на мечте → траты → «Позже» → «Пропустить» партнёра → «Мечты» без целей; first_run_goal не пишется', async () => {
     const A = await phone('a')
     const router = await open(A, '/start')
     await tap('Пропустить')
@@ -201,9 +219,10 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     expect(page()).toContain('На что копим?')
     expect(button('Пока без мечты')).toBeUndefined()
     await tap('Пропустить')
-    expect(router.currentRoute.value.path).toBe('/start/salary')
-    await type(field('Зарплата в месяц, ₸'), '300000')
-    await tap('Дальше')
+    expect(router.currentRoute.value.path).toBe('/start/spend')
+    // Без мечты — плитка без фото.
+    expect(document.querySelector('[data-start-dream]')).not.toBeNull()
+    await tap('Позже')
     await tap('Пропустить')
     expect(router.currentRoute.value.path).toBe('/')
     expect(A.finance.goals).toEqual([])
@@ -212,7 +231,7 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     expect(landingPath(useAuthStore(), A.finance)).toBe('/')
   })
 
-  it('приёмка — весь путь новой семьи: на каждом экране не больше одной брендовой кнопки, и ни главная, ни заголовок не про выписку', async () => {
+  it('приёмка — весь путь новой семьи: на каждом экране не больше одной брендовой кнопки; заголовки не про выписку (главная шага трат — «Загрузить выписку» по решению владельца, Р-30)', async () => {
     const A = await phone('a')
     const router = await open(A, '/start')
     const seen: string[] = []
@@ -221,7 +240,6 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
       const brand = [...document.querySelectorAll('button')].filter((b) => live(b) && /(^|\s)bg-brand(\s|$)/.test(b.className))
       const texts = brand.map((b) => b.textContent!.trim())
       expect(brand.length, `${where}: брендовых ${texts.join(' | ')}`).toBeLessThanOrEqual(1)
-      expect(texts.join(' '), `${where}: главная`).not.toMatch(/выписк|PDF/i)
       const h1 = [...document.querySelectorAll('h1')].filter(live).map((h) => h.textContent!.trim())
       expect(h1.join(' '), `${where}: заголовок`).not.toMatch(/выписк|PDF/i)
       seen.push(`${where}: ${texts[0] ?? '—'}`)
@@ -232,32 +250,26 @@ describe('e2e / бэклог «первый», Блок 1 — первый за�
     }
     check('мечта')
     await tap('Машина')
-    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
     await tap('Выбрать это')
     await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
     check('форма мечты')
     await tap('Дальше')
-    check('зарплата')
-    await tap('Есть PDF из банка')
-    check('раскрытие «Есть PDF из банка»')
-    await tap('Назад')
-    await type(field('Зарплата в месяц, ₸'), '450000')
-    await tap('Дальше')
+    check('траты')
+    await tap('Позже')
     expect(router.currentRoute.value.path).toBe('/start/invite')
     check('партнёр')
     expect(seen).toEqual([
       'вступление 1: Дальше', 'вступление 2: Дальше', 'вступление 3: Дальше', 'мечта: Дальше', 'форма мечты: Дальше',
-      'зарплата: Дальше', 'раскрытие «Есть PDF из банка»: Выбрать файл', 'партнёр: Создать код',
+      'траты: Загрузить выписку', 'партнёр: Создать код',
     ])
   })
 })
 
-describe('e2e / бэклог «первый», Блок 1 — выписка опцией, партнёр, перезагрузка (FR-01…FR-03)', () => {
-  it('(в) зарплата → «Есть PDF из банка» → Kaspi → вопросы по одному → документ тот же, что в части 4 Блока 3 B2C: оклад, кредит с остатком и отметкой июля, «Kaspi Red» — «Кредиты», подписка — быт', async () => {
+describe('e2e / бэклог «первый», Блок 1 — выписка на шаге трат, партнёр, перезагрузка (FR-01…FR-03; FB-21)', () => {
+  it('(в) траты → выписка Kaspi → партнёр → «Пропустить» → «Неделя»; «Это ваш доход?» — вопрос «Недели», «Да» → оклад; «нашли в выписке» в «Месяце» → «В платежи» → платёж, июль отмечен, правило', async () => {
     const A = await phone('a')
-    const router = await open(A, '/start/salary')
-    await tap('Есть PDF из банка')
-    expect(title()).toBe('Ваш банк')
+    const router = await open(A, '/start/spend')
+    expect(title()).toBe('Тратьте как обычно')
     // Отправка — настоящая, в Go-мок (своя копия операций и итоги в документе), как «Отправить» в «Неделе».
     const ops = useOperationsStore()
     const send = ops.send
@@ -268,47 +280,52 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     input.dispatchEvent(new Event('change'))
     await settle()
     await settle()
-    expect(router.currentRoute.value.path).toBe('/start/questions')
-    expect(head()).toContain('2 из 3')
+    expect(router.currentRoute.value.path).toBe('/start/invite')
+    expect(head()).toContain('3 из 3')
     expect(ops.all).toHaveLength(60)
+    // Вопросов первого запуска нет; оклад не спрашивался.
+    expect(page()).not.toContain('Это ваш доход?')
+    expect(A.finance.people.find((p) => p.id === 'a')?.salary ?? 0).toBe(0)
+    await tap('Пропустить')
+    expect(router.currentRoute.value.path).toBe('/week')
+    expect(A.finance.setupDone).toBe(true)
+    expect(A.finance.people[0].onboardedAt).toMatch(/^2025-07-27T07:00/)
 
-    expect(page()).toContain('Нашли 7 повторяющихся')
+    // «Неделя»: «Это ваш доход?» первым — «Да» пишет оклад 120 000 (24-го) и правило зарплаты.
+    await open(A, '/week', Week)
+    await press(document.querySelector<HTMLElement>('[data-bang]'), 'строка «Вопросы»')
     expect(page()).toContain('Это ваш доход?')
     await tap('Да, это зарплата')
     expect(A.finance.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000, payday: 24 })])
+    // Отправитель безымянный и приход не регулярный (кредит наличными не в счёт) — правила зарплаты нет, как и раньше.
+    expect(A.finance.merchantRules.filter((r) => 'payment' in r.to && r.to.payment.kind === 'salary')).toEqual([])
 
-    expect(page()).toContain('Оплата Kaspi Кредита — это что?')
-    expect(button('Потом')).toBeUndefined()
-    await type(field('Остаток долга, ₸ — если знаете'), '1200000')
-    await tap('Записать')
-    const credit = A.finance.householdDoc.credits.find((c) => c.name === 'Оплата Kaspi Кредита')!
-    expect(credit).toMatchObject({ principal: 1_200_000, payment: 151_790, day: 24, annualRate: 0, rateUnknown: true })
-    expect(A.finance.payments).toEqual([expect.objectContaining({ kind: 'credit', targetId: credit.id, period: '2025-07', amount: 151_790, source: 'statement' })])
-    expect(creditBalance(credit, A.finance.payments)).toBe(1_200_000)
-    expect(A.finance.merchantRules[0].to).toEqual({ payment: { kind: 'credit', targetId: credit.id, categoryId: 'sc_credit' } })
+    // «Месяц» → «Платежи»: «нашли N в выписке»; «В платежи» у «Оплата Kaspi Кредита» → форма → «Добавить».
+    await open(A, '/month', Month)
+    expect(document.querySelector('[data-section-found]')).not.toBeNull()
+    await press(document.querySelector<HTMLElement>('[data-section="dues"]'), 'строка «Платежи»')
+    const row = [...document.querySelectorAll<HTMLElement>('[data-found-row]')].find((r) => r.textContent?.includes('Оплата Kaspi Кредита'))!
+    expect(row, 'строка кредита').toBeTruthy()
+    await press(row.querySelector<HTMLElement>('[data-found-pay]'), '«В платежи»')
+    await tap('Добавить')
+    const credit = A.finance.obligations.find((o) => o.name === 'Оплата Kaspi Кредита')!
+    // Через «В платежи» — «Подписка или услуга», быт (FB-09, Р-17); кредит с остатком — через «Долг» в «Деньгах».
+    expect(credit).toMatchObject({ category: 'd4', day: 24 })
+    expect(credit.versions[0].amount).toBe(151_790)
+    expect(A.finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 151_790, source: 'statement' })
+    expect(A.finance.merchantRules.find((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)!.to).toEqual({ payment: { kind: 'obligation', targetId: credit.id, categoryId: matchCategory('obligation', credit) } })
+    // Строка ушла из «нашли» (правило платежа записано — после пересчёта операций).
+    await vi.advanceTimersByTimeAsync(200)
+    await settle()
+    expect([...document.querySelectorAll('[data-found-row]')].some((r) => r.textContent?.includes('Оплата Kaspi Кредита'))).toBe(false)
 
-    await tap('Записать')
-    await tap('Записать')
-    const red = A.finance.obligations.find((o) => o.name === 'Оплата Kaspi Red')!
-    expect(red.category).toBe('d2')
-    expect(A.finance.payments.find((p) => p.targetId === red.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 45_000, source: 'statement' })
-    expect(A.finance.obligations.find((o) => o.name === 'Яндекс Плюс')).toMatchObject({ category: 'd4' })
-
-    // Остальные — «Пропустить» в шапке: закрыты без записи, дальше — партнёр (экрана «Ваш месяц» нет).
-    const before = { obligations: A.finance.obligations.length, rules: A.finance.merchantRules.length }
-    await tap('Пропустить')
-    expect(router.currentRoute.value.path).toBe('/start/invite')
-    expect(A.finance.obligations).toHaveLength(before.obligations)
-    expect(A.finance.merchantRules).toHaveLength(before.rules)
-    expect(page()).not.toMatch(/Ваш (январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)/)
-    await tap('Пропустить')
-    expect(router.currentRoute.value.path).toBe('/')
     await synced(A)
-    expect(server.data.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000 })])
+    expect(server.data.obligations).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита' })])
+    expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 120_000 })])
     expect(server.data.spendTotals!.some((t) => t.by === 'a' && t.kind === 'month' && t.period === '2025-07')).toBe(true)
   })
 
-  it('(г) партнёр по коду: вступление → зарплата (один шаг — без «n из k») → главный; шагов мечты и партнёра нет, finishSetup не зовётся', async () => {
+  it('(г) партнёр по коду: вступление → траты (один шаг — без «n из k») → «Позже» — главный; шагов мечты и партнёра нет, finishSetup не зовётся, оклада нет', async () => {
     server = fakeServer({
       ...defaultSyncDoc(),
       setupDoneAt: '2025-07-20T07:00:00.000Z',
@@ -318,7 +335,7 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
     expect(landingPath(useAuthStore(), B.finance)).toBe('/start')
     const finishSetup = vi.spyOn(B.finance, 'finishSetup')
     const router = await open(B, '/start')
-    expect(await throughIntro(router)).toBe('/start/salary')
+    expect(await throughIntro(router)).toBe('/start/spend')
     expect(head()).not.toMatch(/\d из \d/)
     expect(page()).not.toContain('На что копим?')
     // Старые и чужие адреса партнёра — его первый шаг (вступление), не мечта и не приглашение.
@@ -326,47 +343,42 @@ describe('e2e / бэклог «первый», Блок 1 — выписка о�
       await open(B, path)
       expect(document.querySelector('[data-intro-page]'), path).not.toBeNull()
     }
-    const back = await open(B, '/start/salary')
-    await type(field('Зарплата в месяц, ₸'), '350000')
-    await tap('Готово')
+    const back = await open(B, '/start/spend')
+    await tap('Позже')
     expect(back.currentRoute.value.path).toBe('/')
     expect(finishSetup).not.toHaveBeenCalled()
-    expect(B.finance.people.find((p) => p.id === 'b')).toMatchObject({ name: 'Дана', salary: 350_000, onboardedAt: '2025-07-27T07:00:00.000Z' })
+    expect(B.finance.people.find((p) => p.id === 'b')).toMatchObject({ name: 'Дана', onboardedAt: expect.stringMatching(/^2025-07-27T07:00/) })
+    expect(B.finance.people.find((p) => p.id === 'b')?.salary ?? 0).toBe(0)
     expect(B.finance.householdDoc.setupDoneAt).toBe('2025-07-20T07:00:00.000Z')
     expect(events()).toEqual(['first_run_done'])
     expect(landingPath(useAuthStore(), B.finance)).toBe('/')
   })
 
-  it('(д) перезагрузка посреди: `/start/salary` после мечты — цель на месте, вступление не повторяется; старые `/start/upload` → зарплата, `/start/month` → партнёр', async () => {
+  it('(д) перезагрузка посреди: `/start/spend` после мечты — цель на месте, вступление не повторяется; старые `/start/upload`, `/start/salary`, `/start/questions` → траты, `/start/month` → партнёр', async () => {
     const A = await phone('a')
     const router = await open(A, '/start/intro')
     await tap('Пропустить')
-    await tap('Машина')
-    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
-    await tap('Выбрать это')
-    await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
-    await tap('Дальше')
-    expect(router.currentRoute.value.path).toBe('/start/salary')
+    await makeDream(router)
 
     // Перезагрузка: тот же адрес — тот же шаг; цель записана, гард с `/start` не выкидывает (своей записи ещё нет).
-    await open(A, '/start/salary')
-    expect(title()).toBe('Зарплата')
+    await open(A, '/start/spend')
+    expect(title()).toBe('Тратьте как обычно')
     expect(document.querySelector('[data-intro-page]')).toBeNull()
     expect(A.finance.goals.map((g) => g.name)).toEqual(['Машина'])
     expect(landingPath(useAuthStore(), A.finance)).toBe('/start')
 
-    // Прежний поток на проде: `/start/upload` — шаг зарплаты, `/start/month` — пригласить партнёра.
-    await open(A, '/start/upload')
-    expect(title()).toBe('Зарплата')
-    await type(field('Зарплата в месяц, ₸'), '500000')
-    await tap('Дальше')
+    // Прежние потоки на проде: выписка, зарплата и вопросы — шаг трат, `/start/month` — пригласить партнёра.
+    for (const path of ['/start/upload', '/start/salary', '/start/questions']) {
+      await open(A, path)
+      expect(title(), path).toBe('Тратьте как обычно')
+    }
     await open(A, '/start/month')
     expect(title()).toBe('Пригласите партнёра')
     expect(head()).toContain('3 из 3')
   })
 })
 
-describe('e2e / бэклог «первый», Блок 2 FR-08 — холодный запуск посреди первого запуска (хвост §4 Блока 1)', () => {
+describe('e2e / бэклог «первый», Блок 2 FR-08 — холодный запуск посреди первого запуска (хвост §4 Блока 1; FB-21)', () => {
   /** Холодный запуск PWA: `start_url` «/» через настоящий гард; экран — тот, куда он привёл. */
   async function coldStart(p: Phone): Promise<Router> {
     app?.unmount()
@@ -386,27 +398,26 @@ describe('e2e / бэклог «первый», Блок 2 FR-08 — холодн
     return router
   }
 
-  it('(е) мечта записана, PWA закрыли до зарплаты → холодный запуск: зарплата (не вступление и не вторая мечта) → партнёр → «Мечты»; цель одна, setupDoneAt и onboardedAt', async () => {
+  it('(е) мечта записана, PWA закрыли до трат → холодный запуск: траты (не вступление и не вторая мечта) → партнёр → «Мечты»; цель одна, setupDoneAt и onboardedAt', async () => {
     const A = await phone('a')
-    await open(A, '/start/intro')
+    const router0 = await open(A, '/start/intro')
     await tap('Пропустить')
-    await tap('Машина')
-    // Тема — фото на весь экран (FR-09): «Выбрать это» — дальше форма.
-    await tap('Выбрать это')
-    await type(document.querySelector<HTMLInputElement>('input[placeholder="1 800 000"]')!, '3000000')
-    await tap('Дальше')
+    await makeDream(router0)
     await synced(A)
 
     const router = await coldStart(A)
-    expect(title()).toBe('Зарплата')
+    expect(title()).toBe('Тратьте как обычно')
     expect(head()).toContain('2 из 3')
     expect(document.querySelector('[data-intro-page]')).toBeNull()
-    await type(field('Зарплата в месяц, ₸'), '450000')
-    await tap('Дальше')
+    await tap('Позже')
     expect(router.currentRoute.value.path).toBe('/start/invite')
 
-    // Закрыли и на шаге партнёра — снова он, а не начало.
+    // Закрыли на шаге партнёра — холодный запуск возвращает к тратам (FB-21: пройденный шаг трат нигде не записан —
+    // «мечта есть → траты»), не к началу и не ко второй мечте; «Позже» — снова партнёр.
     await coldStart(A)
+    expect(title()).toBe('Тратьте как обычно')
+    expect(document.querySelector('[data-intro-page]')).toBeNull()
+    await tap('Позже')
     expect(title()).toBe('Пригласите партнёра')
     await tap('Пропустить')
     expect(A.finance.goals.map((g) => g.name)).toEqual(['Машина'])
@@ -424,12 +435,11 @@ describe('e2e / бэклог «первый», Блок 2 FR-08 — холодн
     const B = await phone('b')
     expect(landingPath(useAuthStore(), B.finance)).toBe('/start')
     const router = await coldStart(B)
-    expect(await throughIntro(router)).toBe('/start/salary')
+    expect(await throughIntro(router)).toBe('/start/spend')
     expect(page()).not.toContain('На что копим?')
-    await type(field('Зарплата в месяц, ₸'), '350000')
-    await tap('Готово')
+    await tap('Позже')
     expect(router.currentRoute.value.path).toBe('/')
     expect(B.finance.setupDone).toBe(true)
-    expect(B.finance.people.find((p) => p.id === 'b')).toMatchObject({ salary: 350_000, onboardedAt: '2025-07-27T07:00:00.000Z' })
+    expect(B.finance.people.find((p) => p.id === 'b')).toMatchObject({ onboardedAt: expect.stringMatching(/^2025-07-27T07:00/) })
   })
 })

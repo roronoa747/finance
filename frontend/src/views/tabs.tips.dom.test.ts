@@ -116,8 +116,8 @@ describe('FR-06: подсказки на главных вкладках', () =>
   it('«Неделя»: нажатие раздела открывает его лист и закрывает пузырь с отметкой; лист закрыт — пузырь не вернулся', async () => {
     await open(Week, '/week', 'member', withOwnWeek(planFamilyDoc()))
     expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-week'])
-    // Между суммой и разделами — сразу под суммой недели.
-    expect(bubbles()[0].parentElement!.previousElementSibling?.matches('[data-week-sum]')).toBe(true)
+    // Между шапкой и разделами — под полосой плана недели (FB-19).
+    expect(bubbles()[0].parentElement!.previousElementSibling?.matches('[data-week-plan], [data-week-head]')).toBe(true)
     vi.setSystemTime(new Date('2026-09-12T07:00:01Z'))
     document.querySelector<HTMLButtonElement>('[data-week-list] .row-open')!.click()
     await nextTick()
@@ -170,7 +170,7 @@ describe('FR-06: подсказки на главных вкладках', () =>
     expect(document.querySelector('[data-upload="lead"]')).not.toBeNull()
     expect(bubbles()).toEqual([])
     // Нажатие пустой суммы недели не съедает подсказку про разделы.
-    document.querySelector<HTMLElement>('[data-week-sum]')!.click()
+    document.querySelector<HTMLElement>('[data-week-head]')!.click()
     expect(readTipsSeen()).toEqual([])
     useFinanceStore().householdDoc.spendTotals = withOwnWeek(planFamilyDoc()).spendTotals
     await nextTick()

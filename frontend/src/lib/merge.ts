@@ -265,6 +265,7 @@ export function mergePrivateDocs(
   // tripExcluded — операции, снятые с поездки (PN-30): по id операции, «Вернуть» — надгробие.
   // opEdits — правки своих операций (FB-02, Р-11): заметка, «Мне вернули», «Разовая» — по id операции, LWW.
   // aiReviews — свои разборы v4 (бэклог «Фидбек», Р-27): по id, надгробие обрезки побеждает.
+  // notes — заметки себе с датой (бэклог «Фидбек», Р-33): по id, LWW, удаление — надгробие.
   // aiConsent — согласие человека на ИИ (бэклог «ИИ», Р-9): позднее `at` побеждает.
   const consent = newerObject(
     local.aiConsent as AiConsent | undefined,
@@ -278,6 +279,7 @@ export function mergePrivateDocs(
     tripExcluded: list('tripExcluded'),
     opEdits: list('opEdits'),
     aiReviews: list('aiReviews'),
+    notes: list('notes'),
     ...(consent ? { aiConsent: consent } : {}),
   }
   return { ...mergeUnknownKeys(local, remote, { ...known, aiConsent: null }), ...known }

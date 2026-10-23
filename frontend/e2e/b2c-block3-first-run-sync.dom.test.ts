@@ -8,19 +8,18 @@ import { apiClient, type ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
-import { creditBalance } from '../src/lib/finance'
 import { plain } from '../src/lib/money'
 import type { PdfRow } from '../src/lib/statements/pdf'
 import { parseStatement } from '../src/lib/statements/parsers'
-import Start from '../src/views/Start.vue'
+import Week from '../src/views/Week.vue'
+import Month from '../src/views/Month.vue'
 import { at, backend, fakeServer, fakeStatements, statementsFor, type FakeServer } from './support/family'
 
 /**
- * Приёмка Блока 3 B2C, часть 4 (DOM; возврат приёмки 2 п. 1): первый запуск темпом человека. Между
- * вводом и «Записать» приходит синк — после ответа, по возврату в приложение (`focus`), фоновым кругом:
- * документ с сервера подменяет свой, вопросы пересобираются. Введённое остаётся: исправленный оклад
- * пишется окладом, остаток кредита — кредитом с остатком (а не обязательством «остаток уточните»).
- * Экран смонтирован по-настоящему — SSR-части этого файла синк между вводом и нажатием не видят.
+ * Приёмка Блока 3 B2C, часть 4 (DOM; возврат приёмки 2 п. 1), после Блока 5 «Фидбек» (FB-21, Р-35): вопросы первого
+ * запуска переехали — «Это ваш доход?» на «Неделю», повторы — в «нашли в выписке» «Месяца». Между вводом и ответом
+ * приходит синк — документ с сервера подменяет свой, очередь пересобирается. Введённое остаётся: исправленный оклад
+ * пишется окладом; имя платежа в форме «В платежи» — тем, что вписали. Экран смонтирован по-настоящему.
  */
 
 let app: App | null = null
@@ -34,6 +33,8 @@ beforeEach(() => {
   // Фоновый синк стора идёт в настоящий клиент — сети нет, запрос не отвечает; синк телефона ниже — явный.
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
   vi.spyOn(apiClient, 'pushPrivateDoc').mockRejectedValue(new TypeError('fetch failed'))
+  vi.spyOn(apiClient, 'listOperations').mockResolvedValue({ operations: [], next: null })
+  vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] })
   server = fakeServer(defaultSyncDoc())
 })
 
@@ -48,8 +49,8 @@ afterEach(() => {
 
 const fixtures = import.meta.glob<PdfRow[]>('../src/lib/statements/fixtures/*.rows.json', { eager: true, import: 'default' })
 
-/** Новая семья: телефон A загрузил выписку Kaspi и открыл вопросы первого запуска. */
-async function firstRun() {
+/** Новая семья после первого запуска «сначала траты»: телефон A загрузил выписку Kaspi, оклада нет. */
+async function family() {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData({
@@ -61,21 +62,12 @@ async function firstRun() {
   const finance = useFinanceStore()
   finance.claimFor('h-family')
   await finance.pullHousehold(client)
+  finance.setPerson('a', { name: 'a', onboardedAt: '2025-07-27T07:00:00.000Z' })
+  finance.finishSetup()
   const ops = useOperationsStore()
   ops.setDraft([{ name: 'выписка.pdf', parsed: parseStatement(fixtures['../src/lib/statements/fixtures/kaspi-01.rows.json']) }])
   await ops.send(client)
   await finance.syncHousehold(client)
-
-  const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push('/start/questions')
-  await router.isReady()
-  const root = document.createElement('div')
-  document.body.appendChild(root)
-  app = createApp(Start)
-  app.use(pinia)
-  app.use(router)
-  app.mount(root)
-  await nextTick()
   /** Пауза человека: синк движка (после ответа, `focus`, фоновый круг) — документ с сервера. */
   const pause = async () => {
     const before = finance.householdDoc
@@ -84,7 +76,22 @@ async function firstRun() {
     await nextTick()
     await nextTick()
   }
-  return { finance, pause }
+  return { pinia, finance, ops, pause }
+}
+
+async function mount(pinia: ReturnType<typeof createPinia>, view: typeof Week | typeof Month, path: string) {
+  app?.unmount()
+  document.body.innerHTML = ''
+  const router = createRouter({ history: createMemoryHistory(), routes })
+  await router.push(path)
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp(view)
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  for (let i = 0; i < 6; i++) await nextTick()
 }
 
 const page = () => document.body.textContent ?? ''
@@ -97,15 +104,16 @@ async function type(input: HTMLInputElement, value: string) {
   await nextTick()
 }
 async function click(el: HTMLElement) {
+  vi.setSystemTime(new Date(Date.now() + 1000))
   el.click()
-  await nextTick()
-  await nextTick()
+  for (let i = 0; i < 4; i++) await nextTick()
 }
 
-describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приёмки 2 п. 1): синк посреди первого запуска не стирает введённое', () => {
-  it('Kaspi: оклад исправлен 120 000 → 125 000, пауза, «Да» — оклад 125 000; остаток кредита 1 200 000, пауза, «Записать» — кредит с остатком, июльский платёж его не уменьшает; всё на сервере', async () => {
-    const { finance, pause } = await firstRun()
-
+describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приёмки 2 п. 1; после FB-21): синк посреди вопроса не стирает введённое', () => {
+  it('«Неделя»: оклад исправлен 120 000 → 125 000, пауза, «Да» — оклад 125 000; «Месяц»: имя платежа вписано, пауза, «Добавить» — платёж с этим именем, июль отмечен; всё на сервере', async () => {
+    const { pinia, finance, ops, pause } = await family()
+    await mount(pinia, Week, '/week')
+    await click(document.querySelector<HTMLElement>('[data-bang]')!)
     expect(page()).toContain('Это ваш доход?')
     expect(field('Оклад, ₸').value).toBe(plain(120_000))
     await type(field('Оклад, ₸'), '125000')
@@ -115,19 +123,29 @@ describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приём�
     expect(finance.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000, payday: 24 })])
     await pause()
 
-    expect(page()).toContain('Оплата Kaspi Кредита — это что?')
-    await type(field('Остаток долга, ₸ — если знаете'), '1200000')
+    // «Месяц» → «Платежи»: «нашли N в выписке» → «В платежи» у кредита → имя переписано → пауза → «Добавить».
+    await mount(pinia, Month, '/month')
+    expect(page()).toContain('нашли')
+    await click(document.querySelector<HTMLElement>('[data-section="dues"]')!)
+    const row = [...document.querySelectorAll<HTMLElement>('[data-found-row]')].find((r) => r.textContent?.includes('Оплата Kaspi Кредита'))!
+    expect(row, 'строка кредита в «нашли»').toBeTruthy()
+    await click(row.querySelector<HTMLElement>('[data-found-pay]')!)
+    const name = [...document.querySelectorAll<HTMLInputElement>('[role="dialog"] input')].find((i) => i.value.includes('Kaspi Кредита'))!
+    expect(name, 'имя из выписки в поле').toBeTruthy()
+    await type(name, 'Автокредит Kaspi')
     await pause()
-    expect(field('Остаток долга, ₸ — если знаете').value).toBe(plain(1_200_000))
-    expect(button('Кредит').getAttribute('aria-pressed')).toBe('true')
-    await click(button('Записать'))
-    const credit = finance.householdDoc.credits.find((c) => c.name === 'Оплата Kaspi Кредита')!
-    expect(credit).toMatchObject({ principal: 1_200_000, payment: 151_790, rateUnknown: true })
-    expect(finance.obligations.map((o) => o.name)).not.toContain('Оплата Kaspi Кредита')
-    // Платёж июля из той же выписки отмечен днём операции — до введённого остатка: «Долги» не меньше на него.
-    expect(creditBalance(credit, finance.payments)).toBe(1_200_000)
+    expect(name.value).toBe('Автокредит Kaspi')
+    await click(button('Добавить'))
+    const credit = finance.obligations.find((o) => o.name === 'Автокредит Kaspi')!
+    // Через «В платежи» всё — «Подписка или услуга», быт (FB-09, Р-17); кредит с остатком — через «Долг» в «Деньгах».
+    expect(credit).toMatchObject({ category: 'd4', day: 24 })
+    expect(credit.versions[0].amount).toBe(151_790)
+    // Платёж июля из той же выписки отмечен днём операции; правило платежа — по продавцу.
+    expect(finance.payments.find((p) => p.targetId === credit.id)).toMatchObject({ kind: 'obligation', period: '2025-07', amount: 151_790, source: 'statement' })
+    expect(finance.merchantRules.some((r) => 'payment' in r.to && r.to.payment.targetId === credit.id)).toBe(true)
+    void ops
     await pause()
-    expect(server.data.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, rateUnknown: true })])
+    expect(server.data.obligations).toEqual([expect.objectContaining({ name: 'Автокредит Kaspi' })])
     expect(server.data.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000 })])
   })
 })

@@ -12,17 +12,18 @@ import Card from '@/components/kit/Card.vue'
 import Tip from '@/components/kit/Tip.vue'
 import MoneySquares from '@/components/money/MoneySquares.vue'
 import DebtsWidget from '@/components/money/DebtsWidget.vue'
-import CapitalSalaries from '@/components/money/CapitalSalaries.vue'
 import CapitalLists from '@/components/money/CapitalLists.vue'
 import CapitalStats from '@/components/money/CapitalStats.vue'
 import HistoryMonths from '@/components/money/HistoryMonths.vue'
 
 /**
- * «Деньги» — капитал без месяца (Блок 15, Р-91; макет week-month.html «Деньги»): квадраты Капитал · Долги · История
- * (`/money`, `/money/debts`, `/money/history`). Капитал — чистых крупно и под ним формула «счета − долги» (понятность
- * Р-2, эталон `capital-stats.html`); вся плашка — кнопка, по нажатию на месте раскрывается статистика месяца
- * (`CapitalStats`, Р-3), при каждом заходе закрыта (сложное скрыто, правило 12). Ниже зарплаты месяца для справки (Р-108),
- * «Счета» с «Цели · N» (Р-109), «Кредиты» и «Платежи» справочником (без отметок месяца, подписки — одной строкой);
+ * «Деньги» — капитал без месяца (Блок 15, Р-91; вид — Блок 5 «Фидбек», Р-34, Figma «Деньги» `19:2`): сегмент Капитал ·
+ * Долги · История (`/money`, `/money/debts`, `/money/history`), как «Неделя | Месяц». Капитал — чистых крупно и под ним
+ * формула «счета − долги» (понятность Р-2, эталон `capital-stats.html`); вся плашка — кнопка, по нажатию на месте
+ * раскрывается статистика месяца (`CapitalStats`, Р-3), при каждом заходе закрыта (сложное скрыто, правило 12). Ниже
+ * «Счета» с «Цели · N» (Р-109), «Кредиты» и «Платежи» справочником (без отметок месяца, подписки — одной строкой); у каждой
+ * строки слот значка слева, суммы одной колонкой без «₸». Зарплат месяца здесь больше нет (были для справки, Р-108) — они в
+ * «Месяце», тот же лист;
  * Долги — по макету Блока 16 (`DebtsWidget`, Р-110); История — месяцами, лента — свёрнутой «Все записи»
  * (`HistoryMonths`, Р-111). Плана месяца, «Подробнее», «До зарплаты» и виджетов «Траты» здесь нет: месяц живёт в
  * «План · Месяц». Брендовой кнопки на экране нет (правило 12). Ничего не считается здесь.
@@ -74,7 +75,6 @@ onMounted(() => void ops.loadUploads())
         <span class="text-[14px] num text-ink-2" data-worth-formula>{{ formula }}</span>
         <CapitalStats v-if="statsOpen" :stats="stats" :debt="debt" class="mt-2 border-t border-line pt-3.5" />
       </Card>
-      <CapitalSalaries />
       <CapitalLists />
     </template>
 

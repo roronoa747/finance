@@ -631,13 +631,13 @@ describe('PV-10: модалка кредита и калькулятор дос�
   it('участник: кнопки добавления на экране, ?add=debt / ?add=payment / ?income=1 открывают формы', async () => {
     await family()
     const html = await render('/money')
-    // Пивот 3 (B2C-42): тихие «+ Добавить счёт» под «Счетами» и «+ Добавить» под «Платежами» — ghost, не во всю ширину.
-    for (const t of [/Добавить счёт/, />\s*Добавить\s*</]) {
-      const at = html.search(t)
-      expect(at, String(t)).toBeGreaterThan(-1)
-      const btn = html.slice(html.lastIndexOf('<button', at), at)
-      expect(btn, String(t)).toContain('text-ink-2 hover:bg-surface-2')
-      expect(btn, String(t)).not.toContain('w-full')
+    // FB-20 (Р-34): «Добавить счёт» под «Счетами» и «Добавить» под «Платежами» — строки списка со слотом «+» (одна черта), не брендовые.
+    for (const t of ['data-add-account', 'data-add-payment']) {
+      const at = html.indexOf(t)
+      expect(at, t).toBeGreaterThan(-1)
+      const btn = html.slice(at, html.indexOf('</button>', at))
+      expect(btn, t).not.toContain('bg-brand')
+      expect(btn, t).toContain('size-8')
     }
     // «+ Добавить» — выбор из трёх, дальше — форма.
     const choose = await render('/money', { addOpen: true })

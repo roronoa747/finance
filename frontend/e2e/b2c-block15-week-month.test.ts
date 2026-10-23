@@ -7,7 +7,7 @@ import { weekKey } from '../src/lib/dates'
 import { money, plain } from '../src/lib/money'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
-import { readPlanView } from '../src/lib/storage'
+import { readPlanView, writePlanView } from '../src/lib/storage'
 import { createAppRouter } from '../src/router'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -165,10 +165,10 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(shell).toMatch(/href="\/week"[^>]*>(?:(?!<\/a>)[\s\S])*План/)
     expect(A.store.planCall()).toBe(K)
     expect(await week(A)).not.toContain('data-plan-dot')
-    expect(await month(A)).toContain('data-section-dot')
+    expect(await month(A)).toContain('data-section-call')
 
-    // Перешёл на «Месяц» переключателем — выбор запомнен: вкладка ведёт в «Месяц».
-    await week(A, {}, (s) => (s.toMonth as () => void)())
+    // Перешёл на «Месяц» переключателем — выбор запомнен: вкладка ведёт в «Месяц» (кнопки «План трат — в «Месяце»» нет — FB-19).
+    writePlanView('month')
     expect(readPlanView()).toBe('month')
     expect(await screen(A.pinia, AppShell, '/')).toMatch(/href="\/month"[^>]*>(?:(?!<\/a>)[\s\S])*План/)
 
@@ -223,12 +223,13 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     expect(list).not.toContain('data-week-prev')
     expect(list).not.toContain('data-week-delta')
     expect(text(between(await week(A, { trendOpen: true }), 'data-trend-bars', 'Вопросы'))).toContain('40к')
-    // Строка раздела — «осталось N»; «на октябрь осталось N из План» — в листе раздела.
+    // Строка раздела — только сумма (FB-19: без полос и остатка); «на октябрь осталось N из План» — в листе раздела.
     const food = row(list, 'sc_food')
     expect(food).toContain(`Продукты`)
-    expect(food).toContain(`осталось ${sp(plain(108_000))}`)
-    expect(food).not.toContain(' из ')
-    expect(row(list, 'sc_cafe')).toContain(`осталось ${sp(plain(26_500))}`)
+    expect(food).not.toContain('осталось')
+    expect(row(list, 'sc_cafe')).not.toContain('осталось')
+    // Полоса плана недели (Р-31): план Ильяса на октябрь 150 000 + 40 000 = 190 000 → × 7 / 31 = 42 903; 22 500 потрачено → осталось 20 403.
+    expect(text(between(list, 'data-week-rest', '</span>'))).toContain(`осталось ${sp(plain(20_403))} / ${sp(plain(42_903))}`)
     expect(text(between(await week(A, { sectionFor: 'sc_food' }), 'data-section-meta', '</p>'))).toContain(
       `на октябрь осталось ${sp(plain(108_000))} из ${sp(plain(150_000))}`,
     )
@@ -290,7 +291,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     // Вопрос о подписке был и до выписки; вопросы о самой выписке — после отправки. «Разобрать» — у «Не разобрано».
     const unknownHeld = row(held, '_unknown')
     expect(unknownHeld).toContain('1 вопрос')
-    expect(unknownHeld).toContain('Разобрать')
+    expect(held).toMatch(/data-row="_unknown" data-bang/)
     expect(held.match(/data-bang/g)).toHaveLength(1)
     expect(ops.all).toHaveLength(0)
     expect(A.store.householdDoc.spendTotals ?? []).toHaveLength(0)
@@ -335,7 +336,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const closed = await week(A, {}, (s) => void (queue = [...(s.queue as Decision[])]))
     expect(queue.map((d) => d.kind)).toEqual(['match', 'unknownBatch', 'keep'])
     expect(row(closed, '_unknown')).toContain('3 вопроса')
-    expect(row(closed, '_unknown')).toContain('Разобрать')
+    expect(closed).toMatch(/data-row="_unknown" data-bang/)
     for (const t of ['Похоже, это платёж', 'Без раздела', 'Оставить подписку']) expect(closed).not.toContain(t)
 
     // Лист — первый вопрос и «1 из 3».
@@ -400,7 +401,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     for (const p of [A, B]) {
       const paid = await month(p, { opened: 'dues' })
       expect(text(between(paid, 'data-due-id="obligation:rent"', 'data-due-id'))).toContain(`✓ ${sp(plain(220_000))}`)
-      expect(text(between(paid, 'data-section="dues"', '</button>'))).toContain('1 из 7 оплачено')
+      expect(text(between(paid, 'data-section="dues"', 'data-section="spend"'))).toContain('1 из 7 оплачено')
     }
     // «Не оплачено» — в том же листе, тихо.
     expect(await month(A, { opened: 'dues', payFor: 'obligation:rent' })).toContain('data-unpay')
@@ -408,10 +409,13 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     // Зарплата Ильяса пришла (✓ у суммы), Аруны — ждём (дата — в листе зарплаты, Р-116); не отложено — «Отложил всё»
     // в разделе целей и точка.
     const top = await month(A)
-    expect(text(between(top, 'data-salary="a"', 'data-salary="b"'))).toContain(`✓ ${sp(money(700_000))}`)
-    expect(text(between(top, 'data-salary="b"', 'data-sections'))).not.toContain('✓')
+    // FB-19: пришла — подсветка строки (`data-came` на строке), ✓ нет; разделы стоят выше зарплат.
+    expect(between(top, 'data-salary="a"', 'data-salary="b"')).toContain('data-came')
+    expect(text(between(top, 'data-salary="a"', 'data-salary="b"'))).toContain(sp(money(700_000)))
+    expect(text(between(top, 'data-salary="a"', 'data-salary="b"'))).not.toContain('✓')
+    expect(between(top, 'data-salary="b"', 'data-extra-income')).not.toContain('data-came')
     expect(text(between(await month(A, { salaryFor: 'b' }), 'data-salary-status', '</div>'))).toContain('ждём 20 октября')
-    expect(top).toContain('data-section-dot')
+    expect(top).toContain('data-section-call')
     const queue = await month(A, { opened: 'queue' })
     expect(text(between(queue, 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(130_000))}`)
 
@@ -423,7 +427,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const done = await month(A, { opened: 'queue' })
     expect(done).not.toContain('data-put-all')
     expect(done.match(/data-put-done/g)).toHaveLength(3)
-    expect(done).not.toContain('data-section-dot')
+    expect(done).not.toContain('data-section-call')
     expect(done).not.toContain('data-past-dot')
     await sync(A, B)
     expect((await month(B, { opened: 'queue' })).match(/data-put-done/g)).toHaveLength(3)
@@ -437,10 +441,12 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const capital = await screen(A.pinia, Money, '/money')
     const seen = text(capital)
     for (const t of ['Капитал', 'Долги', 'История', 'Kaspi Gold', 'Аренда', 'Подписки · 3']) expect(seen).toContain(t)
-    // Ни плана месяца, ни отметок, ни «Оплатил» — это «Месяц». Зарплаты — для справки карточкой «Капитала» (Блок 16, Р-108).
+    // Ни плана месяца, ни отметок, ни «Оплатил» — это «Месяц».
     for (const t of ['Оплатил', 'оплачено', 'До зарплаты', 'Остаётся', 'Отложил', 'Пришла зарплата', 'нагрузка', 'Подробнее']) expect(seen).not.toContain(t)
     for (const a of ['data-rest', 'data-sections', 'data-plan-view']) expect(capital).not.toContain(a)
-    expect(capital).toContain('data-capital-salaries')
+    // FB-20 (Р-34): зарплат на «Капитале» нет — они в «Месяце».
+    expect(capital).not.toContain('data-capital-salaries')
+    expect(capital).not.toContain('data-salary=')
     expect(capital).not.toContain('Netflix')
     expect(await screen(A.pinia, Money, '/money', undefined, [screenMixin({ subsOpen: true })])).toContain('Netflix')
     // «Долги» — ссылка «Как закрыть быстрее» на свой экран долгового плана (Б17; прежде план жил на «Долгах»).
@@ -485,9 +491,10 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     B.store.markSalary('b', { period: K, accountId: 'card' })
     expect(B.store.planCall()).toBeNull()
     const nothing = await month(B, { opened: 'queue' })
-    expect(text(between(nothing, 'data-salary="b"', 'data-sections'))).toContain(`✓ ${sp(money(500_000))}`)
+    expect(between(nothing, 'data-salary="b"', 'data-extra-income')).toContain('data-came')
+    expect(text(between(nothing, 'data-salary="b"', 'data-extra-income'))).toContain(sp(money(500_000)))
     expect(nothing).not.toContain('data-put-all')
-    expect(nothing).not.toContain('data-section-dot')
+    expect(nothing).not.toContain('data-section-call')
     expect(nothing).not.toContain('data-past-dot')
 
     // Включила обратно: за ней есть фонд — точка у раздела (и в свёрнутом «Месяце»), кнопка — на её сумму.
@@ -495,9 +502,9 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     B.store.pauseGoal('cushion', false)
     expect(B.store.planCall()).toBe(K)
     const hers = await month(B, { opened: 'queue' })
-    expect(hers).toContain('data-section-dot')
+    expect(hers).toContain('data-section-call')
     expect(text(between(hers, 'data-put-all', '</button>'))).toContain(`Отложил всё · ${sp(money(30_000))}`)
-    expect(await month(B)).toContain('data-section-dot')
+    expect(await month(B)).toContain('data-section-call')
 
     // «Отложил всё» — взнос в её фонд; Ильяс после синка видит три ✓.
     await putAll(B)
@@ -507,6 +514,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     await sync(B, A)
     const seen = await month(A, { opened: 'queue' })
     expect(seen.match(/data-put-done/g)).toHaveLength(3)
-    expect(text(between(seen, 'data-salary="b"', 'data-sections'))).toContain(`✓ ${sp(money(500_000))}`)
+    expect(between(seen, 'data-salary="b"', 'data-extra-income')).toContain('data-came')
+    expect(text(between(seen, 'data-salary="b"', 'data-extra-income'))).toContain(sp(money(500_000)))
   })
 })

@@ -64,9 +64,10 @@ function handleClick(e: MouseEvent) {
         @pointermove="onPointerMove"
         @click="handleClick"
       >
+        <!-- Слот значка 32 px (Блок 5 «Фидбек», Р-34: у каждой строки «Капитала» слот слева, Figma `19:21`). -->
         <div
           v-if="$slots.icon"
-          class="grid size-[34px] shrink-0 place-items-center rounded-[10px] bg-surface-3"
+          class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-3"
           :style="accent ? { color: accent, background: 'transparent', border: '1px solid var(--line)' } : undefined"
         >
           <slot name="icon" />

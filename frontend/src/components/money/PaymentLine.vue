@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
-import { money, moneyIn } from '@/lib/money'
+import { money, moneyIn, plain } from '@/lib/money'
 import { MONTHS_PRE } from '@/lib/dates'
 import { amountAt, amountIn, creditDueAmount, nextChange, payerOf } from '@/lib/finance'
 import type { Credit, Obligation } from '@/types/finance'
@@ -10,10 +10,11 @@ import Avatar from '@/components/kit/Avatar.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
 
 /**
- * Строка справочника «Платежи» в «Деньгах» (Р-91, Р-94; макет week-month.html «Деньги · Капитал»): кредит или
- * обязательство — название, «<день>-го», кружок плательщика и сумма; у валютного — сумма в валюте (Р-75), «≈ оценка»,
- * «сумма изменится», годовое — «раз в год · в <месяце>». Отметок месяца и «Оплатил» здесь нет: ✓ ставит выписка или
- * нажатие платежа в «Месяце». Нажатие — лист платежа (изменить).
+ * Строка справочника «Платежи» в «Деньгах» (Р-91, Р-94): кредит или обязательство — название, «<день>-го», кружок
+ * плательщика и сумма; у валютного — сумма в валюте (Р-75), «≈ оценка», «сумма изменится», годовое — «раз в год · в
+ * <месяце>». В «Капитале» (`slot`, Блок 5 «Фидбек», Р-34, Figma `19:73`) кружок плательщика стоит в слоте 32 слева, а
+ * сумма — одной колонкой без «₸»; в «Долгах» и листе группы — как было. Отметок месяца и «Оплатил» здесь нет: ✓ ставит
+ * выписка или нажатие платежа в «Месяце». Нажатие — лист платежа (изменить).
  */
 const props = defineProps<{
   item: { kind: 'credit'; credit: Credit } | { kind: 'obligation'; obligation: Obligation }
@@ -22,6 +23,11 @@ const props = defineProps<{
   dense?: boolean
   /** Номер совета ИИ про этот платёж (`ai.markFor`, бэклог «Разбор», RZ-10) — ✦ после названия; нет — ничего. */
   mark?: number | null
+  /**
+   * Вид «Капитала» (Р-34): слот плательщика 32 слева, сумма без «₸». Без него — как было («Долги», лист группы): кружок
+   * плательщика 24 у суммы, сумма с «₸».
+   */
+  slot?: boolean
 }>()
 const emit = defineEmits<{ (e: 'open'): void }>()
 
@@ -54,6 +60,10 @@ const uid = useId()
       :class="dense ? 'py-2.5' : 'px-4 py-3'"
       @click="emit('open')"
     >
+      <!-- Слот плательщика 32 слева (Р-34): кружок — чей платёж; суммы остаются в одной колонке. -->
+      <span v-if="slot" class="grid size-8 shrink-0 place-items-center rounded-[10px]" :class="!payer && 'bg-surface-3'" data-payment-slot>
+        <Avatar v-if="payer" :id="payer" :name="payerName" :size="30" />
+      </span>
       <span class="min-w-0 flex-1">
         <span class="flex min-w-0 items-center">
           <button
@@ -65,7 +75,8 @@ const uid = useId()
         </span>
         <span v-if="note" :id="`${uid}-n`" class="block text-[12.5px] text-ink-2">{{ note }}</span>
       </span>
-      <span class="flex shrink-0 items-center gap-2">
+      <span v-if="slot" :id="`${uid}-a`" class="block shrink-0 text-[14.5px] font-semibold num text-ink">{{ plain(amount) }}</span>
+      <span v-else class="flex shrink-0 items-center gap-2">
         <Avatar v-if="payer" :id="payer" :name="payerName" :size="24" />
         <span :id="`${uid}-a`" class="block text-[14.5px] font-semibold num text-ink">{{ money(amount) }}</span>
       </span>

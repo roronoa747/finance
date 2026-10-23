@@ -13,7 +13,7 @@ const props = withDefaults(
   defineProps<{
     id: PersonId
     name: string
-    size?: 24 | 30 | 34 | 96
+    size?: 24 | 26 | 30 | 34 | 96
   }>(),
   { size: 30 },
 )
@@ -21,10 +21,10 @@ const props = withDefaults(
 const finance = useFinanceStore()
 const person = computed(() => finance.people.find((p) => p.id === props.id && !p.deletedAt))
 const emoji = computed(() => person.value?.emoji || null)
-// Обводка холстом — у кружков в ряду (шапка, списки); у большого на экране кружка её нет. Смайлик — крупнее буквы (макет `.av.emo`).
+// Обводка холстом — у кружков в ряду (шапка, списки); у большого на экране кружка её нет. Смайлик — крупнее буквы (макет `.av.emo`). 26 — кружки выписок в шапке «Недели» внахлёст (Блок 5 «Фидбек»).
 // Свой смайлик с клавиатуры (B2C-69) бывает флагом или семьёй через ZWJ: один глиф в строку, лишнее режется кружком.
-const BOX = { 24: 'size-6', 30: 'size-[30px] border-2 border-canvas', 34: 'size-[34px] border-2 border-canvas', 96: 'size-24' }
-const FONT = { letter: { 24: 'text-[11px]', 30: 'text-[12px]', 34: 'text-[12px]', 96: 'text-[40px]' }, emoji: { 24: 'text-[13px]', 30: 'text-[16px]', 34: 'text-[18px]', 96: 'text-[48px]' } }
+const BOX = { 24: 'size-6', 26: 'size-[26px] border-2 border-canvas', 30: 'size-[30px] border-2 border-canvas', 34: 'size-[34px] border-2 border-canvas', 96: 'size-24' }
+const FONT = { letter: { 24: 'text-[11px]', 26: 'text-[11px]', 30: 'text-[12px]', 34: 'text-[12px]', 96: 'text-[40px]' }, emoji: { 24: 'text-[13px]', 26: 'text-[14px]', 30: 'text-[16px]', 34: 'text-[18px]', 96: 'text-[48px]' } }
 </script>
 
 <template>
