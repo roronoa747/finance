@@ -346,8 +346,8 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(noIncome).not.toContain('data-rest>')
     expect(text(noIncome)).not.toContain('Не хватает')
     expect(noIncome).toContain('data-add-salary')
-    // Повторы продавцов за 3 месяца: Apple Music (словарь), кофейня и такси каждую неделю (две близкие суммы в близкие дни — `detectRecurring`).
-    expect(text(between(noIncome, 'data-section="dues"', 'data-section="spend"'))).toContain('нашли 3 в выписке')
+    // Повторы продавцов за 3 месяца: Apple Music (словарь); кофейня и такси каждую неделю — мимо (TL-01, Р-1: не одно списание в месяц).
+    expect(text(between(noIncome, 'data-section="dues"', 'data-section="spend"'))).toContain('нашли 1 в выписке')
     expect(noIncome).toContain('data-plan-fact')
 
     // «Неделя»: «Это ваш доход?» первым → «Да» — оклад 300 000, 12-го; точка на сегменте — ждёт «Поставить план».
@@ -372,7 +372,7 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     const opsStore = useOperationsStore()
     const found = foundPayments(opsStore.all, { rules: A.store.merchantRules, payments: A.store.payments, today: todayIso() })
     const apple = found.find((f) => f.name === 'APPLE.COM BILL')!
-    expect(found).toHaveLength(3)
+    expect(found).toHaveLength(1)
     expect([apple.amount, apple.day]).toEqual([4_990, 13])
     const dues = await month(A, { opened: 'dues' })
     expect(dues).toContain(`data-found-row="${apple.opId}"`)

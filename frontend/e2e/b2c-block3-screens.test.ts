@@ -489,6 +489,21 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     await ops.addToPayments(found!.opId, id, p.client)
     return finance.obligations.find((o) => o.id === id)!
   }
+  /**
+   * «В платежи» у строки в листе операции (`OpSheet` → `AddPaymentSheet`, `recurringFor`): продавца с несколькими
+   * списаниями в месяц в «нашли» нет (TL-01, Р-1), а у строки кнопка та же.
+   */
+  async function rowToPayments(p: Phone, merchant: string, amount: number, month: string) {
+    setActivePinia(p.pinia)
+    const finance = useFinanceStore()
+    const ops = useOperationsStore()
+    const row = ops.all.find((o) => o.merchant === merchant && o.amount === -amount && o.date.startsWith(month))!
+    const pre = ops.recurringFor(row)
+    expect(pre, `«В платежи»: ${merchant}`).toBeTruthy()
+    const id = finance.addObligation({ name: pre!.name, note: 'ежемесячно', day: pre!.day, category: 'd4', every: 'month', amount: pre!.amount })
+    await ops.addToPayments(row.id, id, p.client)
+    return finance.obligations.find((o) => o.id === id)!
+  }
 
   beforeEach(() => {
     vi.stubGlobal('localStorage', {
@@ -590,7 +605,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     storage.clear()
     const B = await phone(server, st, 'b')
     // Обезличенная выписка Freedom (июль 2025: переводы 2 000, 11 000, 50 000 одним названием) и ещё два
-    // перевода по 15 000 около 20-го — повтор, который «Месяц» покажет в «нашли в выписке».
+    // перевода по 15 000 около 20-го — повтор; в «нашли в выписке» его нет (в июле четыре перевода — TL-01, Р-1), «В платежи» — у строки.
     const base = kaspi('freedom-01')
     const transfer = (date: string, amount: number): Omit<Operation, 'id'> => ({
       bank: 'freedom', date, amount, kind: 'transfer-out', merchant: 'Перевод с карты на карту', categoryId: null, internal: false,
@@ -614,10 +629,10 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     // «Свободно» — до и после «В платежи».
     setActivePinia(B.pinia)
     const month = await screen(B.pinia, Month, '/month', undefined, [screenMixin({ opened: 'dues' })])
-    expect(month).toContain('Перевод с карты на карту')
+    expect(month).not.toContain('Перевод с карты на карту')
     await B.store.syncHousehold(B.client)
     const before = { a: await free(A), b: await free(B) }
-    const ob = await toPayments(B, 'Перевод с карты на карту')
+    const ob = await rowToPayments(B, 'Перевод с карты на карту', 15_000, '2025-07')
     expect(ob).toMatchObject({ category: 'd4' })
     expect(ob.versions[0].amount).toBe(15_000)
     // Июль отмечен переводом 15 000, а не первой строкой месяца.
@@ -657,7 +672,7 @@ describe('e2e / B2C Блок 3 — часть 4: первый запуск из 
     }
 
     // «В платежи» у перевода — обязательство 15 000.
-    const ob = await toPayments(B, 'Перевод с карты на карту')
+    const ob = await rowToPayments(B, 'Перевод с карты на карту', 15_000, '2025-07')
     await B.store.syncHousehold(B.client)
     const before = { a: await free(A), b: await free(B) }
 

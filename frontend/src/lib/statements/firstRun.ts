@@ -224,10 +224,29 @@ export function beyondLimit(ops: Operation[], limit = QUESTION_LIMIT): number {
 const RECURRING_OF_MONTHS = 3
 
 /**
+ * Похоже на ежемесячный платёж (TL-01, Р-1): в каких-то двух подряд идущих календарных месяцах у продавца ровно по одному
+ * списанию, и суммы в ±5 % друг от друга (садик, спортзал). Несколько списаний в месяц — кофейня, такси, магазин — нет.
+ */
+export function monthlyOnce(ops: Pick<Operation, 'date' | 'amount'>[]): boolean {
+  const byMonth = new Map<string, number[]>()
+  for (const o of ops) {
+    const month = o.date.slice(0, 7)
+    byMonth.set(month, [...(byMonth.get(month) ?? []), -o.amount])
+  }
+  for (const [month, [a, ...more]] of byMonth) {
+    const next = byMonth.get(addMonths(month, 1))
+    if (more.length || next?.length !== 1) continue
+    if (Math.abs(next[0] - a) <= Math.max(a, next[0]) * RECURRING_TOLERANCE) return true
+  }
+  return false
+}
+
+/**
  * «Нашли N в выписке» (Блок 5 «Фидбек», Р-35, FB-21; раньше — вопросы «Записать?» первого запуска): группы
  * `detectRecurring` по своим операциям за 3 месяца, у которых последняя строка ещё не платёж и не отметка
- * (`recurringOf` не null) — одна строка на группу, по сумме вниз. `opId` — строка для `AddPaymentSheet` (путь FB-09:
- * форма с заполнением, «Сохранить» → платёж + отметка + правило); после записи правило `payment` убирает строку.
+ * (`recurringOf` не null) — одна строка на группу, по сумме вниз. Словарные виды — как есть; прочие продавцы — только
+ * `monthlyOnce` (TL-01, Р-1). `opId` — строка для `AddPaymentSheet` (путь FB-09: форма с заполнением, «Сохранить» →
+ * платёж + отметка + правило); после записи правило `payment` убирает строку.
  */
 export function foundPayments(
   ops: Operation[],
@@ -239,6 +258,7 @@ export function foundPayments(
   for (const c of detectRecurring(recent)) {
     // Последняя строка группы в допуске суммы повтора: у «Перевода с карты на карту» в группе и 50 000, и 15 000 — повтор 15 000.
     const inGroup = recent.filter((o) => c.opIds.includes(o.id)).sort((a, b) => b.date.localeCompare(a.date))
+    if (c.kind === 'obligation' && !monthlyOnce(inGroup)) continue
     const last = inGroup.find((o) => Math.abs(-o.amount - c.amount) <= c.amount * RECURRING_TOLERANCE) ?? inGroup[0]
     if (!last) continue
     const pre = recurringOf(last, ops, ctx)

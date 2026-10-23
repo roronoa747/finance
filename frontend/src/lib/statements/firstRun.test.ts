@@ -228,4 +228,37 @@ describe('foundPayments — «нашли N в выписке» (FB-21, Р-35)', 
     const old = [at('g0', '2026-05-05', -15_000, 'SPORT CLUB'), at('g1', '2026-06-05', -15_000, 'SPORT CLUB')]
     expect(foundPayments(old, NONE)).toEqual([])
   })
+
+  describe('TL-01 (Р-1): прочие продавцы — ровно одно списание в месяц два месяца подряд', () => {
+    const weekly = (prefix: string, merchant: string, amount: number, dates: string[]) => dates.map((d, i) => at(`${prefix}${i}`, d, -amount, merchant))
+    const SEPT_OCT = ['2026-09-03', '2026-09-10', '2026-09-17', '2026-09-24', '2026-10-01', '2026-10-08', '2026-10-15']
+    const KINDER = (a: number, b: number) => [at('k1', '2026-09-01', -a, 'BALAPAN KINDERGARTEN'), at('k2', '2026-10-01', -b, 'BALAPAN KINDERGARTEN')]
+
+    it('кофейня 4 раза в месяц два месяца — мимо', () => {
+      expect(foundPayments(weekly('c', 'COFFEE BOOM', 1_500, SEPT_OCT), NONE)).toEqual([])
+    })
+    it('такси еженедельно — мимо', () => {
+      expect(foundPayments(weekly('t', 'YANDEX GO', 2_000, SEPT_OCT), NONE)).toEqual([])
+    })
+    it('садик одной суммой 1-го числа два месяца подряд — найден', () => {
+      expect(foundPayments(KINDER(40_000, 40_000), NONE).map((f) => [f.name, f.amount, f.kind, f.opId])).toEqual([
+        ['BALAPAN KINDERGARTEN', 40_000, 'obligation', 'k2'],
+      ])
+    })
+    it('садик только в одном месяце — мимо', () => {
+      expect(foundPayments([at('k1', '2026-10-01', -40_000, 'BALAPAN KINDERGARTEN'), at('k2', '2026-10-02', -40_000, 'BALAPAN KINDERGARTEN')], NONE)).toEqual([])
+    })
+    it('садик два месяца, но во втором два списания — мимо', () => {
+      expect(foundPayments([...KINDER(40_000, 40_000), at('k3', '2026-10-03', -40_000, 'BALAPAN KINDERGARTEN')], NONE)).toEqual([])
+    })
+    it('месяцы не подряд (август и октябрь) — мимо', () => {
+      expect(foundPayments([at('k1', '2026-08-01', -40_000, 'BALAPAN KINDERGARTEN'), at('k2', '2026-10-01', -40_000, 'BALAPAN KINDERGARTEN')], NONE)).toEqual([])
+    })
+    it('суммы садика 40 000 и 44 000 (>5 %) — мимо', () => {
+      expect(foundPayments(KINDER(40_000, 44_000), NONE)).toEqual([])
+    })
+    it('подписка из словаря одной операцией — найдена (как было)', () => {
+      expect(foundPayments([at('n1', '2026-10-13', -3_990, 'NETFLIX.COM')], NONE).map((f) => [f.name, f.kind])).toEqual([['NETFLIX.COM', 'subscription']])
+    })
+  })
 })
