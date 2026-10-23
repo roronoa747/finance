@@ -90,6 +90,8 @@ const median = (list: number[]) => {
 }
 const dayOf = (op: Operation) => Number(op.date.slice(8, 10)) || 1
 const close = (values: number[], center: number, tolerance: number) => values.filter((v) => Math.abs(v - center) <= center * tolerance).length
+/** Списание `spent` — в допуске повтора (±5 %) от `amount`. */
+const near = (spent: number, amount: number) => Math.abs(spent - amount) <= amount * RECURRING_TOLERANCE
 
 function groups(ops: Operation[]): Map<string, Operation[]> {
   const out = new Map<string, Operation[]>()
@@ -256,7 +258,7 @@ export function foundPayments(ops: Operation[], ctx: RecurringCtx): (RecurringPr
     // Последняя строка группы в допуске суммы повтора: у «Перевода с карты на карту» в группе и 50 000, и 15 000 — повтор 15 000.
     const inGroup = recent.filter((o) => c.opIds.includes(o.id)).sort((a, b) => b.date.localeCompare(a.date))
     if (c.kind === 'obligation' && !monthlyOnce(inGroup)) continue
-    const last = inGroup.find((o) => Math.abs(-o.amount - c.amount) <= c.amount * RECURRING_TOLERANCE) ?? inGroup[0]
+    const last = inGroup.find((o) => near(-o.amount, c.amount)) ?? inGroup[0]
     if (!last) continue
     const pre = recurringOf(last, ops, ctx)
     if (pre) out.push({ ...pre, opId: last.id, key: c.key })
@@ -280,7 +282,6 @@ function secondPayment(op: Operation, ops: Operation[], ctx: RecurringCtx, from:
   if (!amountOf) return false
   const merchant = normalizeMerchant(op.merchant)
   const payments = ctx.rules.flatMap((r) => (!r.deletedAt && r.match.merchant === merchant && 'payment' in r.to ? [r.to.payment] : []))
-  const near = (spent: number, amount: number) => Math.abs(spent - amount) <= amount * RECURRING_TOLERANCE
   const ruled = (o: Operation) => payments.some((p) => {
     const amount = amountOf(p, o)
     return amount !== null && near(-o.amount, amount)
@@ -308,7 +309,7 @@ export function recurringOf(op: Operation, ops: Operation[], ctx: RecurringCtx):
   if (ctx.payments.some((p) => !p.deletedAt && p.opId === op.id)) return null
   const key = groupKey(op)
   const spent = -op.amount
-  const mine = ops.filter((o) => o.date >= from && groupKey(o) === key && Math.abs(-o.amount - spent) <= spent * RECURRING_TOLERANCE)
+  const mine = ops.filter((o) => o.date >= from && groupKey(o) === key && near(-o.amount, spent))
   const found = detectRecurring(mine.some((o) => o.id === op.id) ? mine : [...mine, op]).find((c) => c.opIds.includes(op.id))
   const name = shortMerchant(op.merchant)
   if (found) return { name, amount: found.amount, day: found.day, kind: found.kind }

@@ -2360,6 +2360,28 @@ describe('B2C-05: личный документ — слияние и синк �
     expect((store.privateDoc.merchantRules as { deletedAt?: string }[])[0].deletedAt).toBeTruthy()
     await flush()
   })
+
+  it('TL-02 (критик): правила платежа разных целей у продавца — рядом; та же цель — правка; раздел — «остальным» каждого; «между своими» — одно правило, второе надгробие', async () => {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ok(rev + 1, data))
+    const store = useFinanceStore()
+    const apple = { merchant: 'apple.com bill' }
+    const pay = (targetId: string) => ({ payment: { kind: 'obligation' as const, targetId, categoryId: 'sc_subscriptions' } })
+    const rest = () => store.merchantRules.map((r) => ('payment' in r.to ? [r.to.payment.targetId, r.to.payment.restCategoryId] : r.to))
+    const music = store.addMerchantRule({ match: apple, to: pay('music') }, 'a')
+    store.addMerchantRule({ match: apple, to: { categoryId: 'sc_fun' } }, 'a')
+    const cloud = store.addMerchantRule({ match: apple, to: pay('cloud') }, 'a')
+    expect(cloud.id).not.toBe(music.id)
+    // Вторая подписка наследует «остальным» прежнего правила.
+    expect(rest()).toEqual([['music', 'sc_fun'], ['cloud', 'sc_fun']])
+    expect(store.addMerchantRule({ match: apple, to: pay('music') }, 'a').id).toBe(music.id)
+    expect(store.merchantRules).toHaveLength(2)
+    store.addMerchantRule({ match: apple, to: { categoryId: 'sc_home' } }, 'a')
+    expect(rest()).toEqual([['music', 'sc_home'], ['cloud', 'sc_home']])
+    store.addMerchantRule({ match: apple, to: { internal: true } }, 'a')
+    expect(store.merchantRules.map((r) => [r.id, r.to])).toEqual([[music.id, { internal: true }]])
+    expect((store.privateDoc.merchantRules as { id: string; deletedAt?: string }[]).find((r) => r.id === cloud.id)?.deletedAt).toBeTruthy()
+    await flush()
+  })
 })
 
 describe('B2C-54: план разбора в сторе', () => {
