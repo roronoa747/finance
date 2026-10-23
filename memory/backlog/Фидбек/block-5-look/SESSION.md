@@ -402,7 +402,8 @@ Vite `5294` (временный конфиг в `frontend/`, удалён); дл
 поведение `usePhoto` без сети — глазами новичка не мешают.
 
 **Возврата исполнителю нет.** Верификация: `npm run build` ✓; целевые тесты (`components/money`, `views/Money*`,
-`Week.notes.dom`, `AppShell`, e2e `fb-block5-look`, `b2c-block16`) — 291 ✓; полный набор — ниже в коммите.
+`Week.notes.dom`, `AppShell`, e2e `fb-block5-look`, `b2c-block16`) — 291 ✓; полный набор без стенда — 287 файлов / 2 948 + 1
+skipped ✓. **Коммит `/ux` — `b257ebcc`** (ветка `fb-block-5-look`, запушена).
 
 **Грабли стенда (в память):** временный Vite-конфиг с `--configLoader native` требует расширение в импорте
 (`./vite.config.ts`, иначе `ERR_MODULE_NOT_FOUND`); операции новой семье — через стор приложения из страницы (`import('/src/…')`
