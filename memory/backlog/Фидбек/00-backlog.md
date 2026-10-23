@@ -282,10 +282,10 @@ Figma (файл `qBsIBtTRI4MIaRa6b8Eli9`, «03 Экраны», секция «Б
 | | FB-23 Живой замер на 2–3 моделях (цена владельцу), e2e двух телефонов, доки | `block-4-review-v4/FB-23-measure-e2e-docs.md` | FB-17 | ✅ |
 | | FB-22 *(4в — ошибка от владельца 2026-10-22, M без `/ux`, деплой раньше)* «Назад» гоняет по кругу «Цифры» ↔ «Настройки» (фронт) | `block-4-review-v4/FB-22-back-loop.md` | — (до FB-14) | 🏁 |
 | 5. Вид ⬜ *(исследование → режим по решению)* | FB-18 Исследование: экраны «до \| после» артефактом («Неделя», «Месяц», «Деньги», заметки, первый запуск) → решение владельца | `block-5-look/FB-18-screens-research.md` | Блок 3 (можно раньше, если владелец ждёт) | ✅ исследование 2026-10-23 (артефакт https://claude.ai/artifact/AvUr9PagMTq3Lv1CBBcM7c); решение владельца ✅ 2026-10-23 (`memory/decisions/fb-look.md`; макеты «после» — Figma `qBsIBtTRI4MIaRa6b8Eli9` «03 Экраны», секция «Блок 5 · Вид»; два выбора владельца в Figma — цвет полосы, отметка «пришла») |
-| | FB-19 «Неделя» Б (шапка в два яруса, план недели полосой, «Не разобрано» — кнопка) и «Месяц» Б (малое кольцо, разделы в той же карточке, «пришла» — подсветка) | `block-5-look/FB-19-week-month.md` | Р-30…Р-32, Блоки 1–4 на `main` | ⬜ |
-| | FB-20 «Деньги» ровно (сегмент, слот у каждой строки, без зарплат) и заметка себе с датой (личный документ, «+ → Заметка», карточка на «Неделе») | `block-5-look/FB-20-money-notes.md` | FB-19, Р-33, Р-34 | ⬜ |
-| | FB-21 Первый запуск «сначала траты» (`intro → dream → spend`), вопрос о доходе — в «Неделю», «нашли в выписке» — в «Платежи», «Поставить план» по неделям, «Месяц» без дохода | `block-5-look/FB-21-first-run-docs.md` | FB-19, Р-35…Р-37 | ⬜ |
-| | FB-24 e2e блока `fb-block5-look`, DESIGN.md (§2, §5, §6), §6 индекса | `block-5-look/FB-24-e2e-docs.md` | FB-19, FB-20, FB-21 | ⬜ |
+| | FB-19 «Неделя» Б (шапка в два яруса, план недели полосой, «Не разобрано» — кнопка) и «Месяц» Б (малое кольцо, разделы в той же карточке, «пришла» — подсветка) | `block-5-look/FB-19-week-month.md` | Р-30…Р-32, Блоки 1–4 на `main` | ✅ исполнитель 2026-10-23 |
+| | FB-20 «Деньги» ровно (сегмент, слот у каждой строки, без зарплат) и заметка себе с датой (личный документ, «+ → Заметка», карточка на «Неделе») | `block-5-look/FB-20-money-notes.md` | FB-19, Р-33, Р-34 | ✅ исполнитель 2026-10-23 |
+| | FB-21 Первый запуск «сначала траты» (`intro → dream → spend`), вопрос о доходе — в «Неделю», «нашли в выписке» — в «Платежи», «Поставить план» по неделям, «Месяц» без дохода | `block-5-look/FB-21-first-run-docs.md` | FB-19, Р-35…Р-37 | ✅ исполнитель 2026-10-23 |
+| | FB-24 e2e блока `fb-block5-look`, DESIGN.md (§2, §5, §6), §6 индекса | `block-5-look/FB-24-e2e-docs.md` | FB-19, FB-20, FB-21 | ✅ исполнитель 2026-10-23 |
 
 Трассировка бриф → задачи: Р-1 → FB-01 (+ Р-15); Р-2 → FB-02, FB-04 (+ Р-11, Р-12); Р-3 → FB-02, FB-03, FB-04 (+ Р-13);
 Р-4 → FB-05, FB-04 (+ Р-14); Р-5 → FB-07, FB-08 (+ Р-16); Р-6 → FB-09 (+ Р-17); Р-7 → FB-11, FB-12 (+ Р-18); Р-8 → FB-13
@@ -571,3 +571,31 @@ FB-10 (проверка); «Переделать» экраны → FB-18 → Р
   `stores/applepay.ts` (`available`, `isIPhone`, `connected`, `load`). «Обычно» по месяцам — `usualMonths`/`usualSpend`
   (`finance.ts:4095-4143`, `monthCovered`); итоги недели — `SpendTotal kind 'week'`, `spentOf`/`oneOffOf`, `plannedElsewhere`,
   `UNKNOWN_CATEGORY`, `SPEND_LAST`; загрузки — `UploadPeriod` (`finance.ts:5038`), `coversWeek` :5041.
+
+**После Блока 5 (FB-19…FB-21, исполнитель 2026-10-23; критик дополнит).**
+- `finance.ts`: `MyWeek.plan/rest` (план месяца участника × 7 / `daysInMonth`, `Math.round`; `rest = plan − total`, null без
+  строк плана); `incomeMeta`, `Decision kind 'income'` + `income` и `decisionQueue(…, {income})` — первым в очереди;
+  `coveredDays`, `usualWeekly` (полные недели пн–вс внутри своих загрузок, до `USUAL_WEEKS_MAX = 8`, не меньше
+  `USUAL_WEEKS_MIN = 2`; `spentOf` итогов `week`; × 52 / 12, вверх до тысячи), `planByFact` (`PlanByFact {rows, total}`; null при
+  своей живой строке плана, покрытии < `PLAN_FACT_DAYS = 14`, нехватке недель или пустых строках; мимо «Не разобрано»,
+  `plannedElsewhere`, `SPEND_LAST`). `firstRun.ts`: `foundPayments(ops, {rules, payments, today})` → `(RecurringPrefill &
+  {opId, key})[]` (группы `detectRecurring` за 3 месяца, `opId` — последняя строка группы в допуске суммы, фильтр `recurringOf`).
+  Стор: `planFactCall()` (функция, как `planCall`), `notes` / `addNote` / `setNote` / `setNoteDone` / `removeNote`
+  (`privateDoc.notes`, `Note = Tracked & {id, text ≤ 80, date, amount?, doneAt?}`, `nt_` + 8 hex; `mergePrivateDocs` `known`).
+- Компоненты: `useIncomeAnswer` (`components/useIncomeAnswer.ts` — оклад/ритм/правило/отметки, как `Start.answerIncome`),
+  `week/NoteSheet.vue`, `MonthRing` без `income`/слота (`size` 112), `MoneySquares` как `PlanSwitch`, `PaymentLine slot`,
+  `kit/Row` слот 32, `kit/Avatar` размер 26, `button.ts` `xs` = 26 / 12.5; `Start.vue` — шаги `intro → dream → spend → invite`
+  (`OLD_STEPS` upload/salary/questions → spend, month → invite; `resume`: мечта есть → spend, иначе intro; `finish` →
+  `/week` / `/settings?applepay=1` / `/`). Удалены `money/CapitalSalaries.vue` (+ тест), шаги и код зарплаты/вопросов в `Start`.
+- DOM: `data-week-head`, `data-week-plan` / `data-week-rest`, `data-note` / `data-done` / `data-note-open` / `data-note-done`,
+  `data-note-sheet` / `data-note-text` / `data-note-date` / `data-note-amount` / `data-note-save`, `data-month-top`,
+  `data-month-ring`, `data-section-call`, `data-section-found`, `data-found-list` / `data-found-row` / `data-found-pay`,
+  `data-plan-fact` / `data-plan-fact-sheet` / `data-plan-fact-row` / `data-plan-fact-more` / `data-plan-fact-save` /
+  `data-plan-fact-done`, `data-rest-none`, `data-add-salary`, `data-came` — на строке зарплаты, `data-payment-slot`,
+  `data-add-account` / `data-add-payment`, `data-start-dream` / `data-start-path` / `data-start-upload` / `data-start-applepay` /
+  `data-start-later`, `data-income-fields` / `data-income-salary` / `data-income-day`. Ушли: `data-section-dot`, `data-rest` и
+  «вне плана» на «Неделе», `data-to-plan`, `data-week-sum`, `data-came-count`, `data-capital-salaries`.
+- Тесты: `lib/planByFact.test.ts`, `components/useIncomeAnswer.test.ts`, `stores/finance.notes.test.ts`,
+  `views/Week.notes.dom.test.ts`, e2e `fb-block5-look.test.ts`; первый запуск — `Start.test.ts` / `Start.dom.test.ts`,
+  `e2e/fr-block1-setup`, `e2e/b2c-block3-first-run-sync.dom`, часть 4 `e2e/b2c-block3-screens` переписаны под новый поток
+  («В платежи» в SSR — `addObligation` + `ops.addToPayments`, как `AddPaymentSheet`).
