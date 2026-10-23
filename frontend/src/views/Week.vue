@@ -6,6 +6,7 @@ import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
 import DecisionCard from '@/components/kit/DecisionCard.vue'
+import Field from '@/components/kit/Field.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Toast from '@/components/kit/Toast.vue'
@@ -52,7 +53,9 @@ import {
   type Decision,
   type MyWeekRow,
 } from '@/lib/finance'
-import { readDeferred, readMonthEnd, writeDeferred, writeMonthEnd } from '@/lib/storage'
+import { START_ANSWERED_KEY, readDeferred, readMonthEnd, readStorage, writeDeferred, writeMonthEnd, writeStorage } from '@/lib/storage'
+import { detectIncome } from '@/lib/statements/firstRun'
+import { useIncomeAnswer } from '@/components/useIncomeAnswer'
 
 /**
  * «План · Неделя» (Блок 15, Р-95…Р-102; вид — Блок 5 «Фидбек», Р-30…Р-31, Figma «Неделя · Б» `18:3`): только свои цифры.
@@ -86,6 +89,8 @@ const uploadButton = ref<HTMLElement | null>(null)
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 /** Месяц, где «Месяц» ждёт действия, — точка на сегменте (Р-97); не этот месяц — сегмент откроет его. */
 const planCall = computed(() => finance.planCall())
+/** «Поставить план» ждёт в «Месяце» (Р-36) — точка на сегменте. */
+const planFactCall = computed(() => finance.planFactCall())
 
 /* ---------- неделя: моя, листается ‹ › (Р-102) ---------- */
 const month = monthKey()
@@ -283,6 +288,24 @@ const unknownList = computed(() => unknownGroups(store.all.filter((o) => weekKey
 const deferred = ref<Record<string, string>>(readDeferred())
 const groupKey = (g: { match: MerchantRule['match'] }) => `unknownGroup:${week.value}:${JSON.stringify(g.match)}`
 const isDeferred = (d: Decision) => d.key in deferred.value && (d.kind !== 'unknownBatch' || (d.groups ?? []).every((g) => groupKey(g) in deferred.value))
+
+/*
+ * «Это ваш доход?» (Блок 5 «Фидбек», Р-35; раньше — вопрос первого запуска): пока у меня оклад 0 и в своих операциях есть
+ * кандидат (`detectIncome`), ключ не отвечен («Нет» — на устройстве, `START_ANSWERED_KEY`, как было) и не отложен —
+ * первым в очереди. «Да» делает то же, что делал первый запуск (`useIncomeAnswer`): оклад, день / ритм, правило
+ * зарплаты, отметки месяцев; оклад поставлен — вопрос исчезает, «Месяц» получает доход.
+ */
+const answered = ref<string[]>(readStorage<string[]>(START_ANSWERED_KEY, []))
+function markAnswered(key: string) {
+  if (!answered.value.includes(key)) answered.value = [...answered.value, key]
+  writeStorage(START_ANSWERED_KEY, answered.value)
+}
+const incomeCandidate = computed(() => {
+  if (!canUpload.value || (finance.people.find((p) => p.id === me.value)?.salary ?? 0) > 0) return null
+  const c = detectIncome(store.all)[0] ?? null
+  return c && !answered.value.includes(`income:${c.key}`) ? c : null
+})
+const income = useIncomeAnswer()
 const queue = computed(() =>
   decisionQueue(finance.planInput(month).state, {
     canEdit: canUpload.value,
@@ -290,9 +313,16 @@ const queue = computed(() =>
     unknown: unknownList.value,
     answeredMonthEnd: answeredLocal.value,
     week: week.value,
+    income: incomeCandidate.value,
   }).filter((d) => !isDeferred(d)),
 )
 const decision = computed(() => queue.value[0] ?? null)
+// Поля «Это ваш доход?» — от кандидата при смене вопроса (не при каждом пересборе очереди).
+watch(
+  () => (decision.value?.kind === 'income' ? decision.value.key : null),
+  () => income.setCandidate(decision.value?.income),
+  { immediate: true },
+)
 const defer = (d: Decision) => {
   deferred.value = writeDeferred([d.key, ...(d.groups ?? []).map(groupKey)])
   cancelling.value = false
@@ -381,12 +411,15 @@ const decisionActions = computed(() => {
   return d.actions
 })
 function onPrimary(d: Decision) {
-  if (d.kind === 'match' && d.match) acceptMatch(d.match)
+  if (d.kind === 'income' && d.income) {
+    if (income.answer(d.income)) markAnswered(d.key)
+  } else if (d.kind === 'match' && d.match) acceptMatch(d.match)
   else if (d.kind === 'keep') onKeep(d, cancelling.value ? 'cancel' : 'keep')
   else if (d.kind === 'monthEnd') answerRest(true)
 }
 function onSecondary(d: Decision) {
-  if (d.kind === 'match' && d.match) void store.declineMatch(d.match)
+  if (d.kind === 'income') markAnswered(d.key)
+  else if (d.kind === 'match' && d.match) void store.declineMatch(d.match)
   else if (d.kind === 'keep') onKeep(d, 'cancel')
 }
 function onGhost(d: Decision) {
@@ -411,8 +444,11 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <!-- Точка нового разбора — «Месяц» ведёт в этот месяц, где ✦ (приёмка Блока 3 «ИИ-польза»); открыл — снова `planCall`. -->
-    <PlanSwitch view="week" :month="planCall !== null && planCall !== month && !ai.reviewUnseen ? planCall : null" :dot="ai.reviewUnseen" />
+    <!--
+      Точка на «Месяце»: новый разбор (ведёт в его месяц, где ✦ — приёмка Блока 3 «ИИ-польза»; открыл — снова `planCall`)
+      или «Поставить план» по неделям ждёт в строке «Траты» (Блок 5 «Фидбек», Р-36).
+    -->
+    <PlanSwitch view="week" :month="planCall !== null && planCall !== month && !ai.reviewUnseen ? planCall : null" :dot="ai.reviewUnseen || planFactCall !== null" />
     <input v-if="canUpload" ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
     <Callout v-if="store.pendingCount && !store.held" tone="neutral">{{ store.pendingCount }} операций отправятся при сети. Итоги уже посчитаны.</Callout>
 
@@ -613,6 +649,13 @@ onBeforeUnmount(() => {
         @ghost="onGhost(decision)"
       >
         <template v-if="decision.kind === 'keep'" #inner>{{ cancelling ? decision.cancel?.inner : decision.inner }}</template>
+        <!-- «Это ваш доход?»: сумма и день правятся (как было в первом запуске); недельный ритм — только сумма за неделю. -->
+        <template v-else-if="decision.kind === 'income'" #inner>
+          <div class="flex gap-3" data-income-fields>
+            <Field :label="decision.income?.rhythm === 'week' ? 'За неделю, ₸' : 'Оклад, ₸'" class="flex-1"><NumField v-model="income.salary.value" placeholder="450 000" data-income-salary /></Field>
+            <Field v-if="decision.income?.rhythm !== 'week'" label="День" class="w-24"><NumField v-model="income.payday.value" kind="int" placeholder="10" data-income-day /></Field>
+          </div>
+        </template>
         <template v-else-if="decision.kind === 'monthEnd'" #inner>
           <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
         </template>

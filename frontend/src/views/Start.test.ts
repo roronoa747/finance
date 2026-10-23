@@ -2,26 +2,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore, defaultSyncDoc } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
+import { useApplePayStore } from '@/stores/applepay'
 import type { PdfRow } from '@/lib/statements/pdf'
 import { parseStatement } from '@/lib/statements/parsers'
-import type { Operation } from '@/lib/statements/types'
-import { applyRules, periodOf, spendTotals, unknownGroups } from '@/lib/statements/model'
-import { beyondLimit } from '@/lib/statements/firstRun'
 import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
-import { budgetAmounts, freeByFact, paidFor } from '@/lib/finance'
 import { useOperationsStore } from '@/stores/operations'
-import { money, plain } from '@/lib/money'
 import { templateById } from '@/lib/goalTemplates'
 import { T0, authAs, planFamilyDoc } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
 import type { SyncDoc } from '@/types/finance'
+import type { Operation } from '@/lib/statements/types'
 import Start from './Start.vue'
 import { useInvite } from '@/components/useInvite'
 
 /**
- * Первый запуск (B2C-19, бэклог «первый» FR-01, SSR): мечта → зарплата руками (выписка опцией) →
- * партнёр; вопросы на фикстуре Kaspi и что они пишут, партнёр по коду — только зарплата и вопросы.
- * Операции — в своей копии стора (`ff_operations`), как после «Отправить». Куда ведут кнопки — DOM-тест.
+ * Первый запуск «сначала траты» (B2C-19, бэклог «первый» FR-01; Блок 5 «Фидбек», Р-35, FB-21; SSR): вступление → мечта →
+ * «Тратьте как обычно» (выписка / Apple Pay / «Позже») → партнёр → «Неделя» или главный. Зарплату и повторы первый запуск
+ * больше не спрашивает: «Это ваш доход?» — вопрос «Недели» (`useIncomeAnswer.test.ts`, `Week.dom.test.ts`), повторы —
+ * «нашли в выписке» в «Месяце» (`MonthPlan.dom.test.ts`). Куда ведут кнопки — DOM-тест.
  */
 const fixtures = import.meta.glob<PdfRow[]>('../lib/statements/fixtures/*.rows.json', { eager: true, import: 'default' })
 const kaspiOps = (name = 'kaspi-01') => parseStatement(fixtures[`../lib/statements/fixtures/${name}.rows.json`]).operations
@@ -44,31 +42,22 @@ function family(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a', doc
   store.setHouseholdDoc(doc, 1)
   return store
 }
-
 /** Своя копия операций — как после «Отправить» (стор операций читает её при создании). */
 function seedOps(ops: Operation[], user = 'u-a') {
   writeStorage(OPERATIONS_STORAGE_KEYS.ops, { owner: `h-family:${user}`, ops: Object.fromEntries(ops.map((o) => [o.id, o])) })
 }
-
 const act = (name: string, state: Record<string, unknown> = {}) => screenMixin(state, (s) => (s[name] as () => void)())
-const answered = () => JSON.parse(storage.get('ff_start_answered') ?? '[]') as string[]
-
-/** Строка выписки; раздел — по словарю, как после разбора. */
-const op = (id: string, date: string, amount: number, merchant: string, kind: Operation['kind'] = 'purchase'): Operation => ({
-  id, bank: 'kaspi', date, amount, kind, merchant, categoryId: null, internal: false,
-})
-const parsed = (list: Operation[]) => applyRules(list, [])
 /** Тексты брендовых кнопок (`variant` default) — правило 12: одна главная на экране. */
 const brandButtons = (html: string) =>
   [...html.matchAll(/<button[^>]*class="(?:[^"]*\s)?bg-brand\s[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim())
 
-describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', () => {
+describe('views/Start.vue — первый запуск «сначала траты» (B2C-19, FR-01, FB-21, SSR)', () => {
   beforeEach(() => {
     stubStorage()
     setActivePinia(createPinia())
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
-    // Сети нет: картинка шаблона и личный документ не уходят.
+    // Сети нет: картинка шаблона, личный документ и статус Apple Pay не уходят.
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 0, json: async () => ({}), text: async () => '' })))
   })
   afterEach(() => {
@@ -76,72 +65,69 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     vi.unstubAllGlobals()
   })
 
-  it('FR-01: после вступления новая семья начинает с мечты («1 из 3»); шаг «Зарплата» — поля и главная «Дальше», выписка — тихой кнопкой «Есть PDF из банка», без механики в заголовке', async () => {
-    family()
+  it('FB-21: после вступления новая семья начинает с мечты («1 из 3»); шаг «Тратьте как обычно» («2 из 3») — фото мечты, плитка «Выписка», одна брендовая «Загрузить выписку», тихое «Позже»; механики в заголовке нет', async () => {
+    const store = family()
     const dream = await renderScreen(Start, '/start/dream')
     expect(dream).toContain('На что копим?')
     expect(dream).toContain('1 из 3')
 
-    const html = await renderScreen(Start, '/start/salary')
-    expect(html).toContain('>Зарплата</h1>')
-    expect(html).toContain('Сколько и когда приходит')
+    store.addGoal({ name: 'Машина', need: 3_000_000, monthly: 0, hue: 'blue' })
+    const html = await renderScreen(Start, '/start/spend')
+    expect(html).toContain('>Тратьте как обычно</h1>')
+    expect(html).toContain('Через пару недель покажем, куда уходит')
     expect(html).toContain('2 из 3')
-    expect(html).toContain('>Зарплата в месяц, ₸</span>')
-    expect(html).toContain('>День зарплаты</span>')
-    // Одна брендовая кнопка (правило 12): «Дальше»; выписка — тихая, файл не выбирается с порога.
-    expect(brandButtons(html)).toEqual(['Дальше'])
-    expect(html).toContain('Есть PDF из банка')
-    expect(html).not.toContain('Выбрать файл')
+    // Мечта семьи — образом (Р-30): имя мечты на плитке.
+    expect(html).toContain('data-start-dream')
+    expect(html).toContain('Машина')
+    // Плитка «Выписка» нажата по умолчанию; Apple Pay — только на iPhone (здесь нет).
+    expect(html).toMatch(/aria-pressed="true"[^>]*data-start-path="statement"|data-start-path="statement"[^>]*aria-pressed="true"/)
+    expect(html).not.toContain('data-start-path="applepay"')
+    // Одна брендовая кнопка (правило 12): «Загрузить выписку»; «Позже» — тихо; полей зарплаты и вопросов нет.
+    expect(brandButtons(html)).toEqual(['Загрузить выписку'])
+    expect(html).toContain('data-start-later')
+    expect(html).toContain('accept="application/pdf,.pdf"')
+    for (const t of ['Зарплата в месяц', 'Есть PDF из банка', 'Это ваш доход?', 'Нашли', 'Выбрать файл']) expect(html).not.toContain(t)
     // Р-9: «выписка» / «PDF» — не в заголовке и подписи шага.
     const head = html.slice(html.indexOf('<h1'), html.indexOf('</p>', html.indexOf('<h1')))
     expect(head).not.toMatch(/выписк|PDF/i)
-  })
-
-  it('FR-01: «Есть PDF из банка» раскрывает прежний выбор файла на том же шаге — «Ваш банк», файл остаётся на телефоне, «Выбрать файл» и тихое «Назад»; партнёр — один шаг, без «1 из 1»', async () => {
-    family()
-    const html = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ pdf: true })])
-    expect(html).toContain('Ваш банк')
-    expect(html).toContain('Найдём зарплату, кредиты и подписки')
-    expect(html).toContain('2 из 3')
-    // Одна строка, подробности — в подсказке (правило интерфейса, критик Блока 3).
+    // Одна строка + подсказка про файл (правило 12).
     expect(html).toContain('Файл остаётся на телефоне')
     expect(html).toContain('aria-label="Пояснение"')
-    expect(html).toContain('accept="application/pdf,.pdf"')
-    expect(brandButtons(html)).toEqual(['Выбрать файл'])
-    expect(html).toMatch(/<button[^>]*>(?:\s|<!---->)*Назад/)
-    expect(html).not.toContain('Зарплата в месяц, ₸')
-    // Откуда взять PDF — карточкой банков, путь — в подсказке у банка (Б17), цвет — токенами.
-    expect(html).toContain('aria-label="Выписка Kaspi"')
-    expect(html).toContain('aria-label="Выписка Freedom"')
-    const hints = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ pdf: true, at: { left: 0, top: 0, width: 300 } })])
-    expect(hints).toContain('Мой банк → Выписка → PDF → Поделиться')
-    expect(hints).toContain('Счёт → Выписка → за 3 месяца → PDF')
-    expect(html).toContain('bg-destructive')
-    expect(html).not.toMatch(/#[0-9a-f]{6}/i)
-
-    setActivePinia(createPinia())
-    family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
-    const partner = await renderScreen(Start, '/start/salary')
-    expect(partner).toContain('>Зарплата</h1>')
-    // `/ux`: единственный шаг — без полосы «1 из 1».
-    expect(partner).not.toContain('1 из 1')
-    expect(partner).not.toContain('На что копим?')
-    expect(brandButtons(partner)).toEqual(['Готово'])
   })
 
-  it('FR-01: старые адреса — `/start/upload` → зарплата, `/start/month` → партнёр; чужой шаг → первый непройденный (FR-08)', async () => {
-    family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }] })
-    expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
+  it('FB-21: без мечты — плитка без фото; Apple Pay на iPhone — вторая плитка, выбрана — главная «Подключить Apple Pay»; не iPhone — плитки нет', async () => {
+    family()
+    const ap = useApplePayStore()
+    ap.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)'
+    ap.status = { connected: false, phones: 0, waiting: false, shortcut_url: 'https://example.test/shortcut', shortcut_url_legacy: 'https://example.test/legacy' } as never
+    expect(ap.available).toBe(true)
+    const html = await renderScreen(Start, '/start/spend')
+    expect(html).toContain('data-start-dream')
+    expect(html).toContain('>Мечта</div>')
+    expect(html).toContain('data-start-path="applepay"')
+    // Слово «Apple Pay» — на плитке; без «Pay»-дублей в заголовке и подписи.
+    expect(html.slice(html.indexOf('<h1'), html.indexOf('</p>', html.indexOf('<h1')))).not.toContain('Pay')
+    const chosen = await renderScreen(Start, '/start/spend', undefined, [screenMixin({ path: 'applepay' })])
+    expect(brandButtons(chosen)).toEqual(['Подключить Apple Pay'])
+    expect(chosen).not.toContain('Файл остаётся на телефоне')
+
+    ap.userAgent = 'Mozilla/5.0 (Linux; Android 14)'
+    expect(await renderScreen(Start, '/start/spend')).not.toContain('data-start-path="applepay"')
+  })
+
+  it('FR-01: старые адреса — `/start/upload`, `/start/salary`, `/start/questions` → траты, `/start/month` → партнёр; чужой шаг → первый непройденный (FR-08)', async () => {
+    const store = family()
+    store.addGoal({ name: 'Машина', need: 3_000_000, monthly: 0, hue: 'blue' })
+    for (const path of ['/start/upload', '/start/salary', '/start/questions']) expect(await renderScreen(Start, path), path).toContain('>Тратьте как обычно</h1>')
     const month = await renderScreen(Start, '/start/month')
     expect(month).toContain('Пригласите партнёра')
     expect(month).toContain('3 из 3')
-    expect(month).not.toContain('Ваш июль')
-    // Своя зарплата уже есть — дальше партнёр, а не вступление заново.
-    expect(await renderScreen(Start, '/start/nope')).toContain('Пригласите партнёра')
+    // Мечта уже есть — чужой шаг ведёт к тратам, а не к вступлению заново.
+    expect(await renderScreen(Start, '/start/nope')).toContain('>Тратьте как обычно</h1>')
 
     setActivePinia(createPinia())
     family('member', 'b', { ...planFamilyDoc(), people: [planFamilyDoc().people[0]] })
-    expect(await renderScreen(Start, '/start/upload')).toContain('>Зарплата</h1>')
+    expect(await renderScreen(Start, '/start/salary')).toContain('>Тратьте как обычно</h1>')
     for (const path of ['/start/month', '/start/dream', '/start/invite']) {
       const html = await renderScreen(Start, path)
       expect(html).toContain('data-intro-page')
@@ -149,164 +135,47 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     }
   })
 
-  it('FR-08: `/start` без шага — первый непройденный: ничего нет → вступление; цель есть → зарплата; своя зарплата → партнёр; партнёр семьи, где первый участник не закончил, — свой путь без мечты', async () => {
+  it('FR-08: `/start` без шага — первый непройденный: ничего нет → вступление; цель есть → траты; партнёр семьи, где первый участник не закончил, — свой путь без мечты', async () => {
     const store = family()
     expect(await renderScreen(Start, '/start')).toContain('data-intro-page')
     store.addGoal({ name: 'Машина', need: 3_000_000, monthly: 0, hue: 'blue' })
-    const salary = await renderScreen(Start, '/start')
-    expect(salary).toContain('>Зарплата</h1>')
-    expect(salary).toContain('2 из 3')
-    store.setPerson('a', { name: 'Ильяс', salary: 450_000, payday: 12 })
-    expect(await renderScreen(Start, '/start')).toContain('Пригласите партнёра')
+    const spend = await renderScreen(Start, '/start')
+    expect(spend).toContain('>Тратьте как обычно</h1>')
+    expect(spend).toContain('2 из 3')
 
     // Код выдан, первый участник закрыл приложение до «Готово» (`setupDoneAt` нет): партнёр — не новая семья.
     setActivePinia(createPinia())
     family('member', 'b', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 450_000, payday: 12, updatedAt: T0 }], goals: store.householdDoc.goals })
     expect(await renderScreen(Start, '/start')).toContain('data-intro-page')
     for (const path of ['/start/dream', '/start/invite']) expect(await renderScreen(Start, path)).not.toContain('На что копим?')
-    expect(await renderScreen(Start, '/start/salary')).toContain('Готово')
+    const partner = await renderScreen(Start, '/start/spend')
+    expect(partner).toContain('>Тратьте как обычно</h1>')
+    // `/ux`: единственный шаг — без полосы «1 из 1».
+    expect(partner).not.toContain('1 из 1')
+    expect(brandButtons(partner)).toEqual(['Загрузить выписку'])
   })
 
-  it('FR-08: партнёр закончил раньше первого участника — семья отмечена настроенной им', async () => {
+  it('FR-08: партнёр закончил раньше первого участника («Позже» на тратах) — семья отмечена настроенной им, он — onboardedAt без оклада', async () => {
     const store = family('member', 'b', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 450_000, payday: 12, updatedAt: T0 }] })
-    await renderScreen(Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '300 000', manualPayday: '20' })])
-    expect(store.people.find((p) => p.id === 'b')).toMatchObject({ salary: 300_000, onboardedAt: expect.any(String) })
+    await renderScreen(Start, '/start/spend', undefined, [act('afterSpend')])
+    expect(store.people.find((p) => p.id === 'b')).toMatchObject({ name: 'b', onboardedAt: expect.any(String) })
+    expect(store.people.find((p) => p.id === 'b')?.salary ?? 0).toBe(0)
     expect(store.setupDone).toBe(true)
   })
 
-  it('зарплата руками: оклад и день — участнику с именем регистрации; итогов выписки нет', async () => {
+  it('выписка на шаге трат: операции — себе (как «Отправить»), вопросов нет, оклад не записан — «Неделя» спросит про доход сама', async () => {
     const store = family()
-    await renderScreen(Start, '/start/salary', undefined, [act('saveSalary', { manualSalary: '450 000', manualPayday: '12' })])
-    expect(store.people).toEqual([expect.objectContaining({ id: 'a', name: 'a', salary: 450_000, payday: 12 })])
-    // Месячный ритм — документ как раньше: полей ритма нет.
-    expect(store.people[0].payRhythm).toBeUndefined()
-    expect(store.householdDoc.spendTotals ?? []).toEqual([])
-  })
-
-  it('PN-23: зарплата руками с ритмом «каждую неделю» — недельный оклад и день недели; подпись «за неделю»', async () => {
-    const store = family()
-    const html = await renderScreen(Start, '/start/salary', undefined, [screenMixin({ manualRhythm: { payRhythm: 'week', weekday: 5 } })])
-    expect(html).toContain('>Зарплата за неделю, ₸</span>')
-    expect(html).toContain('>День недели</span>')
-    expect(html).toContain('Раз в неделю')
-    await renderScreen(Start, '/start/salary', undefined, [
-      act('saveSalary', { manualSalary: '150 000', manualPayday: '10', manualRhythm: { payRhythm: 'week', weekday: 5 } }),
-    ])
-    expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
-  })
-
-  it('вопросы на фикстуре Kaspi — подшаг зарплаты: «Нашли 7 повторяющихся», «2 из 3», первый вопрос — доход с суммой и днём в полях, «1 из 7»', async () => {
-    family()
-    seedOps(kaspiOps())
-    const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('Нашли 7 повторяющихся')
-    expect(html).toContain('Подтвердите по одному — дальше отметим сами.')
-    expect(html).toContain('2 из 3')
-    expect(html).toContain('Это ваш доход?')
-    expect(html).toContain(`${money(120_000)} · 24-го · С карты другого банка · 3 раз`)
-    expect(html).toContain(`value="${plain(120_000)}"`)
-    expect(html).toContain('value="24"')
-    expect(html).toContain('1 из 7')
-    expect(html).toContain('Да, это зарплата')
-  })
-
-  it('повторы за лимитом: обещания «позже, в «Неделе»» нет — спросить о них потом негде (хвост §4)', async () => {
-    family()
-    const ops = [...kaspiOps(), ...parsed([op('f1', '2025-06-28', -15_000, 'Фитнес Клуб'), op('f2', '2025-07-28', -15_000, 'Фитнес Клуб')])]
-    expect(beyondLimit(ops)).toBeGreaterThan(0)
-    seedOps(ops)
-    const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('Нашли 7 повторяющихся')
-    expect(html).not.toContain('Ещё ')
-    expect(html).not.toContain('в «Неделе»')
-  })
-
-  it('ответы пишут документ: доход (с правкой суммы), кредит с остатком, «Kaspi Red» без остатка — обязательство «Кредиты», подписка — быт; «нет» ничего не пишет; правила — в личном документе', async () => {
-    const store = family()
-    seedOps(kaspiOps())
-    // Доход: безымянный отправитель — правила нет.
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '125 000' })])
-    expect(store.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000, payday: 24 })])
+    const ops = useOperationsStore()
+    const send = vi.spyOn(ops, 'send').mockImplementation(async () => {
+      for (const o of kaspiOps()) ops.ops[o.id] = o
+    })
+    const parsed = parseStatement(fixtures['../lib/statements/fixtures/kaspi-01.rows.json'])
+    await renderScreen(Start, '/start/spend', undefined, [screenMixin({}, (s) => void (s.uploadParsed as (f: unknown[]) => Promise<void>)([{ name: 'выписка.pdf', parsed }]))])
+    expect(send).toHaveBeenCalled()
+    expect(Object.keys(ops.ops).length).toBeGreaterThan(0)
+    expect(store.people.find((p) => p.id === 'a')?.salary ?? 0).toBe(0)
+    expect(store.obligations).toEqual([])
     expect(store.merchantRules).toEqual([])
-    expect(answered()).toEqual(['income'])
-
-    // Кредит с остатком — кредит без ставки, платёж из выписки; правило «платёж по кредиту».
-    const q2 = await renderScreen(Start, '/start/questions')
-    expect(q2).toContain('Оплата Kaspi Кредита — это что?')
-    expect(q2).toContain('2 из 7')
-    expect(q2).toMatch(/<button[^>]*aria-pressed="true"[^>]*>(?:\s|<!---->)*Кредит(?:\s|<!---->)*</)
-    expect(q2).toContain('Остаток долга, ₸ — если знаете')
-    // Возврат приёмки п. 4: ставку выписка не знает — одна строка в карточке, у кредита признак «неизвестна».
-    expect(q2).toContain('Ставку уточните потом в Капитале.')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
-    expect(store.credits).toEqual([expect.objectContaining({ name: 'Оплата Kaspi Кредита', principal: 1_200_000, annualRate: 0, rateUnknown: true, payment: 151_790, day: 24 })])
-    expect(store.merchantRules[0].to).toEqual({ payment: { kind: 'credit', targetId: store.credits[0].id, categoryId: 'sc_credit' } })
-    // Июль 2025 — не этот месяц: отметки нет.
-    expect(store.payments).toEqual([])
-
-    // Без остатка — обязательство раздела «Кредиты»: кредит с остатком 0 платежа не ждёт.
-    expect(await renderScreen(Start, '/start/questions')).toContain('Оплата Kaspi Red — это что?')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
-    const red = store.obligations.find((o) => o.name === 'Оплата Kaspi Red')!
-    expect(red).toMatchObject({ category: 'd2', day: 9, note: expect.stringContaining('Капитале') })
-    expect(red.versions[0].amount).toBe(45_000)
-    expect(store.merchantRules[1].to).toEqual({ payment: { kind: 'obligation', targetId: red.id, categoryId: 'sc_credit' } })
-
-    // Подписка — быт, раздел трат из словаря.
-    expect(await renderScreen(Start, '/start/questions')).toContain('Яндекс Плюс — это что?')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
-    const plus = store.obligations.find((o) => o.name === 'Яндекс Плюс')!
-    expect(plus).toMatchObject({ category: 'd4', day: 5 })
-    expect(store.merchantRules[2].to).toEqual({ payment: { kind: 'obligation', targetId: plus.id, categoryId: 'sc_subscriptions' } })
-
-    // «Нет, разовое» — вопрос закрыт, записи нет.
-    const before = { obligations: store.obligations.length, rules: store.merchantRules.length }
-    await renderScreen(Start, '/start/questions', undefined, [screenMixin({}, (s) => (s.answerRecurring as (save: boolean) => void)(false))])
-    expect(store.obligations).toHaveLength(before.obligations)
-    expect(store.merchantRules).toHaveLength(before.rules)
-    expect(answered()).toHaveLength(5)
-
-    // «Потом» — остальные закрыты без записи; всё отвечено — «Дальше».
-    await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
-    expect(answered()).toHaveLength(7)
-    const done = await renderScreen(Start, '/start/questions')
-    expect(done).not.toContain('это что?')
-    expect(done).toMatch(/<button[^>]*>(?:\s|<!---->)*Дальше/)
-    // Бюджет: платёж кредита и «Kaspi Red» — в «Кредитах», подписка — в быту.
-    const amounts = budgetAmounts({ ...store.householdDoc, credits: store.credits })
-    expect(amounts.d2).toBe(151_790 + 45_000)
-    expect(amounts.d4).toBe(3_990)
-  })
-
-  it('зарплата в выписке не нашлась: после вопросов — короткая форма дохода', async () => {
-    const store = family()
-    seedOps(kaspiOps().filter((o) => o.amount < 0))
-    const first = await renderScreen(Start, '/start/questions')
-    expect(first).toContain('Нашли 6 повторяющихся')
-    expect(first).not.toContain('Это ваш доход?')
-    await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
-    const form = await renderScreen(Start, '/start/questions')
-    // Подпись — одна строка (правило 12).
-    expect(form).toContain('В выписке зарплата не нашлась — впишите её.')
-    expect(form).not.toContain('план месяца не сложится')
-    expect(form).toContain('>Зарплата в месяц, ₸</span>')
-    // Одна форма зарплаты на два места: та же, что на шаге зарплаты, но без «Есть PDF из банка».
-    expect(form).not.toContain('Есть PDF из банка')
-    await renderScreen(Start, '/start/questions', undefined, [act('saveSalary', { manualSalary: '400 000', manualPayday: '3' })])
-    expect(store.people[0]).toMatchObject({ salary: 400_000, payday: 3 })
-  })
-
-  it('FR-01: зарплату ввели руками, потом выписка — вопрос дохода остаётся (выписка точнее), «Да» перезаписывает оклад; все закрыты — «Дальше» без «впишите её»', async () => {
-    const store = family('member', 'a', { ...defaultSyncDoc(), people: [{ id: 'a', name: 'Ильяс', salary: 500_000, payday: 5, updatedAt: T0 }] })
-    seedOps(kaspiOps())
-    expect(await renderScreen(Start, '/start/questions')).toContain('Это ваш доход?')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
-    expect(store.people[0]).toMatchObject({ salary: 120_000, payday: 24 })
-    await renderScreen(Start, '/start/questions', undefined, [act('skipRest')])
-    const done = await renderScreen(Start, '/start/questions')
-    expect(done).not.toContain('впишите её')
-    expect(done).not.toContain('Зарплата в месяц, ₸')
-    expect(brandButtons(done)).toEqual(['Дальше'])
   })
 
   it('шаг 1 — «На что копим?» внутри первого запуска («1 из 3»); шаг 3 — код партнёра; «Пропустить» в шапке, внизу одна главная; finish ставит setupDoneAt и onboardedAt', async () => {
@@ -349,190 +218,16 @@ describe('views/Start.vue — первый запуск (B2C-19, FR-01, SSR)', (
     expect(store.people[0].onboardedAt).toBe('2026-09-24T07:00:00.000Z')
   })
 
-  it('партнёр по коду: зарплата из выписки и вопросы про себя, «Готово» — people[b] с доходом и onboardedAt, семья не трогается', async () => {
+  it('партнёр по коду: «Тратьте как обычно» про себя, «Позже» — people[b] с onboardedAt без оклада, семья не трогается', async () => {
     const base = planFamilyDoc()
     const store = family('member', 'b', { ...base, people: [base.people[0]] })
     seedOps(kaspiOps('kaspi-02'), 'u-b')
-    const html = await renderScreen(Start, '/start/questions')
+    const html = await renderScreen(Start, '/start/spend')
     expect(html).not.toContain('1 из 1')
-    expect(html).toContain('Это ваш доход?')
-    expect(html).toContain(`${money(160_000)} · 12-го`)
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
-    expect(store.people.find((p) => p.id === 'b')).toMatchObject({ name: 'b', salary: 160_000, payday: 12 })
-    await renderScreen(Start, '/start/questions', undefined, [act('finish')])
-    expect(store.people.find((p) => p.id === 'b')?.onboardedAt).toBe('2026-09-24T07:00:00.000Z')
+    expect(html).not.toContain('Это ваш доход?')
+    await renderScreen(Start, '/start/spend', undefined, [act('afterSpend')])
+    expect(store.people.find((p) => p.id === 'b')).toMatchObject({ name: 'b', onboardedAt: '2026-09-24T07:00:00.000Z' })
     expect(store.householdDoc.setupDoneAt).toBe(base.setupDoneAt)
     expect(store.goals).toHaveLength(3)
-  })
-
-  it('отметки месяца — суммой, id и днём операции этого месяца: зарплата с премией (оклад остаётся окладом), кредит с введённым остатком 1 200 000 — остаток не уменьшается второй раз', async () => {
-    const store = family()
-    seedOps(
-      parsed([
-        op('s8', '2026-08-10', 450_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('s9', '2026-09-10', 490_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('c8', '2026-08-05', -151_790, 'Оплата Kaspi Кредита'),
-        // Сегодняшняя строка (полдень по Алматы — это «сейчас»): и она встаёт до сверки остатка.
-        op('c9', '2026-09-24', -152_000, 'Оплата Kaspi Кредита'),
-      ]),
-    )
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '450 000' })])
-    expect(store.people[0]).toMatchObject({ salary: 450_000, payday: 10 })
-    // Пришло 490 000 (премия в допуске оклада ±10 %) — запись суммой операции: разница ляжет на свободное.
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ amount: 490_000, opId: 's9', source: 'statement', at: '2026-09-10T07:00:00.000Z' })
-
-    expect(await renderScreen(Start, '/start/questions')).toContain('Оплата Kaspi Кредита — это что?')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { creditPrincipal: '1 200 000' })])
-    const credit = store.credits[0]
-    expect(store.householdDoc.credits[0]).toMatchObject({ principal: 1_200_000, payment: 151_790, day: 5 })
-    // Остаток «если знаете» — уже после сентябрьского платежа: отметка днём операции стоит до сверки.
-    expect(credit.principal).toBe(1_200_000)
-    const paid = paidFor(store.payments, 'credit', credit.id, '2026-09')!
-    expect(paid).toMatchObject({ amount: 152_000, opId: 'c9', source: 'statement' })
-    expect(paid.at < store.householdDoc.credits[0].principalSetAt!).toBe(true)
-  })
-
-  it('PN-24: доход каждую пятницу — «по пятницам», «Да» ставит ритм недели и отмечает каждую пятницу своим днём', async () => {
-    const store = family()
-    seedOps(
-      parsed([
-        op('w1', '2026-08-28', 150_000, 'ТОО Смена', 'income'),
-        op('w2', '2026-09-04', 150_000, 'ТОО Смена', 'income'),
-        op('w3', '2026-09-11', 152_000, 'ТОО Смена', 'income'),
-        op('w4', '2026-09-18', 150_000, 'ТОО Смена', 'income'),
-      ]),
-    )
-    const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain(`${money(150_000)} · по пятницам`)
-    expect(html).toContain('>За неделю, ₸</span>')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome')])
-    expect(store.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
-    expect(store.payments.filter((p) => p.kind === 'salary').map((p) => [p.period, p.amount, p.opId])).toEqual([
-      ['2026-08-28', 150_000, 'w1'],
-      ['2026-09-04', 150_000, 'w2'],
-      ['2026-09-11', 152_000, 'w3'],
-      ['2026-09-18', 150_000, 'w4'],
-    ])
-  })
-
-  it('ML-06 (хвост 959): перевод другого отправителя перед зарплатой — «Да» отмечает август и сентябрь строками правила; вопроса «Это зарплата?» и второго правила нет', async () => {
-    const store = family()
-    seedOps(
-      parsed([
-        // Перевод от брата ≈ оклада — выше зарплаты по выписке.
-        op('d8', '2026-08-09', 590_000, 'Перевод от Дана К.', 'transfer-in'),
-        op('s8', '2026-08-10', 600_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('s9', '2026-09-10', 600_000, 'Зарплата ТОО Ромашка', 'income'),
-      ]),
-    )
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '600 000' })])
-    expect(paidFor(store.payments, 'salary', 'a', '2026-08')).toMatchObject({ amount: 600_000, opId: 's8', source: 'statement' })
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toMatchObject({ opId: 's9' })
-    expect(useOperationsStore().pendingMatches.filter((c) => c.kind === 'salary')).toEqual([])
-    expect(store.merchantRules.filter((r) => 'payment' in r.to && r.to.payment.kind === 'salary')).toHaveLength(1)
-  })
-
-  it('возврат приёмки п. 7: зарплату месяца отмечает только приход в допуске оклада — мелкий перевод того же отправителя месяц не отмечает', async () => {
-    const store = family()
-    // Оклад 30 000 (июль и август), а в сентябре от того же отправителя пришли только 4 700.
-    seedOps(
-      parsed([
-        op('j', '2026-07-12', 30_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('a', '2026-08-12', 30_000, 'Зарплата ТОО Ромашка', 'income'),
-        op('s', '2026-09-03', 4_700, 'Зарплата ТОО Ромашка', 'income'),
-      ]),
-    )
-    await renderScreen(Start, '/start/questions', undefined, [act('answerIncome', { incomeSalary: '30 000' })])
-    expect(store.people[0]).toMatchObject({ salary: 30_000, payday: 12 })
-    // Правило зарплаты есть (приход регулярный), а отметки сентября — нет: 4 700 — не зарплата.
-    expect(store.merchantRules.map((r) => r.to)).toEqual([{ payment: { kind: 'salary', targetId: 'a' } }])
-    expect(paidFor(store.payments, 'salary', 'a', '2026-09')).toBeNull()
-  })
-
-  it('«Записать → Аренда»: операции — в «Аренде», а не «не разобрано»; «Свободно по факту» вычитает аренду один раз; «Неделя» не спрашивает; правило платежа на месте', async () => {
-    const rent = parsed([op('r8', '2026-08-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'), op('r9', '2026-09-05', -220_000, 'PEREVOD ARENDA', 'transfer-out')])
-    // Аренду по названию не узнать — после отправки она «не разобрано».
-    expect(rent.map((o) => o.categoryId)).toEqual([null, null])
-    const store = family('member', 'a', {
-      ...defaultSyncDoc(),
-      people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }],
-      spendTotals: spendTotals(rent, 'a', 'month', '2026-09', T0),
-    })
-    seedOps(rent)
-    expect(await renderScreen(Start, '/start/questions')).toContain('PEREVOD ARENDA — это что?')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring', { recurringKind: 'rent' })])
-
-    const rentOb = store.obligations[0]
-    expect(rentOb).toMatchObject({ name: 'Аренда', category: 'd1', note: 'PEREVOD ARENDA' })
-    expect(store.merchantRules).toHaveLength(1)
-    expect(store.merchantRules[0].to).toEqual({ payment: { kind: 'obligation', targetId: rentOb.id, categoryId: 'sc_rent' } })
-    const all = useOperationsStore().all
-    expect(all.map((o) => o.categoryId)).toEqual(['sc_rent', 'sc_rent'])
-    expect(unknownGroups(all.filter((o) => periodOf(o.date, 'month') === '2026-09'))).toEqual([])
-    expect(paidFor(store.payments, 'obligation', rentOb.id, '2026-09')).toMatchObject({ amount: 220_000, opId: 'r9', at: '2026-09-05T07:00:00.000Z' })
-
-    const uploads = [{ slot: 'a', period_from: '2026-08-01', period_to: '2026-09-23' }]
-    const doc = store.householdDoc
-    const free = freeByFact({ ...doc, credits: store.credits }, doc.spendTotals ?? [], doc.spendCategories ?? [], '2026-09', uploads)
-    expect(free).toMatchObject({ byFact: true, dues: 220_000, spent: 0, amount: 600_000 - 220_000 })
-    expect(useOperationsStore().pendingMatches).toEqual([])
-  })
-
-  it('возврат приёмки 2 п. 2: «Записать» на «Перевод с карты на карту» (переводы разных сумм) — месяц отмечен строкой в допуске, плановый раздел только ей; «Свободно» не прыгает на сумму переводов', async () => {
-    // Freedom печатает все переводы без получателя одним названием; повтор — 15 000 около 19–20-го.
-    const transfer = (id: string, date: string, amount: number) => op(id, date, amount, 'Перевод с карты на карту', 'transfer-out')
-    const list = parsed([
-      transfer('t7', '2026-07-20', -15_000), transfer('a1', '2026-08-19', -40_000), transfer('a2', '2026-08-20', -15_000),
-      transfer('s1', '2026-09-03', -2_000), transfer('s2', '2026-09-12', -280_000), transfer('s3', '2026-09-20', -15_200),
-    ])
-    const store = family('member', 'a', {
-      ...defaultSyncDoc(),
-      people: [{ id: 'a', name: 'Ильяс', salary: 600_000, payday: 10, updatedAt: T0 }],
-      spendTotals: spendTotals(list, 'a', 'month', '2026-09', T0),
-    })
-    seedOps(list)
-    const uploads = [{ slot: 'a', period_from: '2026-07-01', period_to: '2026-09-23' }]
-    const free = () => freeByFact({ ...store.householdDoc, credits: store.credits }, store.householdDoc.spendTotals ?? [], store.householdDoc.spendCategories ?? [], '2026-09', uploads)
-    const before = free()
-    expect(before).toMatchObject({ byFact: true, dues: 0, spent: 297_200, amount: 302_800 })
-
-    const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('Перевод с карты на карту — это что?')
-    expect(html).toContain(`${money(15_000)} · примерно 19-го · 6 раз за период`)
-    // «Записать» с выбранным «Другое регулярное» (главная кнопка карточки).
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
-    const ob = store.obligations[0]
-    expect(ob).toMatchObject({ name: 'Перевод с карты на карту', category: 'd4' })
-    // Сентябрь отмечен строкой 15 200 (±2 %), а не первой строкой месяца 2 000.
-    expect(paidFor(store.payments, 'obligation', ob.id, '2026-09')).toMatchObject({ amount: 15_200, opId: 's3' })
-    // Плановый раздел — только строкам в допуске; 2 000, 280 000 и 40 000 — по-прежнему траты.
-    expect(Object.fromEntries(useOperationsStore().all.map((o) => [o.id, o.categoryId]))).toEqual({
-      t7: 'sc_subscriptions', a1: null, a2: 'sc_subscriptions', s1: null, s2: null, s3: 'sc_subscriptions',
-    })
-    // «Свободно»: 15 200 было тратой — стало платежом месяца; траты 2 000 и 280 000 остались. Сумма та же.
-    expect(free()).toMatchObject({ dues: 15_200, spent: 282_000, amount: before.amount })
-  })
-
-  it('партнёр по коду: повторы, которые сопоставляются с арендой и кредитом семьи, не спрашиваются — «Записать» не заведёт второе такое же', async () => {
-    const base = planFamilyDoc()
-    const store = family('member', 'b', { ...base, people: [base.people[0]] })
-    seedOps(
-      parsed([
-        op('r8', '2026-08-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
-        op('r9', '2026-09-05', -220_000, 'PEREVOD ARENDA', 'transfer-out'),
-        op('l9', '2026-09-15', -58_000, 'Оплата Kaspi Кредита'),
-        op('y9', '2026-09-03', -3_990, 'Яндекс Плюс'),
-      ]),
-      'u-b',
-    )
-    const html = await renderScreen(Start, '/start/questions')
-    expect(html).toContain('Нашли 1 повторяющийся')
-    expect(html).toContain('Яндекс Плюс — это что?')
-    expect(html).toContain('1 из 1')
-    expect(html).not.toContain('PEREVOD ARENDA')
-    expect(html).not.toContain('Оплата Kaspi Кредита')
-    await renderScreen(Start, '/start/questions', undefined, [act('answerRecurring')])
-    expect(store.obligations.map((o) => o.name)).toEqual(['Аренда', 'Яндекс Плюс'])
-    expect(store.householdDoc.credits.map((c) => c.name)).toEqual(['Кредит', 'Кредитка', 'Рассрочка'])
   })
 })

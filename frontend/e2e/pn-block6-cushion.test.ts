@@ -159,20 +159,20 @@ describe('e2e / понятность Блок 6 — подушка', () => {
     const A = await as('member', 'a')
     expect(on(A).store.goals).toEqual([])
 
-    // «Что копим?» первого запуска (`GoalNew next="/start/salary"`, FR-01) — только мечты; в «Новой мечте» плитка есть.
+    // «Что копим?» первого запуска (`GoalNew next="/start/spend"`, FR-01, FB-21) — только мечты; в «Новой мечте» плитка есть.
     const dream = text(await screen(on(A).pinia, Start, '/start/dream'))
     expect(dream).toContain('На что копим?')
     expect(dream).toContain('Машина')
     expect(dream).not.toContain('Подушка')
     expect(text(await screen(on(A).pinia, GoalNew, '/goals/new'))).toContain('Подушка')
 
-    // Мечта → зарплата → «Пригласить» → «Позже»: на «Мечтах» — герой с этой мечтой, а не пустое «Выбрать мечту».
+    // Мечта → «Тратьте как обычно» («Позже») → «Пригласить» → «Готово»: на «Мечтах» — герой с этой мечтой, а не пустое «Выбрать мечту».
     await screen(on(A).pinia, Start, '/start/dream', undefined, [
       screenMixin({ step: 'form', template: templateById('car'), name: 'Машина', needText: '3 000 000', term: '18' }, (s) => void (s.create as () => Promise<void>)()),
     ])
     expect(fundId(A)).toEqual([])
     expect(on(A).store.heroGoal?.name).toBe('Машина')
-    await screen(on(A).pinia, Start, '/start/salary', undefined, [screenMixin({ manualSalary: '500 000' }, (s) => (s.saveSalary as () => void)())])
+    await screen(on(A).pinia, Start, '/start/spend', undefined, [screenMixin({}, (s) => (s.afterSpend as () => void)())])
     await screen(on(A).pinia, Start, '/start/invite', undefined, [screenMixin({}, (s) => (s.finish as () => void)())])
     expect(on(A).store.setupDone).toBe(true)
     const dreams = await screen(on(A).pinia, Dreams, '/')

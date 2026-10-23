@@ -2666,6 +2666,18 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
       expect(q[4]).toMatchObject({ ...monthEndCard('2026-09') })
     })
 
+    it('FB-21 (Р-35): «Это ваш доход?» — первым в очереди, ключ с отправителем, три действия; без кандидата — как было', () => {
+      const income = { key: 'c:тоо ромашка', name: 'ТОО Ромашка', amount: 300_000, day: 12, count: 2, regular: true, opIds: ['s8', 's9'] }
+      const q = decisionQueue(base, { now, matches: [candidate('credit', 'loan')], unknown: [group('Kiosk', 1_200)], income })
+      expect(kinds(q)).toEqual(['income', 'match', 'unknownBatch'])
+      expect(q[0]).toMatchObject({ key: 'income:c:тоо ромашка', question: 'Это ваш доход?', meta: `${money(300_000)} · 12-го · ТОО Ромашка · 2 раза`, actions: { primary: 'Да, это зарплата', secondary: 'Нет', ghost: 'Потом' } })
+      expect(q[0].income).toBe(income)
+      // Недельный приход — «по пятницам».
+      expect(decisionQueue(base, { now, income: { ...income, rhythm: 'week', weekday: 5, count: 4 } })[0].meta).toBe(`${money(300_000)} · по пятницам · ТОО Ромашка · 4 раза`)
+      expect(kinds(decisionQueue(base, { now, matches: [candidate('credit', 'loan')], income: null }))).toEqual(['match'])
+      expect(decisionQueue(base, { now, income, canEdit: false })).toEqual([])
+    })
+
     it('пусто: ничего не ждёт; viewer (`canEdit` false) — без вопросов; день зарплаты и «освободится» вопросов не добавляют', () => {
       expect(decisionQueue(base, { now })).toEqual([])
       const all = { now, matches: [candidate('credit', 'loan')], unknown: [group('Kiosk', 1_200)] }

@@ -38,6 +38,8 @@ import {
   salaryToAllocate,
   planExtras,
   planPuts,
+  planByFact,
+  type PlanByFact,
   wishQueue,
   moneyArticlesOf,
   moneySettingsOf,
@@ -364,6 +366,16 @@ export const useFinanceStore = defineStore('finance', () => {
     const extras = planExtras(state, { ...ctx, rawCredits: householdDoc.value.credits })
     if (extras.freed || extras.closed) return key
     return salaryToAllocate(state, auth.slot)?.period ?? null
+  }
+  /**
+   * «Поставить план» по моим неделям (Блок 5 «Фидбек», Р-36, FB-21): предложение плана трат для меня — пока своего плана
+   * нет и выписки покрывают ≥ `PLAN_FACT_DAYS`; иначе или viewer — null. Функция, как `planCall`: зависит от сегодня.
+   */
+  const planFactCall = (): PlanByFact | null => {
+    const auth = useAuthStore()
+    if (auth.isViewer || !auth.slot) return null
+    const { state, ctx } = planInput(monthKey())
+    return planByFact(state, ctx, auth.slot, todayIso())
   }
   /** Цели на паузе ради плана (Р-9): выводятся из плана — одно место для экранов. */
   const pausedGoalIds = computed(
@@ -2514,6 +2526,7 @@ export const useFinanceStore = defineStore('finance', () => {
     monthPlanOf,
     historyMonthsNow,
     planCall,
+    planFactCall,
     planStepNow,
     pausedGoalIds,
     saveLocalState,

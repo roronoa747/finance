@@ -31,7 +31,9 @@ const GAP = 2
 type Arc = { key: string; from: number; len: number; color: string }
 
 const arcs = computed(() => {
-  const whole = Math.max(props.total, 1)
+  // Дохода нет (Р-37) — только дорожка: доли «из нуля» не рисуются.
+  if (props.total <= 0) return []
+  const whole = props.total
   let acc = 0
   const out: Arc[] = []
   for (const x of props.parts) {

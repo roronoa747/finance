@@ -124,11 +124,8 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     need.dispatchEvent(new Event('input'))
     await settle()
     await tap('Дальше')
-    const salary = [...document.querySelectorAll('label')].find((l) => l.querySelector('span')?.textContent?.trim() === 'Зарплата в месяц, ₸')!.querySelector('input')!
-    salary.value = '450000'
-    salary.dispatchEvent(new Event('input'))
-    await settle()
-    await tap('Дальше')
+    // FB-21: после мечты — «Тратьте как обычно» («Позже»), затем партнёр («Пропустить») — зарплату не спрашивают.
+    await tap('Позже')
     await tap('Пропустить')
     expect(router.currentRoute.value.path).toBe('/')
 
@@ -231,7 +228,7 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     await settle()
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(shown()).toEqual(['tab-month'])
-    await press(document.querySelector('[data-sections] > button'), 'раздел месяца')
+    await press(document.querySelector('[data-sections] [data-section] [data-row-open]'), 'раздел месяца')
     expect(shown()).toEqual([])
 
     // «Деньги»: нажатие квадрата.

@@ -10,7 +10,9 @@ import { useAiStore } from '@/stores/ai'
 import { demoReview as demoReviewOf } from '@/lib/demo'
 import type { AiReview } from '@/types/finance'
 import { money, moneyIn, parseMoney, plain } from '@/lib/money'
-import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey } from '@/lib/dates'
+import { dayLabel, monthBy, monthFrom, monthKey as monthNow, monthShort, MONTHS_NOM, parseMonthKey, todayIso } from '@/lib/dates'
+import { foundPayments } from '@/lib/statements/firstRun'
+import { spendColor } from '@/lib/palette'
 import {
   DEBT_CARD,
   closerDays,
@@ -26,6 +28,7 @@ import {
   monthSalaries,
   monthSubscriptions,
   pendingPuts,
+  planByFact,
   planExtras,
   planPutSaves,
   planPuts,
@@ -72,6 +75,7 @@ import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
 import DueRow from '@/components/money/DueRow.vue'
 import MonthRing from '@/components/money/MonthRing.vue'
 import SalarySheet from '@/components/money/SalarySheet.vue'
+import SalaryDialog from '@/components/SalaryDialog.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
 import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
@@ -194,7 +198,8 @@ const sections = computed(() => [
     name: 'Платежи',
     color: '--s1',
     total: plan.value.duesTotal,
-    meta: `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
+    // Платежей месяца нет, а повторы в выписке есть (Р-35) — «нашли N в выписке».
+    meta: foundMeta.value ? `нашли ${found.value.length} в выписке` : `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
     dot: !!extras.value.freed,
     call: 'освободился платёж',
   },
@@ -202,9 +207,10 @@ const sections = computed(() => [
     key: 'spend' as const,
     name: 'Траты',
     color: '--s8',
-    total: plan.value.spendTotal,
-    meta: spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
-    dot: compare.value.rows.some((r) => r.over),
+    // «Поставить план» (Р-36): подпись «обычно в месяц», сумма — итог расчёта.
+    total: planFact.value ? planFact.value.total : plan.value.spendTotal,
+    meta: planFact.value ? 'обычно в месяц' : spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
+    dot: !planFact.value && compare.value.rows.some((r) => r.over),
     call: 'больше обычного',
   },
   {
@@ -633,6 +639,34 @@ function saveDebt() {
 }
 const debtName = computed(() => plan.value.queue.find((q) => q.id === DEBT_CARD)?.name ?? '')
 
+/* ---------- Блок 5 «Фидбек», FB-21: «нашли в выписке» (Р-35), «Поставить план» (Р-36), месяц без дохода (Р-37) ---------- */
+/** Повторы из своих выписок, ещё не платежи, — только текущий месяц и участнику. */
+const found = computed(() =>
+  canEdit.value && props.monthKey === monthNow() ? foundPayments(ops.shown, { rules: finance.merchantRules, payments: finance.payments, today: todayIso() }) : [],
+)
+/** Подпись «нашли N в выписке» — когда платежей месяца нет и повторы есть. */
+const foundMeta = computed(() => plan.value.dues.length === 0 && found.value.length > 0)
+/** Предложение плана по моим неделям: только текущий месяц, пока своего плана нет. */
+const planFact = computed(() => (canEdit.value && props.monthKey === monthNow() ? planByFact(state.value, ctx.value, me.value, todayIso()) : null))
+const PLAN_FACT_TOP = 3
+const planFactOpen = ref(false)
+const planFactAll = ref(false)
+watch(planFactOpen, () => (planFactAll.value = false))
+const planFactRows = computed(() => (planFact.value ? (planFactAll.value ? planFact.value.rows : planFact.value.rows.slice(0, PLAN_FACT_TOP)) : []))
+const spendColorOf = (id: string) => spendColor(categories.value.find((c) => c.id === id) ?? null)
+const { note: planFactNote, flash: flashPlanFact } = useFlash()
+function savePlanFact() {
+  const p = planFact.value
+  planFactOpen.value = false
+  if (!p) return
+  for (const r of p.rows) finance.setSpendPlan(me.value, r.categoryId, r.amount)
+  flashPlanFact('План поставлен')
+}
+/** Дохода месяца нет (Р-37): «Остаётся» и «—»; свой оклад не указан — «+ Зарплата». */
+const noIncome = computed(() => plan.value.income.total === 0)
+const noSalary = computed(() => canEdit.value && (people.value.find((p) => p.id === me.value)?.salary ?? 0) === 0)
+const salaryEdit = ref<PersonId | null>(null)
+
 // Фонда ещё нет (Р-82): тихая строка «+ Запас» / «+ Подушка» — заводит и открывает его взнос.
 const missingFunds = computed(() =>
   canEdit.value ? (['reserve', 'cushion'] as const).filter((k) => !plan.value.queue.some((q) => q.kind === 'fund' && q.fund === k)) : [],
@@ -656,15 +690,18 @@ function addFund(kind: 'reserve' | 'cushion') {
           <MonthRing :parts="parts" :total="plan.income.total" :active="opened" pickable @pick="toggleSection" />
           <div class="flex min-w-0 flex-1 flex-col items-start gap-1.5">
             <!-- «из N», «Свободно» по выпискам и дни до зарплаты — в подсказке у слова (Р-116), крупно — одно число. -->
+            <!-- Дохода месяца нет (Р-37: оклад не указан) — «Остаётся» и «—», без «Не хватает» и красного; кольцо — дорожка. -->
             <span class="flex items-center gap-1">
-              <span class="text-[13px] font-semibold text-ink-2">{{ plan.short > 0 ? 'Не хватает' : 'Остаётся' }}</span>
+              <span class="text-[13px] font-semibold text-ink-2">{{ plan.short > 0 && !noIncome ? 'Не хватает' : 'Остаётся' }}</span>
               <Hint label="Остаётся" data-rest-hint>
-                <span class="block num">Из {{ money(plan.income.total) }} дохода месяца.</span>
+                <span v-if="noIncome" class="block">Доход месяца не указан.</span>
+                <span v-else class="block num">Из {{ money(plan.income.total) }} дохода месяца.</span>
                 <span v-if="free.byFact" class="block num" data-free>Свободно по выпискам — {{ money(free.amount) }}.</span>
                 <span v-if="paydayText" class="block" data-payday>{{ paydayText }}.</span>
               </Hint>
             </span>
-            <span v-if="plan.short > 0" class="font-num text-[29px] font-bold leading-none num text-warn">{{ money(plan.short) }}</span>
+            <span v-if="noIncome" class="font-num text-[29px] font-bold leading-none num text-ink-2" data-rest-none>—</span>
+            <span v-else-if="plan.short > 0" class="font-num text-[29px] font-bold leading-none num text-warn">{{ money(plan.short) }}</span>
             <span v-else class="font-num text-[29px] font-bold leading-none num text-ink" data-rest>{{ money(plan.rest) }}</span>
             <!--
               Действие у своего предмета (правило 12): «Хватит?» — у остатка; «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
@@ -696,30 +733,34 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Tip id="tab-month" :text="tipText" above>
         <div class="border-t border-line py-0.5" data-sections>
         <template v-for="s in sections" :key="s.key">
-          <button
-            type="button"
-            class="press flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
+          <!-- Строка — div с кнопкой-названием на всю строку (`row-open`): рядом живёт маленькая «Поставить план» (Р-36), кнопки в кнопке нет. -->
+          <div
+            class="press relative flex w-full cursor-pointer items-center gap-2.5 border-t border-line py-[13px] text-left first:border-t-0"
             :aria-expanded="opened === s.key"
             :data-section="s.key"
             @click="toggleSection(s.key)"
           >
             <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
-              <span class="text-[16.5px] font-bold text-ink">
+              <button type="button" class="row-open text-left text-[16.5px] font-bold text-ink" data-row-open>
                 {{ s.name
                 }}<template v-if="s.dot"><span class="sr-only">, {{ s.call }}</span></template
                 ><template v-else-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
-              </span>
+              </button>
               <span v-if="s.dot" class="text-[12.5px] font-semibold text-brand num" data-section-meta data-section-call>{{ s.call }}</span>
-              <span v-else class="text-[12.5px] text-ink-2 num" data-section-meta>{{ s.meta }}</span>
+              <span v-else class="text-[12.5px] text-ink-2 num" data-section-meta :data-section-found="s.key === 'dues' && foundMeta ? found.length : undefined">{{ s.meta }}</span>
+            </span>
+            <!-- «Поставить план» (Р-36): маленькая брендовая у своего предмета — строки «Траты», пока своего плана нет. -->
+            <span v-if="s.key === 'spend' && planFact" class="relative z-10 shrink-0" @click.stop>
+              <Button size="xs" data-plan-fact @click="planFactOpen = true">Поставить план</Button>
             </span>
             <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
             <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
-          </button>
+          </div>
 
           <!-- Платежи: по дням; подписки — одной строкой -->
           <div v-if="opened === 'dues' && s.key === 'dues'" class="pb-2.5" data-dues>
-            <p v-if="!dueLines.length" class="py-2 type-meta">Платежей нет</p>
+            <p v-if="!dueLines.length && !found.length" class="py-2 type-meta">Платежей нет</p>
             <template v-for="l in dueLines" :key="l.key">
               <DueRow
                 v-if="l.due"
@@ -785,6 +826,22 @@ function addFund(kind: 'reserve' | 'cushion') {
                 <Button size="sm" :variant="pending.length ? 'secondary' : 'default'" @click="onFreed">К «{{ extras.freed.name }}»</Button>
               </div>
             </template>
+            <!--
+              «Нашли в выписке» (Блок 5 «Фидбек», Р-35, FB-21; раньше — вопросы «Записать?» первого запуска): повторы
+              продавцов из своих выписок, которые ещё не платежи, — под платежами месяца; «В платежи» — форма с заполнением
+              (путь FB-09), после записи строка уходит.
+            -->
+            <div v-if="found.length" :class="dueLines.length ? 'mt-1 border-t border-line pt-1' : ''" data-found-list>
+              <p class="py-1.5 text-[12.5px] text-ink-2">Нашли в выписке</p>
+              <div v-for="f in found" :key="f.key" class="flex items-center gap-2.5 py-2" :data-found-row="f.opId">
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-[15px] font-semibold text-ink">{{ f.name }}</span>
+                  <span class="block text-[12.5px] text-ink-2 num">≈ {{ f.day }}-го</span>
+                </span>
+                <span class="font-num text-[15px] font-semibold num text-ink">{{ plain(f.amount) }}</span>
+                <Button variant="secondary" size="xs" class="shrink-0" :data-found-pay="f.opId" @click="payOp = f.opId">В платежи</Button>
+              </div>
+            </div>
           </div>
 
           <!--
@@ -1007,6 +1064,8 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
       <template v-if="canEdit">
         <div v-if="salaries.length" class="h-px bg-line" />
+        <!-- Свой оклад не указан (Р-37) — тихая «+ Зарплата» → «Изменить оклад» (`SalaryDialog`); партнёр без оклада — его дело. -->
+        <div v-if="noSalary"><Button variant="ghost" size="sm" class="-ml-2" data-add-salary @click="salaryEdit = me">+ Зарплата</Button></div>
         <div><Button variant="ghost" size="sm" class="-ml-2" data-extra-income @click="incomeOpen = true">+ Внеплановый доход</Button></div>
       </template>
     </Card>
@@ -1155,7 +1214,42 @@ function addFund(kind: 'reserve' | 'cushion') {
       </template>
     </Sheet>
 
+    <!-- «+ Зарплата» без оклада (Р-37) — тот же лист, что «Изменить оклад» -->
+    <SalaryDialog v-if="canEdit" :id="salaryEdit" @close="salaryEdit = null" />
+
+    <!--
+      «План трат» (Р-36, Figma `19:178`): разделы из «обычно по неделям» — первые 3 и тихая «ещё N разделов · Σ»,
+      внизу одна брендовая «Поставить» (подтверждение в листе — правило 12) → план мне по каждой строке, тост.
+    -->
+    <Sheet :open="planFactOpen && !!planFact" title="План трат" @close="planFactOpen = false">
+      <template v-if="planFact">
+        <div class="flex flex-col" data-plan-fact-sheet>
+          <div v-for="r in planFactRows" :key="r.categoryId" class="flex items-center gap-2.5 border-t border-line py-2.5 first:border-t-0" :data-plan-fact-row="r.categoryId">
+            <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: spendColorOf(r.categoryId) }" aria-hidden="true">{{ r.name.slice(0, 1).toUpperCase() }}</span>
+            <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink">{{ plain(r.amount) }}</span>
+          </div>
+          <button
+            v-if="!planFactAll && planFact.rows.length > PLAN_FACT_TOP"
+            type="button"
+            class="press flex w-full cursor-pointer items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[14.5px] text-ink-2 num"
+            data-plan-fact-more
+            @click="planFactAll = true"
+          >
+            <span>ещё {{ planFact.rows.length - PLAN_FACT_TOP }} {{ plural(planFact.rows.length - PLAN_FACT_TOP, 'раздел', 'раздела', 'разделов') }}</span>
+            <span>{{ plain(planFact.rows.slice(PLAN_FACT_TOP).reduce((s, r) => s + r.amount, 0)) }}</span>
+          </button>
+          <div class="flex items-center justify-between gap-2 border-t border-line pt-3 text-[13px] text-ink-2 num">
+            <span>обычно в месяц</span>
+            <b class="font-num text-[16px] font-bold text-ink">{{ plain(planFact.total) }}</b>
+          </div>
+        </div>
+        <Button size="lg" class="mt-4 w-full" data-plan-fact-save @click="savePlanFact">Поставить</Button>
+      </template>
+    </Sheet>
+
     <!-- «Ближе на N дней» (PN-09): тост после «Отложил», в оболочке — над вкладками -->
     <Toast v-if="closerNote"><span data-closer>{{ closerNote }}</span></Toast>
+    <Toast v-else-if="planFactNote"><span data-plan-fact-done>{{ planFactNote }}</span></Toast>
   </div>
 </template>

@@ -677,3 +677,81 @@ describe('FB-04: строки листа раздела «Недели» — л�
     expect(txt(q('[data-section-total]'))).toBe(norm(money(9_000)))
   })
 })
+
+/*
+ * FB-21 (Блок 5 «Фидбек», Р-35, Р-36): «Это ваш доход?» — вопрос «Недели» (раньше — первого запуска), пока оклада нет;
+ * точка на сегменте «Месяц», когда там ждёт «Поставить план».
+ */
+describe('FB-21: «Это ваш доход?» на «Неделе» и точка «Поставить план»', () => {
+  const income = (id: string, date: string, amount: number, merchant = 'Зарплата ТОО Ромашка'): Operation => ({
+    id, bank: 'kaspi', date, amount, kind: 'income', merchant, categoryId: null, internal: false,
+  })
+  async function openIncome() {
+    vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
+    const r = await openWeek({ uploads: [], plans: false })
+    r.store.ops.s8 = income('s8', '2026-08-12', 300_000)
+    r.store.ops.s9 = income('s9', '2026-09-12', 300_000)
+    await flush()
+    return r
+  }
+
+  it('оклад 0 и приход в выписке — вопрос первым: поля суммы и дня от кандидата; «Да» → оклад, правило, отметка сентября; вопроса нет, «Месяц» получает доход', async () => {
+    const { finance } = await openIncome()
+    expect(q('[data-bang]')).not.toBeNull()
+    await press(q('[data-bang]'))
+    const sheet = () => txt(q('[role="dialog"]'))
+    expect(sheet()).toContain('Это ваш доход?')
+    expect(sheet()).toContain(norm(`${money(300_000)} · 12-го · Зарплата ТОО Ромашка · 2 раза`))
+    expect(q<HTMLInputElement>('[role="dialog"] [data-income-salary] input, [role="dialog"] input[data-income-salary]')!.value).toBe(plain(300_000))
+    expect(q<HTMLInputElement>('[role="dialog"] [data-income-day] input, [role="dialog"] input[data-income-day]')!.value).toBe('12')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Да, это зарплата'))
+    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 300_000, payday: 12 })
+    expect(finance.merchantRules.map((r) => r.to)).toEqual([{ payment: { kind: 'salary', targetId: 'a' } }])
+    expect(finance.payments.find((p) => p.kind === 'salary' && p.period === '2026-09')).toMatchObject({ amount: 300_000, opId: 's9' })
+    expect(finance.monthPlanOf('2026-09').income.total).toBe(300_000)
+    // Оклад есть — вопроса нет.
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(q('[data-bang]')).toBeNull()
+  })
+
+  it('«Нет» — помнится на устройстве (ключ с отправителем): после перезахода вопроса нет; «Потом» — сутки', async () => {
+    const { finance } = await openIncome()
+    await press(q('[data-bang]'))
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Нет'))
+    expect(q('[data-bang]')).toBeNull()
+    expect(finance.people.find((p) => p.id === 'a')?.salary ?? 0).toBe(0)
+    expect(JSON.parse(localStorage.getItem('ff_start_answered')!)).toEqual([expect.stringMatching(/^income:/)])
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openIncome()
+    expect(q('[data-bang]')).toBeNull()
+
+    localStorage.clear()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openIncome()
+    await press(q('[data-bang]'))
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
+    expect(q('[data-bang]')).toBeNull()
+    expect(Object.keys(JSON.parse(localStorage.getItem('ff_decisions_deferred')!))).toEqual([expect.stringMatching(/^income:/)])
+    vi.setSystemTime(new Date(Date.now() + 25 * 3_600_000))
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openIncome()
+    expect(q('[data-bang]')).not.toBeNull()
+  })
+
+  it('оклад уже есть — вопроса нет; точка на сегменте «Месяц» — когда ждёт «Поставить план» (выписка ≥ 14 дней, своего плана нет)', async () => {
+    const { finance } = await openIncome()
+    finance.setPerson('a', { salary: 400_000, payday: 10 })
+    await flush()
+    expect(q('[data-bang]')).toBeNull()
+    expect(q('[data-plan-dot]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    // Выписка Алихана 1–24 сентября (24 дня), полные недели W37 и W38, продукты и такси — план по неделям есть → точка.
+    const second = await openWeek({ plans: false, uploads: [upload('u1', 'a', '2026-09-01', '2026-09-24')] })
+    expect(second.finance.planFactCall()).not.toBeNull()
+    expect(q('[data-plan-dot]')).not.toBeNull()
+  })
+})

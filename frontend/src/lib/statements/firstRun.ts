@@ -220,8 +220,32 @@ export function beyondLimit(ops: Operation[], limit = QUESTION_LIMIT): number {
   return Math.max(0, total - limit)
 }
 
-/** Сколько месяцев назад от сегодня смотреть повтор продавца для «В платежи» (FB-09). */
+/** Сколько месяцев назад от сегодня смотреть повтор продавца для «В платежи» (FB-09) и «нашли в выписке» (FB-21). */
 const RECURRING_OF_MONTHS = 3
+
+/**
+ * «Нашли N в выписке» (Блок 5 «Фидбек», Р-35, FB-21; раньше — вопросы «Записать?» первого запуска): группы
+ * `detectRecurring` по своим операциям за 3 месяца, у которых последняя строка ещё не платёж и не отметка
+ * (`recurringOf` не null) — одна строка на группу, по сумме вниз. `opId` — строка для `AddPaymentSheet` (путь FB-09:
+ * форма с заполнением, «Сохранить» → платёж + отметка + правило); после записи правило `payment` убирает строку.
+ */
+export function foundPayments(
+  ops: Operation[],
+  ctx: { rules: MerchantRule[]; payments: Pick<Payment, 'opId' | 'deletedAt'>[]; today: string },
+): (RecurringPrefill & { opId: string; key: string })[] {
+  const from = `${addMonths(ctx.today.slice(0, 7), -RECURRING_OF_MONTHS)}-01`
+  const recent = ops.filter((o) => o.date >= from)
+  const out: (RecurringPrefill & { opId: string; key: string })[] = []
+  for (const c of detectRecurring(recent)) {
+    // Последняя строка группы в допуске суммы повтора: у «Перевода с карты на карту» в группе и 50 000, и 15 000 — повтор 15 000.
+    const inGroup = recent.filter((o) => c.opIds.includes(o.id)).sort((a, b) => b.date.localeCompare(a.date))
+    const last = inGroup.find((o) => Math.abs(-o.amount - c.amount) <= c.amount * RECURRING_TOLERANCE) ?? inGroup[0]
+    if (!last) continue
+    const pre = recurringOf(last, ops, ctx)
+    if (pre) out.push({ ...pre, opId: last.id, key: c.key })
+  }
+  return out.sort((a, b) => b.amount - a.amount)
+}
 
 /** Заполнение формы «Регулярный платёж» из повтора продавца (FB-09, Р-17): имя меняется в форме. */
 export type RecurringPrefill = { name: string; amount: number; day: number; kind: RecurringKind }

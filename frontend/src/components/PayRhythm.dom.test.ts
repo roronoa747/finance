@@ -5,16 +5,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
 import { useAuthStore } from '@/stores/auth'
-import { defaultSyncDoc, useFinanceStore } from '@/stores/finance'
+import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { FX_BOOK_KEY, writeStorage } from '@/lib/storage'
-import { plain } from '@/lib/money'
 import type { Payment, Person, SyncDoc } from '@/types/finance'
 import SalaryDialog from './SalaryDialog.vue'
 import MarkSheet from './MarkSheet.vue'
 import Month from '@/views/Month.vue'
 import Money from '@/views/Money.vue'
-import Start from '@/views/Start.vue'
 
 vi.mock('@/lib/photos/store', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/store')>()),
@@ -287,7 +285,7 @@ describe('PN-23: плавающая сумма (Р-6)', () => {
  * `/ux` Б7 (свежий взгляд на стенде): подсказка пересчёта оклада только через границу «неделя», первый запуск — аванс
  * за окладом и подсказка «≈ N за неделю», «в зарплатах» при недельной зарплате — месяцами дохода.
  */
-async function openView(view: typeof Money, path: string, doc: SyncDoc) {
+async function openView(view: typeof Money | typeof Month, path: string, doc: SyncDoc) {
   const pinia = createPinia()
   setActivePinia(pinia)
   useAuthStore().setAuthData(authAs('member', 'a'))
@@ -306,33 +304,6 @@ async function openView(view: typeof Money, path: string, doc: SyncDoc) {
   return finance
 }
 
-/** Первый запуск новой семьи — шаг «Зарплата» (FR-01: поля сразу, без «Введу вручную»). */
-async function openStartManual() {
-  const pinia = createPinia()
-  setActivePinia(pinia)
-  useAuthStore().setAuthData(authAs('member', 'a'))
-  const finance = useFinanceStore()
-  finance.claimFor('h-family')
-  finance.setHouseholdDoc(defaultSyncDoc(), 1)
-  const router = createRouter({ history: createMemoryHistory(), routes })
-  await router.push('/start/salary')
-  await router.isReady()
-  const root = document.createElement('div')
-  document.body.appendChild(root)
-  app = createApp(Start)
-  app.use(pinia)
-  app.use(router)
-  app.mount(root)
-  await flush()
-  return finance
-}
-const salaryInput = () =>
-  all('label').find((l) => /^Зарплата (в месяц|за неделю), ₸$/.test(txt(l.querySelector('span'))))!.querySelector('input') as HTMLInputElement
-async function typeIn(input: HTMLInputElement, value: string) {
-  input.value = value
-  input.dispatchEvent(new Event('input'))
-  await flush()
-}
 
 describe('/ux Б7: подсказка пересчёта оклада, первый запуск, «в зарплатах» при неделе', () => {
   it('«Изменить оклад» недельного: промах «неделя → месяц → неделя» подсказки не даёт; «неделя → месяц» — «≈ N в месяц» (× 52 / 12)', async () => {
@@ -365,33 +336,20 @@ describe('/ux Б7: подсказка пересчёта оклада, перв�
     expect(q('[data-week-hint]')).toBeNull()
   })
 
-  it('первый запуск: «Дважды» до оклада — аванс идёт за окладом (половина), пока его не вписали руками; «Дальше» — два прихода', async () => {
-    const finance = await openStartManual()
-    await press(byText('[data-pay-rhythm] button', 'Дважды'))
-    // Раньше: «Аванс 0» и «остальное — 0 ₸» — и после оклада аванс оставался 0 (один приход).
-    await typeIn(salaryInput(), '450000')
-    expect(qi('input[data-salary2]')!.value).toBe(plain(225_000))
-    expect(txt(q('[data-rest]'))).toBe('остальное — 225 000 ₸')
-    // Вписали аванс руками — оклад его больше не двигает.
-    await commit(qi('input[data-salary2]'), '150 000')
-    await typeIn(salaryInput(), '500000')
-    expect(qi('input[data-salary2]')!.value).toBe(plain(150_000))
-    await press(byText('button', 'Дальше'))
-    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 500_000, payRhythm: 'advance', payday2: 25, salary2: 150_000 })
-  })
-
-  it('первый запуск: оклад набран «в месяц», выбрали «Раз в неделю» — подсказка «≈ N за неделю», нажатие вписывает', async () => {
-    const finance = await openStartManual()
-    await typeIn(salaryInput(), '650000')
+  it('FB-21: первый запуск зарплату не спрашивает — «+ Зарплата» в «Месяце» открывает «Изменить оклад»: оклад «в месяц», «Раз в неделю» — подсказка «≈ N за неделю», нажатие вписывает; ритм и оклад — у участника', async () => {
+    const finance = await openView(Month, '/month', weeklyDoc({ salary: 0, payRhythm: undefined, weekday: undefined }, []))
+    expect(finance.people[0].salary).toBe(0)
+    await press(q('[data-add-salary]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+    await commit(qi('[role="dialog"] input[data-salary-now], [role="dialog"] [data-salary-now] input'), '650 000')
+    expect(finance.people[0].salary).toBe(650_000)
     expect(q('[data-week-hint]')).toBeNull()
     await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     // Подпись поля уже «за неделю», а число — месячное: 650 000 × 12 / 52 = 150 000.
     expect(txt(q('[data-week-hint]'))).toBe('≈ 150 000 за неделю')
     await press(q('[data-week-hint]'))
-    expect(salaryInput().value).toBe(plain(150_000))
     expect(q('[data-week-hint]')).toBeNull()
-    await press(byText('button', 'Дальше'))
-    expect(finance.people.find((p) => p.id === 'a')).toMatchObject({ salary: 150_000, payRhythm: 'week', weekday: 5 })
+    expect(finance.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week' })
   })
 
   it('статистика Капитала: недельная зарплата в семье — «месяца дохода» и «ещё N месяцев», без «зарплат»; месячная — как было', async () => {

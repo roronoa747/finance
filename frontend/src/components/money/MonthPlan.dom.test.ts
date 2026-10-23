@@ -10,9 +10,10 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type HabitImage, type MonthPlanCtx, type ReviewCard, type ReviewCardTarget } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planByFact, planPuts, spendCompare, untilPayday, type HabitImage, type MonthPlanCtx, type ReviewCard, type ReviewCardTarget } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
+import { periodsOf, spendTotals } from '@/lib/statements/model'
 import { monthKey } from '@/lib/dates'
 import { money, plain } from '@/lib/money'
 import type { AiAdvice, AiReview, Obligation, Payment, SyncDoc } from '@/types/finance'
@@ -1445,5 +1446,152 @@ describe('FB-17: кнопки карточек отчёта — свой лис�
     expect(Number(sheet!.closest<HTMLElement>('.fixed')!.style.zIndex)).toBeGreaterThanOrEqual(60)
     await press(sheet!.querySelector<HTMLElement>('button[aria-label="Закрыть"]'))
     expect(q('[data-report]')).not.toBeNull()
+  })
+})
+
+/*
+ * FB-21 (Блок 5 «Фидбек», Р-35…Р-37): «нашли N в выписке» в «Платежах», «Поставить план» по неделям в строке «Траты»,
+ * «Месяц» без дохода. Сегодня — 12 сентября 2026 (сб); W36 = 31 авг – 6 сен, W35 = 24–30 авг, W34 = 17–23 авг.
+ */
+describe('FB-21: «нашли в выписке», «Поставить план», месяц без дохода', () => {
+  const opOf = (id: string, date: string, amount: number, merchant: string, categoryId: string | null = null): Operation => ({
+    id, bank: 'kaspi', date, amount: -amount, kind: 'purchase', merchant, categoryId, internal: false,
+  })
+  /** Семья без платежей: Apple Music дважды (±3 дня, та же сумма) — повтор; Magnum — нет. */
+  function seedFound() {
+    const store = useOperationsStore()
+    for (const o of [opOf('ap8', '2026-08-14', 4_990, 'APPLE.COM BILL'), opOf('ap9', '2026-09-10', 4_990, 'APPLE.COM BILL'), opOf('m9', '2026-09-08', 8_000, 'MAGNUM', 'sc_food')]) store.ops[o.id] = o
+  }
+
+  it('«нашли 1 в выписке» — подпись «Платежей», пока платежей месяца нет; раскрыто — строка с «В платежи» → форма → «Сохранить» — платёж, строка ушла', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [] } as never)
+    const finance = await open('member', familyDoc({ obligations: [], credits: [], payments: [] }))
+    seedFound()
+    await flush()
+    expect(txt(q('[data-section="dues"] [data-section-meta]'))).toBe('нашли 1 в выписке')
+    expect(q('[data-section="dues"] [data-section-found]')!.getAttribute('data-section-found')).toBe('1')
+    await press(section('dues'))
+    expect(txt(q('[data-found-list]'))).toContain('Нашли в выписке')
+    const row = q('[data-found-row="ap9"]')!
+    expect(txt(row)).toContain('APPLE.COM BILL')
+    expect(txt(row)).toContain('≈ 10-го') // медиана дней 14 и 10 — нижняя
+    expect(txt(row)).toContain(norm(plain(4_990)))
+    expect(q('[data-found-row="m9"]')).toBeNull()
+    // Маленькая `xs` «В платежи» → форма регулярного платежа с заполнением (путь FB-09).
+    const pay = row.querySelector<HTMLElement>('[data-found-pay]')!
+    expect(pay.className).toContain('h-[26px]')
+    await press(pay)
+    // Имя заполнено из выписки — в поле формы (меняется там же).
+    expect(all('[role="dialog"] input').some((i) => (i as HTMLInputElement).value.includes('APPLE.COM'))).toBe(true)
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Добавить'))
+    await flush()
+    expect(finance.obligations.map((o) => o.name)).toEqual(['APPLE.COM BILL'])
+    expect(finance.merchantRules.some((r) => 'payment' in r.to)).toBe(true)
+    // Платёж заведён — строки «нашли» нет, подпись — обычная.
+    expect(q('[data-found-row="ap9"]')).toBeNull()
+    expect(txt(q('[data-section="dues"] [data-section-meta]'))).not.toContain('нашли')
+  })
+
+  /**
+   * «Поставить план»: выписка Ильяса 17 авг – 10 сен (25 дней ≥ 14), полные недели W34, W35, W36; по неделям — продукты
+   * 20 000 / 30 000 / 25 000 (→ 25 000 × 52 / 12 = 108 333 → 109 000), кафе 6 000 / 6 000 / 6 000 (→ 26 000), транспорт
+   * 3 000 / 0 / 3 000 (→ 8 667 → 9 000), развлечения 0 / 9 000 / 0 (→ 13 000), дом 0 / 0 / 4 500 (→ 6 500 → 7 000);
+   * итог 164 000. Своих строк плана у Ильяса нет (план есть только у Аруны).
+   */
+  const WEEK_OPS: Operation[] = [
+    opOf('f1', '2026-08-18', 20_000, 'Magnum', 'sc_food'), opOf('f2', '2026-08-26', 30_000, 'Magnum', 'sc_food'), opOf('f3', '2026-09-02', 25_000, 'Magnum', 'sc_food'),
+    opOf('c1', '2026-08-19', 6_000, 'Кофейня', 'sc_cafe'), opOf('c2', '2026-08-27', 6_000, 'Кофейня', 'sc_cafe'), opOf('c3', '2026-09-03', 6_000, 'Кофейня', 'sc_cafe'),
+    opOf('t1', '2026-08-20', 3_000, 'Yandex Go', 'sc_transport'), opOf('t3', '2026-09-04', 3_000, 'Yandex Go', 'sc_transport'),
+    opOf('e2', '2026-08-28', 9_000, 'Кино', 'sc_fun'),
+    opOf('h3', '2026-09-05', 4_500, 'Хозтовары', 'sc_home'),
+  ]
+  const planDoc = () =>
+    familyDoc({
+      spendPlans: [{ id: 'b:sc_food', by: 'b', categoryId: 'sc_food', amount: 150_000, updatedAt: T0 }],
+      spendTotals: periodsOf(WEEK_OPS).flatMap(({ kind, period }) => spendTotals(WEEK_OPS, 'a', kind, period, T0)),
+    })
+  const planUploads = [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-08-17', period_to: '2026-09-10', ops_count: 10, created_at: T0 }]
+
+  it('«Поставить план» — маленькая брендовая в строке «Траты», подпись «обычно в месяц», сумма — итог; лист: 3 строки + «ещё 2 раздела», «Поставить» → spendPlans мне, тост, кнопки нет', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    const finance = await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    const { state, ctx } = finance.planInput(KEY)
+    const p = planByFact(state, ctx, 'a', '2026-09-12')!
+    expect(p.rows.map((r) => [r.categoryId, r.amount])).toEqual([['sc_food', 109_000], ['sc_cafe', 26_000], ['sc_fun', 13_000], ['sc_transport', 9_000], ['sc_home', 7_000]])
+    expect(p.total).toBe(164_000)
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('обычно в месяц')
+    expect(txt(section('spend'))).toContain(norm(plain(164_000)))
+    const btn = q('[data-plan-fact]')!
+    expect(btn.className).toContain('bg-brand')
+    expect(btn.className).toContain('h-[26px]')
+    // Раскрытия строки нажатие кнопки не трогает.
+    await press(btn)
+    expect(section('spend')!.getAttribute('aria-expanded')).toBe('false')
+    const sheet = q('[data-plan-fact-sheet]')!
+    expect(all('[data-plan-fact-row]').map((el) => el.dataset.planFactRow)).toEqual(['sc_food', 'sc_cafe', 'sc_fun'])
+    expect(txt(q('[data-plan-fact-more]'))).toContain('ещё 2 раздела')
+    expect(txt(q('[data-plan-fact-more]'))).toContain(norm(plain(16_000)))
+    expect(txt(sheet)).toContain(norm(plain(164_000)))
+    await press(q('[data-plan-fact-more]'))
+    expect(all('[data-plan-fact-row]')).toHaveLength(5)
+    expect(q('[data-plan-fact-more]')).toBeNull()
+    await press(q('[data-plan-fact-save]'))
+    expect(q('[role="dialog"]')).toBeNull()
+    expect((finance.householdDoc.spendPlans ?? []).filter((x) => x.by === 'a' && !x.deletedAt).map((x) => [x.categoryId, x.amount])).toEqual(p.rows.map((r) => [r.categoryId, r.amount]))
+    // План Аруны не тронут.
+    expect((finance.householdDoc.spendPlans ?? []).find((x) => x.by === 'b')).toMatchObject({ categoryId: 'sc_food', amount: 150_000 })
+    expect(txt(q('[data-plan-fact-done]'))).toBe('План поставлен')
+    expect(q('[data-plan-fact]')).toBeNull()
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).not.toBe('обычно в месяц')
+  })
+
+  it('семья с планом и viewer — ни «Поставить план», ни «нашли»; покрытие 13 дней — кнопки нет', async () => {
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    await open('member', familyDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ ...planUploads[0], period_from: '2026-08-29' }] } as never)
+    await open('member', planDoc())
+    await useOperationsStore().loadUploads()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: planUploads } as never)
+    await open('viewer', planDoc())
+    seedFound()
+    await flush()
+    expect(q('[data-plan-fact]')).toBeNull()
+    expect(q('[data-section-found]')).toBeNull()
+  })
+
+  it('без дохода (оклады 0): «Остаётся» и «—», без «Не хватает» и красного, подсказка «Доход месяца не указан.»; «+ Зарплата» → лист оклада; партнёру чужой оклад не предлагается', async () => {
+    const doc = familyDoc()
+    const finance = await open('member', { ...doc, people: doc.people.map((p) => ({ ...p, salary: 0 })), payments: [] })
+    expect(planOf(finance).income.total).toBe(0)
+    expect(txt(q('[data-rest-none]'))).toBe('—')
+    expect(q('[data-rest-none]')!.className).toContain('text-ink-2')
+    expect(q('[data-rest]')).toBeNull()
+    expect(txt(document.body)).not.toContain('Не хватает')
+    expect(q('[data-month-top] .text-warn')).toBeNull()
+    await press(q('button[aria-label="Остаётся"]'))
+    expect(txt(q('[role="note"]'))).toContain('Доход месяца не указан.')
+    await press(q('button[aria-label="Остаётся"]'))
+    // Кольцо — только дорожка.
+    expect(q('[data-month-ring] circle[data-part]')).toBeNull()
+    await press(q('[data-add-salary]'))
+    expect(q('[role="dialog"]')).not.toBeNull()
+    expect(txt(q('[role="dialog"]'))).toContain('Ильяс')
+    app?.unmount()
+    document.body.innerHTML = ''
+    // Свой оклад есть, у партнёра нет — «+ Зарплата» не показывается (его дело).
+    await open('member', { ...doc, people: doc.people.map((p) => (p.id === 'b' ? { ...p, salary: 0 } : p)) })
+    expect(q('[data-add-salary]')).toBeNull()
+    expect(q('[data-rest-none]')).toBeNull()
   })
 })

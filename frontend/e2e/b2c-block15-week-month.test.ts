@@ -401,7 +401,7 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     for (const p of [A, B]) {
       const paid = await month(p, { opened: 'dues' })
       expect(text(between(paid, 'data-due-id="obligation:rent"', 'data-due-id'))).toContain(`✓ ${sp(plain(220_000))}`)
-      expect(text(between(paid, 'data-section="dues"', '</button>'))).toContain('1 из 7 оплачено')
+      expect(text(between(paid, 'data-section="dues"', 'data-section="spend"'))).toContain('1 из 7 оплачено')
     }
     // «Не оплачено» — в том же листе, тихо.
     expect(await month(A, { opened: 'dues', payFor: 'obligation:rent' })).toContain('data-unpay')
