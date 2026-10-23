@@ -202,14 +202,22 @@ describe('PN-23: «Изменить оклад» — как приходит з�
 describe('PN-23: строка «Месяца» и лист зарплаты по неделям', () => {
   it('строка — «✓ 1 из 4 пришли», сумма месяца 600 000; «Пришла» отмечает ближайшую открытую пятницу (11-е) на счёт прошлого раза', async () => {
     const { finance, router } = await openMonth(weeklyDoc(), 'member', '/month?from=row')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4 пришли')
-    expect(q('[data-salary="a"] [data-came]')).toBeNull()
+    // Строка без «N из M пришли» и без подсветки (FB-19: части — в листе зарплаты; подсветка — когда пришли все).
+    expect(q('[data-salary="a"] [data-came-count]')).toBeNull()
+    expect(q('[data-salary="a"][data-came]')).toBeNull()
+    expect(txt(q('[data-salary="a"]'))).not.toContain('пришли')
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(txt(q('[data-salary-status]'))).toContain('1 из 4 пришли')
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     await press(q('[data-salary="a"] [data-salary-came-btn]'))
     expect(salaries(finance).map((p) => [p.period, p.amount, p.accountId])).toEqual([
       ['2026-09-04', 150_000, 'card'],
       ['2026-09-11', 150_000, 'card'],
     ])
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 2 из 4 пришли')
+    expect(q('[data-salary="a"][data-came]')).toBeNull()
+    await press(q('[data-salary="a"] [data-row-open]'))
+    expect(txt(q('[data-salary-status]'))).toContain('2 из 4 пришли')
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     // 18-е ещё не близко (6 дней) — кнопки нет; в план не уводит, пока месяц не пришёл.
     expect(q('[data-salary="a"] [data-salary-came-btn]')).toBeNull()
     await new Promise((r) => setTimeout(r, 20))
@@ -220,9 +228,12 @@ describe('PN-23: строка «Месяца» и лист зарплаты по
     vi.setSystemTime(new Date('2026-09-24T07:00:00Z'))
     const doc = weeklyDoc({}, [came('2026-09-04', 150_000), came('2026-09-11', 150_000), came('2026-09-18', 150_000)])
     const { finance, router } = await openMonth(doc, 'member', '/month?from=row')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 3 из 4 пришли')
+    expect(q('[data-salary="a"][data-came]')).toBeNull()
     await press(q('[data-salary="a"] [data-salary-came-btn]'))
     expect(salaries(finance).map((p) => p.period)).toEqual(['2026-09-04', '2026-09-11', '2026-09-18', '2026-09-25'])
+    // Пришли все четыре — строка подсвечена (FB-19, Р-30).
+    expect(q('[data-salary="a"][data-came]')).not.toBeNull()
+    expect(q('[data-salary="a"]')!.className).toContain('bg-ok-soft')
     await new Promise((r) => setTimeout(r, 20))
     expect(router.currentRoute.value.fullPath).toBe('/month')
   })
@@ -243,7 +254,7 @@ describe('PN-23: строка «Месяца» и лист зарплаты по
 
   it('viewer: строка «✓ 1 из 4 пришли» без кнопок; лист — приходы без «Пришла» и без «Изменить оклад»', async () => {
     await openMonth(weeklyDoc(), 'viewer')
-    expect(txt(q('[data-salary="a"] [data-came-count]'))).toBe('✓ 1 из 4 пришли')
+    expect(q('[data-salary="a"] [data-came-count]')).toBeNull()
     expect(q('[data-salary-came-btn]')).toBeNull()
     await press(q('[data-salary="a"] [data-row-open]'))
     expect(all('[data-pay-event]')).toHaveLength(4)

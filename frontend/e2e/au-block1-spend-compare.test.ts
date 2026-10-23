@@ -143,7 +143,7 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     expect(rowsOf(html)).toEqual(['sc_food', 'sc_cafe'])
     expect(dotsOf(html)).toEqual(['sc_cafe'])
     expect(part(html, 'data-section="spend"')).toContain('Траты')
-    expect(html).toMatch(/data-section="spend"[\s\S]*?data-section-dot[\s\S]*?data-section="queue"/)
+    expect(html).toMatch(/data-section="spend"[\s\S]*?data-section-call[\s\S]*?data-section="queue"/)
     expect(html).toContain('data-spend-add')
 
     const sheet = await month(A, 'sc_cafe')
@@ -189,7 +189,7 @@ describe('e2e / ИИ-польза Блок 1 — траты в сравнени�
     expect(r.rows.every((x) => x.usual === null && !x.over && !x.advice)).toBe(true)
     const html = await month(B)
     expect(dotsOf(html)).toEqual([])
-    expect(html).not.toMatch(/data-section="spend"[\s\S]*?data-section-dot[\s\S]*?data-section="queue"/)
+    expect(html).not.toMatch(/data-section="spend"[\s\S]*?data-section-call[\s\S]*?data-section="queue"/)
     expect(part(await month(B, 'sc_food'), 'data-cat-usual')).toBe('обычно — когда будет 2 месяца выписок')
     // Ильяса неполные выписки Аруны не трогают: «обычно» и точка кафе — на месте.
     const A = await phone(server, st, 'a')

@@ -5154,6 +5154,13 @@ export type MyWeek = {
   delta: number
   /** На сколько процентов больше или меньше прошлой недели, целое ≥ 0; null — прошлой недели нет. */
   pct: number | null
+  /**
+   * План недели (FB-19, Р-31): сумма моих строк плана месяца недели × 7 / дней в месяце, целое; null — строк плана нет
+   * (ни полосы, ни подписи на «Неделе»).
+   */
+  plan: number | null
+  /** Остаток недели: `plan − total` (неделя целиком — с «Не разобрано» и разовыми); меньше нуля — сверх плана; null — плана нет. */
+  rest: number | null
   /** Разделы: с тратами за неделю и разделы плана; от большего к меньшему. */
   rows: MyWeekRow[]
 }
@@ -5230,7 +5237,20 @@ export function myWeek(
 
   const total = mapTotal(now)
   const prev = mapTotal(before)
-  return { week, range, month, total, prev, delta: total - prev, pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null, rows }
+  // План недели (Р-31): доля месячного плана по дням — 775 000 на октябрь (31 день) → 175 000 в неделю.
+  const plan = planned.length ? Math.round((planned.reduce((s, r) => s + r.plan, 0) * 7) / daysInMonth(month)) : null
+  return {
+    week,
+    range,
+    month,
+    total,
+    prev,
+    delta: total - prev,
+    pct: prev > 0 ? Math.round((Math.abs(total - prev) / prev) * 100) : null,
+    plan,
+    rest: plan === null ? null : plan - total,
+    rows,
+  }
 }
 
 /**

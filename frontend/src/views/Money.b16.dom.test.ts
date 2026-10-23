@@ -493,14 +493,12 @@ describe('PN-17: «Прикинуть кредит» с «Долгов» и «Х
     const finance = await open('viewer', familyDoc(), '/month', Month)
     await flush()
     const btn = q('[data-afford-open]')!
-    // Владелец, приёмка Б5: кнопка у своего предмета — в центре кольца рядом с остатком, тихая (не брендовая).
-    // AI-09: в одном ряду с кнопкой разбора месяца — ряд прямо в слоте кольца.
+    // Владелец, приёмка Б5: кнопка у своего предмета — рядом с остатком (FB-19: справа от кольца, в той же колонке), тихая (не брендовая).
+    // AI-09: в одном ряду с кнопкой разбора месяца.
     expect(btn.parentElement!.parentElement).toBe(q('[data-rest]')!.parentElement)
     expect(btn.className).not.toContain('bg-brand')
-    // `/ux` Б5: пилюля `secondary`, как «Обменял» у своей строки — `ghost` в центре кольца читался подписью к сумме.
+    // `/ux` Б5: пилюля `secondary`, как «Обменял» у своей строки — `ghost` читался подписью к сумме.
     expect(btn.className).toContain('bg-surface-3')
-    // Слот `MonthRing` — `pointer-events-none` (нажатие уходит SVG); jsdom CSS не видит — закрепка класса (грабли `/ux` Б5).
-    expect(btn.parentElement!.className).toContain('pointer-events-auto')
     const before = JSON.stringify(finance.householdDoc)
     await press(btn)
     expect(txt(dialog())).toContain('Хватит?')

@@ -980,7 +980,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     expect(A.store.planCall()).toBe(october)
     // Точки на «Месяце» переключателя нет (Р-116): дело зовёт точка раздела «Цели и фонды» в самом «Месяце».
     expect(await switchMonth(A)).toBeNull()
-    expect(await screen(A.pinia, Month, '/month')).toContain('data-section-dot')
+    expect(await screen(A.pinia, Month, '/month')).toContain('data-section-call')
 
     // Партнёр: месяц — общий список дел (Р-97): цели Ильяса ждут «Отложил» и на его телефоне — точка та же;
     // о зарплате Ильяса его «Неделя» не спрашивает.
@@ -994,7 +994,7 @@ describe('e2e / B2C Блок 3 — часть 7 (возврат приёмки �
     await allocateAll(A, october)
     expect(A.store.allocations.map((a) => a.period).sort()).toEqual(['2026-09', '2026-10'])
     expect(A.store.planCall()).toBeNull()
-    expect(await screen(A.pinia, Month, '/month')).not.toContain('data-section-dot')
+    expect(await screen(A.pinia, Month, '/month')).not.toContain('data-section-call')
   })
 
   it('возврат приёмки 2 п. 3: выписка после дня зарплаты — «Да, зарплата» за август 13 сентября → точка зовёт в «Месяц» августа и 13-го, и 27-го → план августа', async () => {

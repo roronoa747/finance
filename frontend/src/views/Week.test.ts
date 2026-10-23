@@ -105,10 +105,11 @@ describe('views/Week.vue', () => {
     // Без абзаца механики (правило 12); в листе — одна брендовая, на экране — «Загрузить» (своей выписки нет).
     expect(html).not.toContain('запомним')
     expect(brand(html)).toEqual(['Загрузить', 'Да, отметить'])
-    // Лист закрыт — на экране строка «Вопросы · 1 вопрос» с «Разобрать» (Б17: действие у предмета, не «! 1» сверху).
+    // Лист закрыт — на экране строка «Вопросы · 1 вопрос» — сама кнопка в лист (FB-19: чипа «Разобрать» нет).
     const closed = await renderScreen(Week, '/week')
     expect(closed).not.toContain('отметить?')
-    expect(text(closed)).toContain('Вопросы 1 вопрос Разобрать')
+    expect(text(closed)).toContain('Вопросы 1 вопрос')
+    expect(text(closed)).not.toContain('Разобрать')
     expect(closed).toContain('data-questions-row')
 
     setActivePinia(createPinia())

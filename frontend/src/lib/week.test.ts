@@ -181,6 +181,24 @@ describe('myWeek — мои разделы недели (Р-95, Р-98)', () => {
     expect(w.rows.map((r) => [r.categoryId, r.rest])).toEqual([['sc_food', 150_000], ['sc_cafe', 60_000], ['sc_transport', 30_000]])
   })
 
+  it('FB-19 (Р-31): план недели = план месяца × 7 / дней; остаток — план минус вся неделя; без строк плана — null', () => {
+    // Октябрь, 31 день: 775 000 × 7 / 31 = 174 999,99… → 175 000; W42 Ильяса — 41 400 (с «Не разобрано») → осталось 133 600.
+    const big = state({ spendPlans: [{ id: 'a:sc_food', by: 'a', categoryId: 'sc_food', amount: 775_000, updatedAt: T0 }] })
+    expect(week('2026-W42', '2026-10-21', 'a', big)).toMatchObject({ total: 41_400, plan: 175_000, rest: 133_600 })
+    // Свой план Ильяса 240 000 → 240 000 × 7 / 31 = 54 193,5 → 54 194; остаток 12 794.
+    expect(week('2026-W42', '2026-10-21')).toMatchObject({ plan: 54_194, rest: 12_794 })
+    // Перерасход: план 30 000 → 6 774 в неделю, потрачено 41 400 → −34 626.
+    const small = state({ spendPlans: [{ id: 'a:sc_transport', by: 'a', categoryId: 'sc_transport', amount: 30_000, updatedAt: T0 }] })
+    expect(week('2026-W42', '2026-10-21', 'a', small)).toMatchObject({ plan: 6_774, rest: -34_626 })
+    // Строк плана нет — ни плана, ни остатка.
+    expect(week('2026-W42', '2026-10-21', 'a', state({ spendPlans: [] }))).toMatchObject({ plan: null, rest: null })
+    // План Аруны — только её строки: 100 000 × 7 / 31 = 22 581; её W42 — 40 000 → −17 419.
+    expect(week('2026-W42', '2026-10-21', 'b')).toMatchObject({ plan: 22_581, rest: -17_419 })
+    // Неделя на стыке месяцев: 21 октября — W40 по октябрю (31 день) → 54 194; 30 сентября — по сентябрю (30 дней) → 56 000.
+    expect(week('2026-W40', '2026-10-21').plan).toBe(54_194)
+    expect(week('2026-W40', '2026-09-30').plan).toBe(56_000)
+  })
+
   it('процент при нулевой прошлой неделе — null, не деление на ноль', () => {
     const w = week('2026-W39', '2026-10-21')
     expect(w).toMatchObject({ total: 0, prev: 0, delta: 0, pct: null })

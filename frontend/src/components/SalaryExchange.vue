@@ -132,7 +132,7 @@ function save() {
     >
       обменяно {{ moneyIn(exchanged, currency) }}<template v-if="info"> из {{ moneyIn(info.came, currency) }}</template> · ≈ {{ money(monthTenge) }}
     </button>
-    <Button v-if="canExchange && part !== 'line'" variant="secondary" size="sm" data-exchange @click="open = true">Обменял</Button>
+    <Button v-if="canExchange && part !== 'line'" variant="secondary" :size="part === 'button' ? 'xs' : 'sm'" data-exchange @click="open = true">Обменял</Button>
   </div>
 
   <Sheet :open="list" title="Обмены" :z="60" @close="list = false">
