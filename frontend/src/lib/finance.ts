@@ -6493,7 +6493,7 @@ export type WherePart = { key: 'sellers' | 'people' | 'cash' | 'payments'; amoun
 /**
  * «Куда ушло» на всю сумму (Р-25): свои траты месяца находок четырьмя частями по итогам участника — та же правда, что
  * `PlanSpend.fact` (с разовыми и «не разобрано»; платежи — неотмеченная часть разделов платежей, `spentOf`): Σ частей =
- * факт; `share` — целые % от факта (подпись полосы и факт модели). Выписок за месяц нет — null.
+ * факт; `share` — целые % от факта, Σ = 100 (подпись полосы и факт модели). Выписок за месяц нет — null.
  */
 export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonId): { month: string; total: number; parts: WherePart[] } | null {
   const month = findMonth(ctx, by)
@@ -6506,8 +6506,19 @@ export function whereSplit(state: MonthPlanState, ctx: MonthPlanCtx, by: PersonI
     sums[key] += factOf(t, live)
   }
   const total = amountTotal(Object.values(sums).map((amount) => ({ amount })))
-  const parts = (Object.keys(sums) as WherePart['key'][]).map((key) => ({ key, amount: sums[key], share: total > 0 ? Math.round((sums[key] * 100) / total) : 0 }))
-  return { month, total, parts }
+  // Доли — целые, Σ = 100 (наибольший остаток, как `lumpShares`): округление по отдельности давало 99–101 % (ревью
+  // frontend 4б Н-4). Часть без денег — 0 %: её остаток 0, единицы ей не достаются.
+  const parts = (Object.keys(sums) as WherePart['key'][]).map((key) => {
+    const exact = total > 0 ? (sums[key] * 100) / total : 0
+    return { key, amount: sums[key], share: Math.floor(exact), rest: exact - Math.floor(exact) }
+  })
+  let left = total > 0 ? 100 - parts.reduce((a, p) => a + p.share, 0) : 0
+  for (const p of [...parts].sort((a, b) => b.rest - a.rest)) {
+    if (left <= 0) break
+    p.share++
+    left--
+  }
+  return { month, total, parts: parts.map(({ key, amount, share }) => ({ key, amount, share })) }
 }
 
 /** Итог прошлого месяца (Р-10, Р-20): советы «Сделать» — сделан / нет, разделы советов к «обычно», срок главной мечты. */

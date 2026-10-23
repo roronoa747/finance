@@ -274,6 +274,21 @@ describe('whereSplit — «Куда ушло» на всю сумму', () => {
     expect(b.total).toBe(monthPlan(state, f.ctx).spend.find((s) => s.by === 'b')!.fact)
     expect(whereSplit(state, { ...f.ctx, uploads: [] }, 'a')).toBeNull()
   })
+
+  it('доли — целые, Σ = 100 (наибольший остаток): три равные части — не 99 %, 12,5 ×2 + 37,5 ×2 — не 102 %; часть без денег — 0 %', () => {
+    const shares = (ops: Operation[]) => {
+      const f = family({ ops })
+      return Object.fromEntries(whereSplit({ ...f.doc, book: null }, f.ctx, 'a')!.parts.map((p) => [p.key, p.share]))
+    }
+    // Продавцы — база «Магнум» 50 000 в октябре.
+    const people = (amount: number) => op('Замира Ш.', -amount, 'sc_people', '2026-10-04', { kind: 'transfer-out', counterparty: 'Замира Ш.' })
+    const cash = (amount: number) => op('ATM', -amount, 'sc_cash', '2026-10-04', { kind: 'cash' })
+    const thirds = shares([people(50_000), cash(50_000)])
+    expect(thirds).toEqual({ sellers: 34, people: 33, cash: 33, payments: 0 })
+    const eighths = shares([people(50_000), cash(150_000), op('NETFLIX', -150_000, 'sc_subscriptions', '2026-10-09')])
+    expect(Object.values(eighths).reduce((a, b) => a + b, 0)).toBe(100)
+    expect(eighths).toEqual({ sellers: 13, people: 13, cash: 37, payments: 37 })
+  })
 })
 
 describe('`by` у разбора v3 — свои находки, без `by` — как было', () => {
