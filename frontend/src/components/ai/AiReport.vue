@@ -13,7 +13,7 @@ import { weekendShare } from '@/lib/statements/finds'
 import { shortMerchant } from '@/lib/statements/model'
 import { useOperationsStore } from '@/stores/operations'
 import { money, plain } from '@/lib/money'
-import { addMonths, dayLabel, monthBy, monthIn, monthTitle, today } from '@/lib/dates'
+import { MONTHS_NOM, addMonths, dayLabel, monthBy, monthIn, parseMonthKey, today } from '@/lib/dates'
 import { plural } from '@/lib/utils'
 import { holdTips } from '@/components/kit/tips'
 import { isTopSheet, popSheet, pushSheet } from '@/components/kit/sheetStack'
@@ -190,10 +190,10 @@ const by = computed(() => ai.me)
 const cardMonth = computed(() => findMonth(input.value.ctx, by.value))
 /** Карточки не за открытый месяц (первые дни) — его имя в шапке отчёта: «Выше плана» иначе читается про этот (`/ux` 4б). */
 // Карточек нет («Нужна выписка») — месяца в шапке тоже нет: он ни к чему не относится.
-const pastMonth = computed(() => (v4.value && !props.example && props.cards?.length && cardMonth.value !== props.monthKey ? monthTitle(cardMonth.value).replace(/ \d{4}$/, '') : ''))
+const pastMonth = computed(() => (v4.value && !props.example && props.cards?.length && cardMonth.value !== props.monthKey ? MONTHS_NOM[parseMonthKey(cardMonth.value).month] : ''))
 /** «Куда ушло» v4: на всю сумму (`whereSplit`), выходные — по своим операциям, разделы продавцов — свои (`whereRows`). */
 const split = computed(() => (v4.value ? whereSplit(input.value.state, input.value.ctx, by.value) : null))
-const weekend = computed(() => (split.value ? weekendShare(useOperationsStore().all, split.value.month, input.value.ctx.spendCategories) : null))
+const weekend = computed(() => (split.value ? weekendShare(ops.all, split.value.month, input.value.ctx.spendCategories) : null))
 const rowsV4 = computed(() => (v4.value ? whereRows(input.value.state, input.value.ctx, 5, by.value) : []))
 
 /* ---------- v3: советы ---------- */
