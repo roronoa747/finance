@@ -19,7 +19,7 @@ type Move = Extract<ImageAction, { kind: 'move' }>
  * Перенос записывается (`imageMoves`, Х-9) — у образа вместо кнопки «✓ N в мечту». Тост «Отменить» возвращает оба
  * прежних значения и снимает запись. Viewer лист не открывает. Числа — из образа и `imageMoveFrom`.
  */
-const props = defineProps<{ action: Move | null }>()
+const props = withDefaults(defineProps<{ action: Move | null; z?: number }>(), { z: 50 })
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const finance = useFinanceStore()
@@ -74,7 +74,7 @@ function undo() {
 </script>
 
 <template>
-  <Sheet :open="open" title="Перенести в мечту" @close="emit('close')">
+  <Sheet :open="open" title="Перенести в мечту" :z="z" @close="emit('close')">
     <template v-if="view">
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-move-amount>{{ view.amount }}</p>
       <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">

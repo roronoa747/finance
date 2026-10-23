@@ -1,17 +1,18 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { apiClient, ApiError, type ApiClient } from '@/api/client'
-import { buildReviewFacts } from '@/lib/aiFacts'
+import { buildReviewFactsV4 } from '@/lib/aiFacts'
 import { demoReview } from '@/lib/demo'
 import { MONTHS_GEN, addMonths, monthKey, parseMonthKey } from '@/lib/dates'
-import { countedPayments, liveSpendCategories, periodMonth, reviewWork, type ReviewFinding } from '@/lib/finance'
+import { countedPayments, liveSpendCategories, periodMonth, reviewCardOrder, reviewCards, reviewWork, type ReviewCard } from '@/lib/finance'
 import { AI_SELLERS_KEY, readAiAuto, readAiReviewSeen, readStorage, writeAiAuto, writeAiReviewSeen, writeStorage, type AiAutoTry } from '@/lib/storage'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
 import { aiSellerNames, type UnknownGroup } from '@/lib/statements/model'
 import type { MerchantRule } from '@/lib/statements/types'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
-import type { AiAdvice, AiConsent, AiReview, OpenTarget, Payment, ReviewReason } from '@/types/finance'
+import { useOperationsStore } from './operations'
+import type { AiConsent, AiReview, OpenTarget, Payment, PersonId, ReviewReason } from '@/types/finance'
 
 /** Состояние запроса разбора (AI-09) и предложений продавцам (AI-12): идёт, лимит месяца кончился, не вышло. */
 export type ReviewState = 'idle' | 'thinking' | 'limit' | 'failed'
@@ -127,60 +128,59 @@ export const useAiStore = defineStore('ai', () => {
   /** Запрос разбора в полёте — один на телефон: «Разобрать» во время разбора сам ждёт тот же ответ. */
   let inflight: Promise<AiReview | string> | null = null
 
-  /** Ключ повода (Р-20): «один разбор на повод на семью»; у «Обновить» ключа нет. */
+  /** Ключ повода (Р-20; v4 — свой у каждого, бэклог «Фидбек», Р-27): `month:<key>`, `salary:<key>`; у «Обновить» нет. */
   const reasonKeyOf = (reason: ReviewReason, key: string): string | undefined =>
-    reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${auth.slot ?? 'a'}:${key}` : undefined
+    reason === 'month' ? `month:${key}` : reason === 'salary' ? `salary:${key}` : undefined
+
+  /** Свой участник — как `me` экранов (`MonthPlan`, `Week`). */
+  const me = computed<PersonId>(() => auth.slot ?? 'a')
 
   /**
-   * Разбор v3 месяца `key` (бэклог «Разбор», Р-15, RZ-05; v2 — «ИИ-польза», AU-13): факты и действия кода
-   * (`buildReviewFacts`, без имён) → ручка → разбор в общий документ (партнёр видит без запроса): у совета — факт крупной
-   * цифры и кнопка по id ответа («Сделать» — кандидат, «Открыть» — экран); совет, чьё действие не нашлось, отброшен,
-   * ни одного — `ai_failed`. Счётчик работы — на момент разбора (`reviewWork`). Ошибка — код ручки строкой (`ai_limit`,
-   * `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ.
+   * Карточки кода разбора v4 месяца `key` (FB-15) — одна сборка для отчёта на «Месяце», ✦ у предметов, разбора сам и
+   * запроса (ревью frontend 4б Н-3: разойдись входы — модель видела бы не те карточки, что человек, номера ✦ — не те):
+   * свои операции, «В платежи» и ответы «Кому → что». Стор операций — лениво (он тяжёлый).
+   */
+  function cardsOf(key: string): ReviewCard[] {
+    const ops = useOperationsStore()
+    const { state, ctx } = finance.planInput(key)
+    return reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, me.value, { recurringFor: ops.recurringFor, rules: finance.merchantRules })
+  }
+
+  /**
+   * Разбор v4 месяца `key` (бэклог «Фидбек», Р-23, Р-26, Р-27): карточки кода по своим операциям и факты
+   * (`buildReviewFactsV4`, без имён людей и участников) → ручка → одна главная мысль и id следующей карточки → разбор в
+   * **личный** документ (партнёр его не видит). Карточек нет — не спрашиваем (`no_cards` без запроса); `next` не из
+   * присланных — `ai_failed`. Счётчик работы — свои операции и карточки (`reviewWork(…, by)`). Ошибка — код ручки строкой
+   * (`ai_limit`, `ai_failed`, …; сеть — `network`); `ai_off` — флаг сняли: `/auth/me` уберёт ИИ. Не сохранён — отчёт
+   * показывает карточки кода без мысли (FB-17).
    */
   function requestReview(key: string, reason: ReviewReason, client: ApiClient): Promise<AiReview | string> {
     if (inflight) return inflight
     inflight = (async () => {
       const input = finance.planInput(key)
-      const { payload, doById, openById, findings, byFact, byAction, labels } = buildReviewFacts(finance.householdDoc, input, reason)
-      // Фактов или кнопок нет (пустая семья; совета без кнопки не бывает, Р-6) — ручка ответит 400: не спрашиваем.
-      if (!payload.facts.length || !payload.actions.length) return 'ai_failed'
+      const by = me.value
+      const { payload, cards, cardById, labels } = buildReviewFactsV4(finance.householdDoc, input, useOperationsStore().all, by, reason, cardsOf(key))
+      if (!payload.facts.length || !payload.cards.length) return 'no_cards'
       try {
         const res = await client.aiReview({ reason, ...payload })
-        const facts = new Map(payload.facts.map((f) => [f.id, f]))
-        const advices: AiAdvice[] = []
-        const used: ReviewFinding[] = []
-        for (const a of res.advices) {
-          const candidate = doById.get(a.action)
-          const target = openById.get(a.action)
-          if (!candidate && !target) continue
-          const f = a.figure ? facts.get(a.figure) : undefined
-          const label = f ? labels.get(f.id) : undefined
-          advices.push({
-            title: a.title,
-            text: a.text,
-            figure: f ? { about: f.about, value: f.value, ...(label ? { label } : {}) } : null,
-            action: candidate ? { kind: 'do', candidate } : { kind: 'open', target: target! },
-          })
-          // В X — находка, о которой совет: сначала его крупная цифра, без неё — кнопка (Р-19; у «Сделать» — null).
-          const finding = (a.figure ? byFact.get(a.figure) : undefined) ?? byAction.get(a.action)
-          if (finding) used.push(finding)
-        }
-        if (!advices.length) return 'ai_failed'
+        const next = cardById.get(res.next)
+        if (!next) return 'ai_failed'
+        const f = res.figure ? payload.facts.find((x) => x.id === res.figure) : undefined
+        const label = f ? labels.get(f.id) : undefined
         const reasonKey = reasonKeyOf(reason, key)
         return finance.saveAiReview({
           month: key,
           at: new Date().toISOString(),
-          by: auth.slot ?? 'a',
+          by,
           good: '',
           risk: '',
           steps: [],
-          v: 3,
+          v: 4,
           reason,
           ...(reasonKey ? { reasonKey } : {}),
-          where: res.where,
-          advices,
-          work: reviewWork(input.state, input.ctx, findings, used),
+          lead: { title: res.title, text: res.text, figure: f ? { about: f.about, value: f.value, ...(label ? { label } : {}) } : null },
+          next: next.id,
+          work: reviewWork(input.state, input.ctx, cards, cards, by),
           sent: payload,
         })
       } catch (err) {
@@ -194,14 +194,15 @@ export const useAiStore = defineStore('ai', () => {
 
   /**
    * Разбор по нажатию (✦ «Разобрать» — повод `month`, «Обновить» — `refresh`): согласие спрашивает вызывающий
-   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; прочее и сеть — «не вышло».
+   * (`ensureConsent`). `ai_limit` — «ИИ вернётся 1 <следующего месяца>»; своих карточек нет — не сбой: отчёт сам
+   * покажет «Нужна выписка» (Х-11, приёмка 4б); прочее и сеть — «не вышло».
    */
   async function runReview(key: string, reason: ReviewReason = 'month', client: ApiClient = apiClient): Promise<AiReview | null> {
     if (reviewState.value === 'thinking' || !available.value) return null
     reviewState.value = 'thinking'
     const r = await requestReview(key, reason, client)
     if (typeof r === 'string') {
-      reviewState.value = r === 'ai_limit' ? 'limit' : 'failed'
+      reviewState.value = r === 'ai_limit' ? 'limit' : r === 'no_cards' ? 'idle' : 'failed'
       return null
     }
     reviewState.value = 'idle'
@@ -219,29 +220,18 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
-   * Разбор месяца `key` есть, но только старой версии (v1/v2, до «Разбора» v3): повод `month` снова открыт (хотфикс
-   * RZ-HF1, владелец 2026-10-18 «старый → новый сам»). Любой v3 месяца в документе (и надгробие) закрывает его и у
-   * партнёра — один раз, не по `at`: часы телефона отстали — v3 вышел бы «раньше» старого и платился снова (критик).
-   */
-  const staleReview = (key: string): boolean => {
-    const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
-    return reviews.some((r) => !r.deletedAt) && !reviews.some((r) => (r.v ?? 1) >= 3)
-  }
-
-  /**
-   * Повод разбора сам в месяце `key` (Р-20) по общему документу: старый разбор (`staleReview`) или нет разбора
-   * `month:<key>` — `month`; иначе своя
-   * первая отметка зарплаты месяца (аванс и недели — та же отметка месяца, не новые поводы) без разбора
-   * `salary:<я>:<key>` и без разбора месяца позже неё (тот уже видел зарплату) — `salary`; иначе ничего. Надгробия
+   * Повод разбора сам в месяце `key` (Р-20) по **своим** разборам v4 (личный документ, бэклог «Фидбек», Р-27): разбор
+   * партнёра и общий v1–v3 месяца повод не закрывают — каждый участник получает свой первый v4 сам. Нет своего
+   * `month:<key>` — `month`; иначе своя первая отметка зарплаты месяца (аванс и недели — та же отметка, не новые поводы)
+   * без своего `salary:<key>` и без своего разбора позже неё (тот уже видел зарплату) — `salary`; иначе ничего. Надгробия
    * обрезки «живых ≤ 12» (`saveAiReview`) тоже считаются: повод их уже был — иначе частое «Обновить» вернёт повод.
    */
   function autoReason(key: string): 'month' | 'salary' | null {
-    const reviews = (finance.householdDoc.aiReviews ?? []).filter((r) => r.month === key)
-    if (staleReview(key) || !reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
-    const me = auth.slot
+    const reviews = finance.myAiReviews.filter((r) => r.month === key)
+    if (!reviews.some((r) => r.reasonKey === `month:${key}`)) return 'month'
     const mark = salaryMarks(key)[0]
     // Когда отметку записали (`updatedAt`), а не день прихода (`at` аванса — его день): разбор позже записи её видел.
-    if (!mark || reviews.some((r) => r.reasonKey === `salary:${me}:${key}` || r.at > mark.updatedAt)) return null
+    if (!mark || reviews.some((r) => r.reasonKey === `salary:${key}` || r.at > mark.updatedAt)) return null
     return 'salary'
   }
 
@@ -250,7 +240,7 @@ export const useAiStore = defineStore('ai', () => {
    * «Пришла». Участник с ИИ (`available`: не viewer, не демо), в сети, есть повод текущего месяца. «Да» текущей версии
    * согласия (`AI_CONSENT_V`) — запрос в фоне, без «Думаю…»; «да» прежней версии — лист согласия один раз на повод
    * (закрыл — до следующего повода); не спрошено никогда или «Не надо» — молча ничего. 429 / 502 / сеть, тело старой
-   * версии (400) и семья без кнопок (`ai_failed` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
+   * версии (400) и семья без кнопок (`no_cards` без запроса) — молча, тот же повод на этом телефоне — не чаще раза в
    * сутки (`ff_ai_auto`, попытка пишется до запроса, исход — после). Страница не дожила до ответа (перезагрузка,
    * закрытый PWA: ответ идёт 5–55 с; владелец 2026-10-18 — 33 открытия за 2 минуты, ответ 200 пришёл на мёртвую
    * страницу, RZ-HF2) — попытка без исхода: повод повторяется один раз, как только окно ответа вышло; второй обрыв
@@ -262,8 +252,11 @@ export const useAiStore = defineStore('ai', () => {
     const key = monthKey()
     const reason = autoReason(key)
     if (!reason) return null
-    // Замена старого разбора — своя попытка (`v3:month:<key>`): попытка v2 того же утра не держит её сутки (RZ-HF1).
-    const rk = (reason === 'month' && staleReview(key) ? 'v3:' : '') + reasonKeyOf(reason, key)!
+    // Своих карточек нет (выписка ещё не загружена или не подтянулась) — спрашивать не о чем, и попытку не пишем: иначе
+    // выписка того же дня ждала бы разбора сутки.
+    if (!cardsOf(key).length) return null
+    // Попытка v4 — своя (`v4:month:<key>`): попытка v3 того же утра (прошлая сборка) не держит её сутки.
+    const rk = `v4:${reasonKeyOf(reason, key)!}`
     // Попытки — только этого месяца: прошлые поводы не копятся.
     const mine = () => Object.fromEntries(Object.entries(readAiAuto()).filter(([k]) => k.endsWith(`:${key}`)))
     // Запись после ожидания — в свежую карту целиком: пока ждали, месяц мог смениться, и попытка нового месяца (вторая
@@ -272,11 +265,18 @@ export const useAiStore = defineStore('ai', () => {
       const all = readAiAuto()
       writeAiAuto({ ...all, [rk]: { ...all[rk], ...p } })
     }
-    const tried = mine()[rk]
-    const age = tried?.at ? Date.now() - Date.parse(tried.at) : Infinity
     // Попытка за сутки: с исходом или уже повторная — молчим; без исхода и моложе окна ответа — запрос, возможно, ещё
     // идёт (вторая вкладка) — ждём; без исхода и старше окна — оборвана, идём повторять один раз (`lost`).
-    if (age < DAY_MS && (tried!.done || tried!.retry || age < REVIEW_INFLIGHT_MS)) return null
+    const ageOf = (t?: AiAutoTry) => (t?.at ? Date.now() - Date.parse(t.at) : Infinity)
+    const waits = (t?: AiAutoTry) => ageOf(t) < DAY_MS && (!!t!.done || !!t!.retry || ageOf(t) < REVIEW_INFLIGHT_MS)
+    if (waits(mine()[rk])) return null
+    // Повод решает личный документ, а синк зовёт разбор после общего — личный подтягивается рядом: свой разбор месяца
+    // со второго телефона человека мог ещё не дойти. Перед платным запросом — свежий личный документ и повод заново
+    // (критик 4б); не подтянулся — повод не тратим. Пока ждали, мог уйти запрос другого вызова — попытку читаем заново.
+    if (!(await finance.pullPrivateDoc(client)) || inflight || autoReason(key) !== reason) return null
+    const tried = mine()[rk]
+    const age = ageOf(tried)
+    if (waits(tried)) return null
     const lost = age < DAY_MS
     if (consent.value === 'unknown') {
       // Не спрошено никогда — ИИ ещё не включали: сам не зовём. «Да» прежней версии — спросить заново один раз на повод.
@@ -323,12 +323,24 @@ export const useAiStore = defineStore('ai', () => {
     const out = new Map<string, number>()
     if (!auth.ai && !auth.isDemo) return out
     const key = monthKey()
-    const review = auth.isDemo ? demoReview(finance.householdDoc, finance.planInput(key)) : finance.aiReviewOf(key)
-    if (review?.v !== 3) return out
+    const review = auth.isDemo ? demoReview(finance.householdDoc, finance.planInput(key), useOperationsStore().all) : finance.aiReviewOf(key)
     const put = (k: string, n: number) => {
       if (!out.has(k)) out.set(k, n)
     }
     const debtCredit = () => finance.monthPlanOf(key).queue.find((q) => q.kind === 'debt' && q.creditId)?.creditId
+    if (review?.v === 4) {
+      // v4 (бэклог «Фидбек», Р-27): предметы карточек кода на «Месяце» — раздел и платёж; номер — место карточки в
+      // отчёте (`reviewCardOrder`: следующая за мыслью — первой). Карточки — свежие, по своим операциям.
+      const cards = reviewCardOrder(cardsOf(key), review.next)
+      cards.forEach((c, i) => {
+        const t = c.target
+        if (t.kind === 'cat' || t.kind === 'plan') put(`cat:${t.categoryId}`, i + 1)
+        else if (t.kind === 'obligation') put(`obligation:${t.obligationId}`, i + 1)
+        else if (t.kind === 'image') put(`cat:${t.image.categoryId}`, i + 1)
+      })
+      return out
+    }
+    if (review?.v !== 3) return out
     ;(review.advices ?? []).forEach((a, i) => {
       const n = i + 1
       if (a.action.kind === 'open') {
@@ -402,6 +414,7 @@ export const useAiStore = defineStore('ai', () => {
 
   return {
     available,
+    me,
     consent,
     sheetOpen,
     sheetMounted,
@@ -410,6 +423,7 @@ export const useAiStore = defineStore('ai', () => {
     ensureConsent,
     answer,
     reviewState,
+    cardsOf,
     runReview,
     autoReview,
     salaryMarks,
@@ -444,7 +458,6 @@ export const AI_AUTO = 'Разбор приходит сам — 1-го и по�
 export const AI_SENDS = [
   'Цифры месяца и названия статей без ваших имён',
   'Продавцы и суммы частых трат, списаний и крупных покупок',
-  'Скриншот товара',
   'Фото чека',
   'Фраза о мечте',
 ] as const

@@ -17,6 +17,7 @@ import {
   cushionCover,
   freeByFact,
   allInDebt,
+  findMonth,
   goalPace,
   habitImages,
   lastAccountFor,
@@ -41,8 +42,9 @@ import {
   type PlanDue,
   type PlanPut,
   type PlanQueueItem,
+  type ReviewCard,
 } from '@/lib/finance'
-import { plannedElsewhere } from '@/lib/statements/dictionary'
+import { UNKNOWN_CATEGORY, plannedElsewhere } from '@/lib/statements/dictionary'
 import type { PersonId } from '@/types/finance'
 import { plural } from '@/lib/utils'
 import Avatar from '@/components/kit/Avatar.vue'
@@ -73,6 +75,7 @@ import SalarySheet from '@/components/money/SalarySheet.vue'
 import SpendCategorySheet from '@/components/money/SpendCategorySheet.vue'
 import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
+import AddPaymentSheet from '@/components/AddPaymentSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
 import { templateById } from '@/lib/goalTemplates'
@@ -277,16 +280,32 @@ const demoReview = computed<AiReview | null>(() =>
   auth.isDemo
     ? {
         id: 'demo-review', month: props.monthKey, at: new Date().toISOString(), by: 'a', updatedAt: '',
-        ...demoReviewOf(finance.householdDoc, finance.planInput(props.monthKey)),
+        ...demoReviewOf(finance.householdDoc, finance.planInput(props.monthKey), ops.all),
       }
     : null,
 )
 const review = computed(() => demoReview.value ?? finance.aiReviewOf(props.monthKey))
-/** Запустить может участник с ИИ, не сказавший «Не надо» (Р-9: тогда — как без ИИ); прочитать — любой, если разбор есть. */
-const reviewShown = computed(
-  () => props.monthKey === monthNow() && ((ai.available && ai.consent !== 'off') || auth.isDemo || (!!review.value && auth.ai)),
+/**
+ * Карточки кода разбора v4 (бэклог «Фидбек», Р-23, Р-24, Р-27): участнику текущего месяца — по своим операциям, свежие;
+ * и без ИИ (вариант А); сборка одна — стор ИИ `cardsOf` (те же карточки уходят модели и ставят ✦). Viewer — нет (отчёт
+ * v1–v3 общего документа, как был).
+ */
+const v4Cards = computed<ReviewCard[] | null>(() =>
+  canEdit.value && props.monthKey === monthNow()
+    ? ai.cardsOf(props.monthKey)
+    : null,
 )
-const reviewDot = computed(() => !!review.value && review.value.id !== ai.seenReview)
+/** ИИ разбора: участник с ИИ, не сказавший «Не надо» (Р-9), или демо — пилюля «✦ Разбор»; без ИИ — «Разбор» (только карточки). */
+const reviewAi = computed(() => (ai.available && ai.consent !== 'off') || auth.isDemo)
+/** Пилюля — участнику всегда (текущий месяц, v4); viewer — если в общем документе есть разбор (v1–v3) и у семьи ИИ. */
+const reviewShown = computed(() => props.monthKey === monthNow() && (!!v4Cards.value || reviewAi.value || (!!review.value && auth.ai)))
+/** «Не разобрано» без разбора ИИ — своя метка «увидено» (`ai.seenReview`): сумма изменилась — точка снова. */
+const unknownSeenKey = computed(() => {
+  const u = v4Cards.value?.find((c) => c.kind === 'unknown')
+  return u ? `unknown:${props.monthKey}:${u.monthly}` : null
+})
+/** Точка: свой новый разбор; без разбора — новая карточка «Не разобрано». */
+const reviewDot = computed(() => (review.value ? review.value.id !== ai.seenReview : !!unknownSeenKey.value && unknownSeenKey.value !== ai.seenReview))
 const { open: reviewOpen, close: closeReview } = useQuerySheet('review', ['card'])
 /** Номер совета, с которого стартует отчёт (`&card=<n>` — ✦ у предмета, Блок 3). */
 const reviewCard = computed(() => {
@@ -298,7 +317,8 @@ const reviewCard = computed(() => {
 watch(
   [() => reviewOpen.value && reviewShown.value, () => review.value?.id],
   ([shown]) => {
-    if (shown && review.value) ai.markReviewSeen(review.value.id)
+    const seen = review.value?.id ?? unknownSeenKey.value
+    if (shown && seen) ai.markReviewSeen(seen)
   },
   { immediate: true },
 )
@@ -316,7 +336,8 @@ function showReview() {
   if (route.query.review !== '1') void router.push({ query: { ...route.query, review: '1' } })
 }
 async function openReview() {
-  if (review.value) {
+  // Свой разбор есть (v1–v3 — у viewer) или ИИ нет / «Не надо» — отчёт как есть: карточки кода без мысли (Р-27).
+  if (review.value || !reviewAi.value || auth.isDemo) {
     if (ai.reviewState !== 'thinking') ai.reviewState = 'idle'
     showReview()
     return
@@ -416,7 +437,15 @@ const spendShare = (fact: number | null, planned: number | null) =>
   fact === null || !planned || planned <= 0 ? 0 : Math.min(100, Math.round((fact / planned) * 100))
 /** Лист раздела: нажатие строки или адрес `?cat=<id>` («Открыть» совета и строка «Куда ушло» отчёта, Р-18, RZ-08); закрыли — параметр снят. */
 const { value: catFor, close: closeCat } = useQueryValue('cat')
-const catRow = computed(() => compare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
+/**
+ * Месяц листов раздела и «Не разобрано»: поверх отчёта v4 — месяц его карточек (`findMonth` по своим выпискам: в первые
+ * дни месяца — прошлый), иначе — месяц экрана (критик 4б: «Разобрать» 12 трат открывал пустой лист текущего месяца).
+ */
+const sheetMonth = computed(() => (reviewOpen.value && v4Cards.value ? findMonth(ctx.value, me.value) : props.monthKey))
+const sheetCompare = computed(() =>
+  sheetMonth.value === props.monthKey || !canEdit.value ? compare.value : spendCompare(state.value, { ...ctx.value, key: sheetMonth.value }, me.value),
+)
+const catRow = computed(() => sheetCompare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 /** Раздел семьи, где у меня нет ни трат, ни плана (`?cat=` из отчёта): лист «нет трат», цифр партнёра нет (FB-12). */
 const catNone = computed(() => (canEdit.value && catFor.value && !catRow.value ? (categories.value.find((c) => c.id === catFor.value)?.name ?? null) : null))
 const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group, me.value) : null))
@@ -434,13 +463,14 @@ watch(catFor, () => (catAll.value = false))
 const catOps = computed(() => {
   if (!catFor.value || !canEdit.value) return null
   const { marked, categories } = ops.totalMarks(ops.shown)
-  return sectionMonth(ops.shown, { month: props.monthKey, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
+  return sectionMonth(ops.shown, { month: sheetMonth.value, categoryId: catFor.value, marked, categories, ...(catAll.value ? { limit: Infinity } : {}) })
 })
 const catOp = ref<string | null>(null)
 const catHand = ref<string | null>(null)
 function openCatHand(id: string) {
   closeCat()
   closeOneOff()
+  closeUnknown()
   catHand.value = id
 }
 /**
@@ -473,6 +503,36 @@ function imageAct(a: ImageAction) {
   } else if (a.kind === 'move') moveAction.value = a
   else void router.push('/money/debts/faster')
 }
+/**
+ * «Не разобрано» (FB-17, Р-24): тихая строка под разделами — лист своих трат месяца без раздела (`sectionMonth` с
+ * `UNKNOWN_CATEGORY`), строка — лист операции («куда отнести?»). Его же открывает карточка разбора «Разобрать».
+ */
+const { open: unknownOpen, close: closeUnknown } = useQuerySheet('unknown')
+const unknownAll = ref(false)
+watch(unknownOpen, () => (unknownAll.value = false))
+const unknownOps = computed(() => {
+  if (!unknownOpen.value || !canEdit.value) return null
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  const list = sectionMonth(ops.shown, { month: sheetMonth.value, categoryId: UNKNOWN_CATEGORY, marked, categories, ...(unknownAll.value ? { limit: Infinity } : {}) })
+  return list.count ? list : null
+})
+
+/**
+ * Кнопки карточек разбора v4 (FB-17, Р-24): существующий лист поверх отчёта, адрес отчёта (`?review=1&card=n`) не
+ * трогается — закрыли лист, отчёт на той же карточке. «Сделать» — `DoSheet` в отчёте, «Обновить сумму» — экран платежа.
+ */
+const sheetZ = computed(() => (reviewOpen.value ? 60 : 50))
+const payOp = ref<string | null>(null)
+function reviewAct(card: ReviewCard) {
+  const t = card.target
+  if (t.kind === 'op') catOp.value = t.opId
+  else if (t.kind === 'cat') catFor.value = t.categoryId
+  else if (t.kind === 'unknown') unknownOpen.value = true
+  else if (t.kind === 'pay') payOp.value = t.opId
+  else if (t.kind === 'image' && t.image.action?.kind === 'move') moveAction.value = t.image.action
+  else if (t.kind === 'plan') editSpend(me.value, t.categoryId, t.amount)
+}
+
 function editCatPlan(personId: PersonId, amount: number) {
   const id = catFor.value
   closeCat()
@@ -603,11 +663,11 @@ function addFund(kind: 'reserve' | 'cushion') {
         variant="secondary"
         size="sm"
         class="relative gap-1.5"
-        :aria-label="review ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
+        :aria-label="review || !reviewAi ? (reviewDot ? 'Разбор месяца, новый' : 'Разбор месяца') : 'Разобрать месяц'"
         data-review-open
         @click="openReview"
       >
-        <PhSparkle :size="14" weight="fill" class="text-brand" aria-hidden="true" />Разбор
+        <PhSparkle v-if="reviewAi" :size="14" weight="fill" class="text-brand" aria-hidden="true" data-review-sparkle />Разбор
         <span v-if="reviewDot" class="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-canvas bg-brand" data-review-dot aria-hidden="true" />
       </Button>
     </div>
@@ -798,14 +858,17 @@ function addFund(kind: 'reserve' | 'cushion') {
               </span>
             </div>
             <!-- «Не разобрано» (Х-1): тихо, без листа и точки — чтобы строки сходились с «потрачено» заголовка -->
-            <div
+            <button
               v-if="compare.unknown > 0"
-              class="flex w-full items-center justify-between gap-2 border-t border-line py-2.5 text-[15px] text-ink-2 first:border-t-0"
+              type="button"
+              class="press flex w-full cursor-pointer items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[15px] text-ink-2 first:border-t-0"
               data-spend-unknown
+              :disabled="!canEdit"
+              @click="unknownOpen = true"
             >
               <span>Не разобрано</span>
               <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
-            </div>
+            </button>
             <!-- «Разовые» (FB-07): так же тихо, но с листом своих разовых -->
             <button
               v-if="compare.oneOff > 0"
@@ -932,7 +995,17 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
     <AffordSheet :open="affordOpen" @close="closeAfford" />
-    <AiReport :open="reviewOpen && reviewShown" :month-key="monthKey" :review="review" :example="auth.isDemo" :card="reviewCard" @close="closeReview" @refresh="refreshReview" />
+    <AiReport
+      :open="reviewOpen && reviewShown"
+      :month-key="monthKey"
+      :review="review"
+      :example="auth.isDemo"
+      :card="reviewCard"
+      :cards="v4Cards"
+      @close="closeReview"
+      @refresh="refreshReview"
+      @act="reviewAct"
+    />
 
     <!-- Платёж: одна кнопка «Оплатил»; тихо — «Изменить платёж» -->
     <Sheet :open="!!paySheet" :title="paySheet?.name ?? ''" @close="payFor = null">
@@ -1005,11 +1078,12 @@ function addFund(kind: 'reserve' | 'cushion') {
       :row="catRow"
       :rk="catRk"
       :plans="catPlans"
-      :can-edit="canEdit && monthKey >= monthNow()"
+      :can-edit="canEdit && sheetMonth >= monthNow()"
       :image="catImage"
-      :month="monthKey"
+      :month="sheetMonth"
       :ops="catOps"
       :none="catNone"
+      :z="sheetZ"
       @close="closeCat"
       @edit="editCatPlan"
       @image="imageAct"
@@ -1022,12 +1096,18 @@ function addFund(kind: 'reserve' | 'cushion') {
       <p class="mt-1 text-[14px] text-ink-2">не входят в обычные траты</p>
       <SectionOpsList v-if="oneOffOps" :ops="oneOffOps" @more="oneOffAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
     </Sheet>
-    <OpSheet :op-id="catOp" :z="60" @close="catOp = null" />
+    <Sheet :open="unknownOpen && canEdit" title="Не разобрано" :z="sheetZ" @close="closeUnknown">
+      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-unknown-amount>{{ money(sheetCompare.unknown) }}</p>
+      <p class="mt-1 text-[14px] text-ink-2">траты без раздела</p>
+      <SectionOpsList v-if="unknownOps" :ops="unknownOps" data-unknown-ops @more="unknownAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
+    </Sheet>
+    <OpSheet :op-id="catOp" :z="sheetZ + 10" @close="catOp = null" />
+    <AddPaymentSheet :op-id="payOp" :z="sheetZ + 20" @close="payOp = null" />
     <HandSpendSheet v-if="canEdit" :open="catHand !== null" :op-id="catHand" @close="catHand = null" />
-    <ImageMoveSheet :action="moveAction" @close="moveAction = null" />
+    <ImageMoveSheet :action="moveAction" :z="sheetZ" @close="moveAction = null" />
 
     <!-- Сумма раздела трат -->
-    <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" @close="spendEdit = null">
+    <Sheet :open="!!spendEdit" :title="spendEdit?.fresh ? 'Траты на месяц' : 'Сколько в месяц'" :z="sheetZ" @close="spendEdit = null">
       <template v-if="spendEdit">
         <Field v-if="spendEdit.fresh" label="Раздел" name="category">
           <Select v-model="spendEdit.categoryId" :options="categories.map((c) => ({ value: c.id, label: c.name }))" class="mb-3" />

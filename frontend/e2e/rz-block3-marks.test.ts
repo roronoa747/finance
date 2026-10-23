@@ -7,7 +7,7 @@ import { useAiStore } from '../src/stores/ai'
 import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { demoReview, startDemo } from '../src/lib/demo'
-import { stepCandidates, type StepCandidate } from '../src/lib/finance'
+import { reviewCardOrder, reviewCards, stepCandidates, type StepCandidate } from '../src/lib/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
@@ -195,14 +195,27 @@ describe('e2e / Разбор Блок 3 — ✦ у предметов', { timeou
     expect(m).toMatchObject({ cat: null, due: null, queue: null, money: null, goal: null, dreams: [], debts: [], subsCalls: 0 })
   })
 
-  it('(д) демо — ✦ по заготовке (продавец метит свой раздел), запросов к ручке и серверу нет', async () => {
+  // v4 (бэклог «Фидбек», Р-27): заготовка демо — мысль поверх карточек кода; ✦ — у разделов карточек, номер — место в отчёте.
+  it('(д) демо — ✦ по заготовке v4 (раздел карточки кода — её номер), запросов к ручке и серверу нет', async () => {
+    // Демо датировано «N дней назад»: 22-го у него карточка раздела — план продуктов (12-го была только «Покупки» —
+    // дубль разовой покупки, Х-13 её убрал).
+    at('2026-10-22T04:00:00Z')
     const pinia = createPinia()
     setActivePinia(pinia)
     expect(startDemo()).toBe(true)
     await nextTick()
     const finance = useFinanceStore()
-    const demo = demoReview(finance.householdDoc, finance.planInput(K))
-    const sellers = (demo.advices ?? []).flatMap((a, i) => (a.action.kind === 'open' && a.action.target.categoryId ? [[a.action.target.categoryId, String(i + 1)] as const] : []))
+    const ops = useOperationsStore()
+    const demo = demoReview(finance.householdDoc, finance.planInput(K), ops.all)
+    const { state, ctx } = finance.planInput(K)
+    const cards = reviewCardOrder(reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, 'a'), demo.next)
+    const firstOf = new Map<string, string>()
+    cards.forEach((c, i) => {
+      const t = c.target
+      const cat = t.kind === 'cat' || t.kind === 'plan' ? t.categoryId : t.kind === 'image' ? t.image.categoryId : null
+      if (cat && !firstOf.has(cat)) firstOf.set(cat, String(i + 1))
+    })
+    const sellers = [...firstOf]
     expect(sellers.length).toBeGreaterThan(0)
     const spend = await screen(pinia, Month, '/month', undefined, [screenMixin({ opened: 'spend' })])
     // Раздел подписок живёт в платежах (строки трат у него нет) — проверяем разделы со строкой на «Месяце».

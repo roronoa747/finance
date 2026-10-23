@@ -3,9 +3,11 @@ import { createPinia, setActivePinia } from 'pinia'
 import { DEMO_TOKEN, useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
 import { useAiStore } from './ai'
+import { useOperationsStore } from './operations'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { demoReview, startDemo } from '@/lib/demo'
-import type { StepCandidate } from '@/lib/finance'
+import { reviewCardOrder, reviewCards, type StepCandidate } from '@/lib/finance'
+import { seedOwnMonth } from '@/test/reviewV4'
 import type { AiAdvice, AiReview, OpenTarget } from '@/types/finance'
 
 /**
@@ -112,22 +114,36 @@ describe('stores/ai — adviceMarks (RZ-10)', () => {
     expect(family([]).adviceMarks.size).toBe(0)
   })
 
-  it('демо — по заготовке (`demoReview`): продавцы советов метят себя и свой раздел, подушка — «Сделать»', () => {
+  it('демо — по заготовке v4 (`demoReview`): разделы карточек кода метятся местом карточки в отчёте', () => {
     expect(startDemo()).toBe(true)
     expect(useAuthStore().token).toBe(DEMO_TOKEN)
     const finance = useFinanceStore()
     // Разбор в документе демо не пишется — меток по документу нет, только заготовка.
     expect(finance.aiReviewOf(KEY)).toBeNull()
-    const demo = demoReview(finance.householdDoc, finance.planInput(KEY))
-    const advices = demo.advices ?? []
-    expect(advices.length).toBeGreaterThan(1)
+    const ops = useOperationsStore()
+    const demo = demoReview(finance.householdDoc, finance.planInput(KEY), ops.all)
+    const { state, ctx } = finance.planInput(KEY)
+    const cards = reviewCardOrder(reviewCards({ ...finance.householdDoc, ...state }, ctx, ops.all, 'a'), demo.next)
     const ai = useAiStore()
-    advices.forEach((a, i) => {
-      if (a.action.kind === 'open') {
-        const t = a.action.target
-        expect(ai.markFor(t.kind, t.id), t.name).toBe(i + 1)
-        if (t.categoryId) expect(ai.markFor('cat', t.categoryId), t.categoryId).toBeLessThanOrEqual(i + 1)
-      } else if (a.action.candidate.shift.to !== 'debt') expect(ai.markFor('goal', a.action.candidate.shift.to.goalId)).toBe(i + 1)
+    const seen = new Set<string>()
+    cards.forEach((c, i) => {
+      const t = c.target
+      const cat = t.kind === 'cat' || t.kind === 'plan' ? t.categoryId : t.kind === 'image' ? t.image.categoryId : null
+      if (!cat || seen.has(cat)) return
+      seen.add(cat)
+      expect(ai.markFor('cat', cat), c.id).toBe(i + 1)
     })
+  })
+})
+
+// FB-16 (бэклог «Фидбек», Р-27): свой разбор v4 — ✦ у предметов карточек кода, номер — место в отчёте (`next` — первой).
+describe('stores/ai — adviceMarks v4', () => {
+  it('свой v4: «Не разобрано» первой (без предмета), продукты без плана — ✦ у раздела номером 2', async () => {
+    const ai = family([])
+    useFinanceStore().mutatePrivateDoc((d) => {
+      d.aiReviews = [review([], { id: 'mine', by: 'a', v: 4, advices: undefined, lead: { title: 'Главное', text: 'Текст.', figure: null }, next: 'unknown' })]
+    })
+    await seedOwnMonth(KEY)
+    expect(ai.markFor('cat', 'sc_food')).toBe(2)
   })
 })

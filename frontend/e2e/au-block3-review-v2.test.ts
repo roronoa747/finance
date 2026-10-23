@@ -4,6 +4,7 @@ import { useAuthStore } from '../src/stores/auth'
 import { useAiStore } from '../src/stores/ai'
 import { useFinanceStore } from '../src/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import { leadFor, seedOwnMonth } from '../src/test/reviewV4'
 import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { Goal, SyncDoc } from '../src/types/finance'
@@ -11,22 +12,23 @@ import Month from '../src/views/Month.vue'
 import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type FakePrivate, type FakeServer } from './support/family'
 
 /**
- * Блок 3 «ИИ-польза» (AU-09…AU-14): разбор v2 приходит сам — на двух телефонах против фейкового сервера документа и
- * фейковой ручки `/api/ai/review` со счётчиком запросов (главный риск расхода — фоновые запросы). Телефон 1 входит в
- * новом месяце → разбор сам (1 запрос) → телефон 2 после синка видит его без запроса, точка на «Месяце»; оба входят
- * разом — не больше 2 запросов; «Пришла» на телефоне 2 → разбор `salary`; лимит (429) — тишина; согласие v1 → лист один
- * раз; «Сделать» → сдвиг месяца у обоих; viewer — без кнопок; в теле — только повод, факты и кандидаты, без имён.
+ * Блок 3 «ИИ-польза» (AU-09…AU-14) — после v4 (бэклог «Фидбек», Р-26, Р-27): разбор приходит сам — на двух телефонах
+ * против фейкового сервера документа и фейковой ручки `/api/ai/review` со счётчиком запросов (главный риск расхода —
+ * фоновые запросы). Разбор свой у каждого (личный документ): телефон 1 в новом месяце → 1 запрос, повторный вход — 0;
+ * телефон 2 моего разбора не видит и делает свой; оба разом — 2 запроса, после синка — больше ни одного; «Пришла» на
+ * телефоне 2 → его разбор `salary`; лимит (429) — тишина; согласие v1 → лист один раз; viewer — без отчёта v4 и без
+ * запроса; в теле — только повод, факты и карточки, без имён. Свой месяц у каждого участника — `seedOwnMonth`.
+ * Отменено Р-23 (бэклог «Фидбек»): «Сделать» у совета нового разбора — кнопки у карточек кода (FB-17, FB-23).
  */
-/** Ответ ручки v3 (RZ-05): совет «Сделать» на первое действие семьи (`a1`). */
-const ANSWER = { where: 'Копим на «Машину».', advices: [{ title: 'Отложим в подушку', text: 'Подушки мало.', figure: null as string | null, action: 'a1' }] }
+const K = '2026-10'
 
-/** Семья с фондом-подушкой: у неё есть кандидаты «Сделать» (досрочка, подушка). */
+/** Семья с фондом-подушкой. */
 const fund: Goal = { id: 'fund', name: 'Подушка безопасности', need: 0, seed: 100_000, have: 100_000, monthly: 0, hue: 'teal', planPct: 0, movements: [], fund: 'cushion', updatedAt: T0 }
 const familyDoc = (): SyncDoc => planFamilyDoc({ goals: [...planFamilyDoc().goals, fund] })
 
 const visible = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
 
-describe('e2e / ИИ-польза Блок 3 — разбор v2 приходит сам', () => {
+describe('e2e / ИИ-польза Блок 3 — разбор приходит сам (v4, свой у каждого)', () => {
   const storage = new Map<string, string>()
   let server: FakeServer
   let pv: FakePrivate
@@ -48,7 +50,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     server = fakeServer(familyDoc())
     pv = fakePrivate()
     for (const slot of ['a', 'b']) pv.docs.set(`u-${slot}`, { rev: 1, data: { aiConsent: { on: true, at: T0, v: 3 } } })
-    aiReview = vi.fn(async (_body: unknown) => ANSWER)
+    aiReview = vi.fn(async (body: unknown) => leadFor(body))
   })
 
   afterEach(() => {
@@ -57,7 +59,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     vi.restoreAllMocks()
   })
 
-  /** Телефон человека: документ семьи с сервера, вход и `/auth/me` с ИИ, свой личный документ, ручка ИИ — общий счётчик. */
+  /** Телефон человека: документ семьи с сервера, вход и `/auth/me` с ИИ, свой личный документ и свой месяц (участник). */
   async function as(role: 'member' | 'viewer', slot: 'a' | 'b', opts: { clear?: boolean } = {}) {
     if (opts.clear !== false) storage.clear()
     const p = await phone(server)
@@ -67,17 +69,18 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     await auth.fetchMe()
     const priv = privateFor(pv, `u-${slot}`)
     await useFinanceStore().pullPrivateDoc(priv as unknown as ApiClient)
+    if (role === 'member') await seedOwnMonth(K, slot)
     const ai = useAiStore()
     ai.sheetMounted = true
     // Клиент ИИ и личного документа; `client` телефона — синк общего документа.
     const aiClient = { ...priv, aiReview } as unknown as ApiClient
-    return { ...p, ai, aiClient }
+    return { ...p, ai, aiClient, priv }
   }
   type Phone = Awaited<ReturnType<typeof as>>
   const sync = (p: Phone) => p.store.syncHousehold(p.client)
   const monthHtml = (p: Phone, mixin = {}) => screen(p.pinia, Month, '/month', undefined, [screenMixin(mixin)])
 
-  it('телефон 1 в новом месяце → разбор сам (1 запрос); телефон 2 после синка — тот же разбор без запроса, точка «Месяц»', async () => {
+  it('телефон 1 в новом месяце → разбор сам (1 запрос), в личном документе; телефон 2 его не видит — свой запрос, точка «Месяц»', async () => {
     const one = await as('member', 'a')
     await one.ai.autoReview(one.aiClient)
     expect(aiReview).toHaveBeenCalledTimes(1)
@@ -86,57 +89,64 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     await one.ai.autoReview(one.aiClient)
     expect(aiReview).toHaveBeenCalledTimes(1)
     await sync(one)
-    expect(server.data.aiReviews?.filter((r) => !r.deletedAt)).toHaveLength(1)
+    expect(server.data.aiReviews ?? []).toHaveLength(0)
+    expect(one.store.myAiReviews).toHaveLength(1)
 
     const two = await as('member', 'b')
+    expect(two.store.aiReviewOf(K)).toBeNull()
     await two.ai.autoReview(two.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(aiReview).toHaveBeenCalledTimes(2)
+    expect(two.store.aiReviewOf(K)!.by).toBe('b')
     expect(two.ai.reviewUnseen).toBe(true)
     let html = await monthHtml(two)
     expect(html).toContain('data-plan-dot')
     expect(html).toContain('data-review-dot')
     html = await monthHtml(two, { reviewOpen: true })
-    expect(visible(html)).toContain(ANSWER.where)
-    two.ai.markReviewSeen(two.store.aiReviewOf('2026-10')!.id)
+    expect(visible(html)).toContain('Разберём траты без раздела.')
+    two.ai.markReviewSeen(two.store.aiReviewOf(K)!.id)
     expect(await monthHtml(two)).not.toContain('data-plan-dot')
   })
 
-  it('оба телефона входят разом (до синка) — не больше 2 запросов, оба разбора сходятся в документе', async () => {
+  it('оба телефона входят разом (до синка) — 2 запроса (свой у каждого), после синка больше ни одного', async () => {
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
     // Телефоны в тесте делят одно хранилище; попытку повода телефон 1 пишет до запроса (возврат AU-33) — у телефона 2
-    // своё хранилище, где её нет.
+    // своё хранилище, где её нет. Попытка пишется после свежего личного документа (критик 4б) — стираем после запроса.
     const first = one.ai.autoReview(one.aiClient)
+    await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     storage.delete('ff_ai_auto')
     await Promise.all([first, two.ai.autoReview(two.aiClient)])
-    // До синка каждый телефон не видит разбор другого — ровно 2 (редкий двойной, Р-4), не больше.
     expect(aiReview).toHaveBeenCalledTimes(2)
     await sync(one)
     await sync(two)
     await sync(one)
-    expect((server.data.aiReviews ?? []).filter((r) => !r.deletedAt).length).toBe(2)
-    // Сошлись: оба показывают один и тот же разбор месяца.
-    expect(one.store.aiReviewOf('2026-10')!.id).toBe(two.store.aiReviewOf('2026-10')!.id)
-    // После синка ни один телефон больше не спрашивает.
+    // В общем документе разборов нет; у каждого — свой.
+    expect(server.data.aiReviews ?? []).toHaveLength(0)
+    expect(one.store.aiReviewOf(K)!.by).toBe('a')
+    expect(two.store.aiReviewOf(K)!.by).toBe('b')
     await one.ai.autoReview(one.aiClient)
     await two.ai.autoReview(two.aiClient)
     expect(aiReview).toHaveBeenCalledTimes(2)
   })
 
-  it('«Пришла» на телефоне 2 → разбор `salary`; отметка партнёра с того же телефона — без запроса', async () => {
+  it('«Пришла» на телефоне 2 → его разбор `salary`; отметка партнёра с того же телефона — без запроса', async () => {
     const one = await as('member', 'a')
     await one.ai.autoReview(one.aiClient)
     await sync(one)
     at('2026-10-20T06:00:00Z')
     const two = await as('member', 'b')
+    // Свой первый разбор месяца — повод `month`; затем своя «Пришла» — `salary`.
+    await two.ai.autoReview(two.aiClient)
+    expect(aiReview).toHaveBeenCalledTimes(2)
+    at('2026-10-20T07:00:00Z')
     two.store.markSalary('b')
     await two.ai.autoReview(two.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(2)
-    expect((aiReview.mock.calls[1][0] as { reason: string }).reason).toBe('salary')
-    expect(two.store.aiReviewOf('2026-10')!.reasonKey).toBe('salary:b:2026-10')
+    expect(aiReview).toHaveBeenCalledTimes(3)
+    expect((aiReview.mock.calls[2][0] as { reason: string }).reason).toBe('salary')
+    expect(two.store.aiReviewOf(K)!.reasonKey).toBe(`salary:${K}`)
     two.store.markSalary('a')
     await two.ai.autoReview(two.aiClient)
-    expect(aiReview).toHaveBeenCalledTimes(2)
+    expect(aiReview).toHaveBeenCalledTimes(3)
   })
 
   it('лимит (429) — тишина: ни разбора, ни листа ошибки; в тот же день повод не повторяется', async () => {
@@ -144,7 +154,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     const one = await as('member', 'a')
     expect(await one.ai.autoReview(one.aiClient)).toBeNull()
     expect(one.ai.reviewState).toBe('idle')
-    expect(one.store.aiReviewOf('2026-10')).toBeNull()
+    expect(one.store.aiReviewOf(K)).toBeNull()
     const html = await monthHtml(one)
     expect(html).not.toContain('data-review-state')
     expect(html).not.toContain('ИИ вернётся')
@@ -159,7 +169,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     expect(aiReview).not.toHaveBeenCalled()
   })
 
-  it('согласие v1 → лист согласия v2 один раз; закрыл — до следующего повода не всплывает', async () => {
+  it('согласие v1 → лист согласия один раз; закрыл — до следующего повода не всплывает', async () => {
     pv.docs.set('u-a', { rev: 1, data: { aiConsent: { on: true, at: T0 } } })
     const one = await as('member', 'a')
     const run = one.ai.autoReview(one.aiClient)
@@ -173,44 +183,25 @@ describe('e2e / ИИ-польза Блок 3 — разбор v2 приходи�
     expect(aiReview).not.toHaveBeenCalled()
   })
 
-  it('«Сделать» → сдвиг месяца у обоих телефонов; viewer видит разбор без кнопок', async () => {
+  it('viewer: сам не разбирает, отчёта v4 и чужого личного разбора не видит', async () => {
     const one = await as('member', 'a')
-    const r = await one.ai.autoReview(one.aiClient)
-    const a = r!.advices![0]!.action
-    const c = a.kind === 'do' ? a.candidate : null
-    if (!c) throw new Error('совет без «Сделать»')
-    expect(c).not.toBeNull()
-    // Лист разбора: «Сделать» у шага.
-    // Атрибут целиком: `data-review-dot` и `data-review-done` — другие.
-    const doBtn = /data-review-do(?=[\s=>])/
-    expect(await monthHtml(one, { reviewOpen: true })).toMatch(doBtn)
+    await one.ai.autoReview(one.aiClient)
     await sync(one)
-
-    // Viewer — до «Сделать»: разбор с шагом, но без кнопки и без «Обновить»; сам не разбирает.
     const viewer = await as('viewer', 'b')
-    const html = await monthHtml(viewer, { reviewOpen: true })
-    expect(visible(html)).toContain(ANSWER.advices[0].title)
-    expect(html).not.toMatch(doBtn)
-    expect(html).not.toContain('data-review-refresh')
     await viewer.ai.autoReview(viewer.aiClient)
     expect(aiReview).toHaveBeenCalledTimes(1)
-
-    // Подтверждение листа «Сделать» (`DoSheet.confirm` → `addPlanShift`) на телефоне 1.
-    const again = await as('member', 'a')
-    again.store.addPlanShift(c.shift)
-    expect(await monthHtml(again, { reviewOpen: true })).toContain('data-review-done')
-    await sync(again)
-
-    const two = await as('member', 'b')
-    expect((two.store.householdDoc.planShifts ?? []).filter((s) => !s.deletedAt)).toHaveLength(1)
-    expect(await monthHtml(two, { reviewOpen: true })).toContain('data-review-done')
+    const html = await monthHtml(viewer, { reviewOpen: true })
+    expect(html).not.toContain('data-review-lead')
+    expect(html).not.toContain('data-review-card=')
+    expect(html).not.toContain('data-review-refresh')
   })
 
-  it('тело запроса — только повод, факты и действия (v3); имён участников нет', async () => {
+  it('тело запроса — только повод, факты и карточки (v4); имён участников нет', async () => {
     const one = await as('member', 'a')
     await one.ai.autoReview(one.aiClient)
     const body = aiReview.mock.calls[0][0] as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['actions', 'facts', 'reason', 'v'])
+    expect(Object.keys(body).sort()).toEqual(['cards', 'facts', 'reason', 'v'])
+    expect(body.v).toBe(4)
     const text = JSON.stringify(body)
     for (const name of ['Ильяс', 'Аруна', 'u-a', 'a@example.com']) expect(text, name).not.toContain(name)
     expect((body.facts as unknown[]).length).toBeGreaterThan(3)

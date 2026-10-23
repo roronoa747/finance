@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, type App } from 'vue'
+import { createApp, nextTick, type App, type ComponentInternalInstance, type VNode } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
@@ -10,7 +10,7 @@ import { useFxStore } from '@/stores/fx'
 import { useOperationsStore } from '@/stores/operations'
 import { apiClient } from '@/api/client'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type MonthPlanCtx } from '@/lib/finance'
+import { closerDays, goalPace, lastAccountFor, monthPlan, monthPlanPast, pendingPuts, planPuts, spendCompare, untilPayday, type HabitImage, type MonthPlanCtx, type ReviewCard, type ReviewCardTarget } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { monthKey } from '@/lib/dates'
@@ -1023,7 +1023,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(q('[data-spend-unknown]')).toBeNull()
   })
 
-  it('Х-1, Х-3: «Не разобрано · N» внизу без листа и точки; переводы людям — после трат, без точки', async () => {
+  it('Х-1, Х-3: «Не разобрано · N» внизу без точки (тихой строкой-кнопкой листа, FB-17); переводы людям — после трат, без точки', async () => {
     // «Не разобрано» 12 000; переводы: обычно 0, сентябрь 300 000 — крупнейшие, но последними и без точки.
     totals.push(total(KEY, '_unknown', 12_000), total(KEY, 'sc_people', 300_000))
     try {
@@ -1033,7 +1033,9 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
       expect(q('[data-spend-row="sc_people"] [data-spend-dot]')).toBeNull()
       const unknown = q('[data-spend-unknown]')!
       expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(plain(12_000))])
-      expect(unknown.tagName).not.toBe('BUTTON')
+      // FB-17: строка нажимается — лист «Не разобрано» (тест ниже); точки у неё нет.
+      expect(unknown.tagName).toBe('BUTTON')
+      expect(unknown.querySelector('[data-spend-dot]')).toBeNull()
       expect(unknown.nextElementSibling?.hasAttribute('data-spend-add')).toBe(true)
     } finally {
       totals.splice(-2)
@@ -1319,5 +1321,95 @@ describe('FB-07: «Разовые» на «Месяце» — тихая стр�
     await openMonth('viewer', true)
     expect(q('[data-spend-oneoff]')).toBeNull()
     expect(q('[data-oneoff-amount]')).toBeNull()
+  })
+})
+
+describe('FB-17: «Не разобрано» на «Месяце» — тихая строка и лист своих трат без раздела', () => {
+  const OPS: Operation[] = [
+    { id: 'c0000011', bank: 'kaspi', date: '2026-09-12', amount: -6_000, kind: 'purchase', merchant: 'SHOP X', categoryId: null, internal: false },
+    { id: 'c0000012', bank: 'kaspi', date: '2026-09-14', amount: -2_500, kind: 'purchase', merchant: 'Starbucks', categoryId: 'sc_cafe', internal: false },
+  ]
+  const totals: SpendTotal[] = [
+    { id: 'a:month:2026-09:_unknown', by: 'a', kind: 'month', period: '2026-09', categoryId: '_unknown', amount: 6_000, ops: 1, updatedAt: T0 },
+    { id: 'a:month:2026-09:sc_cafe', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_cafe', amount: 2_500, ops: 1, updatedAt: T0 },
+  ]
+  it('строка «Не разобрано» → лист с суммой и операциями → лист операции поверх', async () => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 2, created_at: T0 }] } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals }))
+    const ops = useOperationsStore()
+    for (const o of OPS) ops.ops[o.id] = o
+    await ops.loadUploads()
+    await flush()
+    await press(section('spend'))
+    await press(q('[data-spend-unknown]'))
+    expect(txt(q('[data-unknown-amount]'))).toBe(norm(money(6_000)))
+    expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 1')
+    await press(q('[data-cat-op="c0000011"]'))
+    const dialogs = all('[role="dialog"]')
+    expect(dialogs).toHaveLength(2)
+    expect(txt(dialogs[1])).toContain('SHOP X')
+  })
+})
+
+/**
+ * Ревью frontend 4б Н-5: маршрут кнопки карточки отчёта (`reviewAct`) — на каждую цель свой лист поверх отчёта (слой
+ * `sheetZ` 60 и выше), закрыли — отчёт открыт. `do` и «Отметить разовой» отчёт делает сам, `obligation` — переход.
+ */
+describe('FB-17: кнопки карточек отчёта — свой лист поверх отчёта', () => {
+  const OPS: Operation[] = [
+    { id: 'c0000021', bank: 'kaspi', date: '2026-09-12', amount: -6_000, kind: 'purchase', merchant: 'SHOP X', categoryId: null, internal: false },
+    { id: 'c0000022', bank: 'kaspi', date: '2026-09-14', amount: -2_500, kind: 'purchase', merchant: 'Starbucks', categoryId: 'sc_cafe', internal: false },
+  ]
+  const totals: SpendTotal[] = [
+    { id: 'a:month:2026-09:_unknown', by: 'a', kind: 'month', period: '2026-09', categoryId: '_unknown', amount: 6_000, ops: 1, updatedAt: T0 },
+    { id: 'a:month:2026-09:sc_cafe', by: 'a', kind: 'month', period: '2026-09', categoryId: 'sc_cafe', amount: 2_500, ops: 1, updatedAt: T0 },
+  ]
+  const image: HabitImage = {
+    habit: 'coffee', categoryId: 'sc_cafe', monthly: 2_500, count: 1, kind: 'dream', price: null, left: null,
+    action: { kind: 'move', categoryId: 'sc_cafe', goalId: 'trip', goalName: 'Отпуск', amount: 1_000, days: 3 },
+  } as HabitImage
+  const card = (target: ReviewCardTarget): ReviewCard => ({ id: 'c1', kind: 'unknown', title: 'Карточка', figure: { value: 1, unit: 'money' }, line: '', button: 'Кнопка', target, monthly: 1 })
+  /** Отчёт на «Месяце» — экземпляр `AiReport`: событие `act`, как его шлёт кнопка карточки. */
+  function report(): ComponentInternalInstance {
+    const walk = (v: VNode | null | undefined): ComponentInternalInstance | null => {
+      if (!v) return null
+      if (v.component) return (v.component.type as { __name?: string }).__name === 'AiReport' ? v.component : walk(v.component.subTree)
+      if (Array.isArray(v.children)) for (const c of v.children) {
+        const r = walk(c as VNode)
+        if (r) return r
+      }
+      return null
+    }
+    return walk(app!._instance!.subTree)!
+  }
+  const cases: [string, ReviewCardTarget, (d: HTMLElement) => boolean][] = [
+    ['op — лист операции', { kind: 'op', opId: 'c0000021' }, (d) => txt(d).includes('SHOP X') && txt(d).includes('Мне вернули')],
+    ['cat — лист раздела', { kind: 'cat', categoryId: 'sc_cafe' }, (d) => !!d.querySelector('[data-cat-amount]')],
+    ['unknown — «Не разобрано»', { kind: 'unknown' }, (d) => !!d.querySelector('[data-unknown-amount]')],
+    ['pay — «В платежи»', { kind: 'pay', opId: 'c0000022' }, (d) => [...d.querySelectorAll('input')].some((i) => i.value === 'Starbucks')],
+    ['image — «Перенести в мечту»', { kind: 'image', image }, (d) => txt(d).includes('Перенести в мечту')],
+    ['plan — «Сколько в месяц» с суммой', { kind: 'plan', categoryId: 'sc_cafe', amount: 4_000 }, (d) => /Траты на месяц|Сколько в месяц/.test(txt(d)) && !!d.querySelector('input')],
+  ]
+
+  it.each(cases)('%s', async (_, target, isIt) => {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 2, created_at: T0 }] } as never)
+    await open('member', planFamilyDoc({ spendTotals: totals }), '/month?review=1')
+    const ops = useOperationsStore()
+    for (const o of OPS) ops.ops[o.id] = o
+    ops.recurringFor = (o) => (o.id === 'c0000022' ? { name: 'Starbucks', amount: 2_500, day: 14, kind: 'subscription' } : null)
+    await ops.loadUploads()
+    await flush()
+    expect(q('[data-report]')).not.toBeNull()
+    const before = all('[role="dialog"]').length
+    report().emit('act', card(target))
+    await flush()
+    const sheet = all('[role="dialog"]').find((d) => !d.querySelector('[data-report]') && isIt(d))
+    expect(sheet, 'лист цели').toBeTruthy()
+    expect(all('[role="dialog"]').length).toBeGreaterThan(before)
+    expect(Number(sheet!.closest<HTMLElement>('.fixed')!.style.zIndex)).toBeGreaterThanOrEqual(60)
+    await press(sheet!.querySelector<HTMLElement>('button[aria-label="Закрыть"]'))
+    expect(q('[data-report]')).not.toBeNull()
   })
 })

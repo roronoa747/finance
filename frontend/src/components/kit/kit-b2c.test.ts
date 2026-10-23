@@ -17,7 +17,6 @@ import Stepper from './Stepper.vue'
 import Tabs from './Tabs.vue'
 import Toggle from './Toggle.vue'
 import EmptyState from './EmptyState.vue'
-import ScreenHeader from './ScreenHeader.vue'
 import Avatar from './Avatar.vue'
 import Callout from './Callout.vue'
 import Tag from './Tag.vue'
@@ -223,7 +222,7 @@ describe('DecisionCard / Chip / Stepper', () => {
   })
 })
 
-describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Card', () => {
+describe('OpRow / Tabs / Toggle / EmptyState / Avatar / Tag / Card', () => {
   it('строка операции: буква на цвете раздела, раздел, списание «−» (пивот 3, макет «Истории»), поступление «+» зелёным, не разобрано — s-unknown; между своими — без знака, тихо', async () => {
     const neg = await render(OpRow, { merchant: 'ИП Сериков', category: { name: 'Продукты', color: 'var(--s1)' }, amount: -6_800, date: '19 сент' })
     expect(neg).toContain('>И<')
@@ -260,18 +259,12 @@ describe('OpRow / Tabs / Toggle / EmptyState / ScreenHeader / Avatar / Tag / Car
     expect(await render(Tabs, { items, plus: false })).not.toContain('aria-label="Добавить"')
   })
 
-  it('Toggle — switch с aria-checked; EmptyState — заголовок, текст и действия; ScreenHeader — h1, подпись, «Назад» и слот', async () => {
+  it('Toggle — switch с aria-checked; EmptyState — заголовок, текст и действия', async () => {
     expect(await render(Toggle, { modelValue: true, label: 'Push на этом телефоне' })).toContain('role="switch" aria-checked="true"')
     const empty = await render(EmptyState, { title: 'Картины недели пока нет', text: 'Загрузите первую выписку.' }, { default: () => h('button', 'Загрузить') })
     expect(empty).toContain('Картины недели пока нет')
     expect(empty).toContain('Загрузите первую выписку.')
     expect(empty).toContain('Загрузить')
-    const head = await render(ScreenHeader, { title: 'Разбор', sub: 'Kaspi Gold · 1–21 сентября', back: '/week' }, { right: () => h('b', 'Пропустить все') })
-    expect(head).toContain('<h1 class="type-h1 truncate text-ink">Разбор</h1>')
-    expect(head).toContain('Kaspi Gold · 1–21 сентября')
-    expect(head).toContain('aria-label="Назад"')
-    expect(head).toContain('Пропустить все')
-    expect(await render(ScreenHeader, { title: 'Мечты' })).not.toContain('aria-label="Назад"')
   })
 
   it('Avatar — буква на var(--pa)/var(--pb), третий слот — ink-3; Tag — варианты; Card — tight и рамка card-border', async () => {

@@ -1,4 +1,4 @@
-import { addMonths } from '@/lib/dates'
+import { addDaysIso, addMonths, daysInMonth, weekKey, weekRange } from '@/lib/dates'
 import { amountAt, SPEND_LAST } from '@/lib/finance'
 import type { Credit, Obligation, PersonId, RateBook } from '@/types/finance'
 import { UNKNOWN_CATEGORY, plannedElsewhere } from './dictionary'
@@ -53,7 +53,7 @@ export type DueCtx = {
 }
 
 const clipName = (name: string) => name.trim().slice(0, FIND_NAME_MAX).trim()
-const keyOf = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
+export const keyOf = (op: Operation) => normalizeMerchant(op.merchant).slice(0, FIND_NAME_MAX)
 const inMonth = (op: Operation, period: string) => op.date.slice(0, 7) === period
 
 /**
@@ -221,6 +221,148 @@ export function reviewFinds(ops: Operation[], by: PersonId, period: string, ctx:
     ...topFinds(ops, by, period, ctx.categories, at),
     ...dueFinds(ops, by, period, ctx, at),
   ].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
+}
+
+/* ---------------- находки v4 по своим операциям (бэклог «Фидбек», Р-23, Р-24, FB-15) ---------------- */
+
+// Считаются на телефоне хозяина при открытии отчёта и в документ не пишутся (Р-27): имя человека — только в `top`
+// переводов людям, для строки карточки на своём экране. Разовые (`oneOff`) и возвращённое целиком (`spendOf` 0) — мимо.
+// Пороги — константы, владелец правит числом; доли от факта месяца проверяет `reviewCards` (`finance.ts`).
+
+/** «Не разобрано» — карточка от 10 % своего факта месяца, первой. */
+export const UNKNOWN_SHARE = 10
+/** «Переводы людям» — от 20 % факта; «Наличные» — от 10 %. */
+export const PEOPLE_SHARE = 20
+export const CASH_SHARE = 10
+/** «Похоже на разовую»: покупка от 20 000 ₸ и от 5 % факта у продавца без операций за 3 прошлых месяца; до 2. */
+export const ONE_OFF_MIN = 20_000
+export const ONE_OFF_SHARE = 5
+export const ONE_OFF_MAX = 2
+const ONE_OFF_MONTHS = 3
+/** «Дорогая неделя»: неделя месяца от 130 % средней из 4 прошлых полных недель. */
+export const WEEK_DEAR_PCT = 130
+export const WEEK_BASE = 4
+/** «Мелочь»: покупки дешевле 2 000 ₸ — карточка от 10 % факта. */
+export const SMALL_MAX = 2_000
+export const SMALL_SHARE = 10
+
+const spendIn = (ops: Operation[], period: string) => ops.filter((op) => inMonth(op, period) && isSpend(op) && !op.oneOff && spendOf(op) > 0)
+const sumOf = (list: Operation[]) => list.reduce((s, op) => s + spendOf(op), 0)
+
+/**
+ * Свободная трата — то, что человек выбирает сам: не разовая, не возвращённая целиком, не перевод людям и не наличные
+ * (`SPEND_LAST`), не раздел платежей (`plannedElsewhere`). Её считают «Похоже на разовую», «Дорогая неделя», «Мелочь» и
+ * выходные.
+ */
+function freeOk(op: Operation, categories: Categories): boolean {
+  if (!isSpend(op) || op.oneOff || spendOf(op) <= 0) return false
+  const c = op.categoryId
+  return !(c && (SPEND_LAST.includes(c) || plannedElsewhere(c, categories)))
+}
+
+/** Сумма, число и id своих трат месяца в разделе. */
+export type ShareFind = { amount: number; count: number; opIds: string[] }
+
+function shareIn(ops: Operation[], period: string, categoryId: string): ShareFind {
+  const list = spendIn(ops, period).filter((op) => (op.categoryId ?? UNKNOWN_CATEGORY) === categoryId)
+  return { amount: sumOf(list), count: list.length, opIds: list.map((op) => op.id) }
+}
+
+/**
+ * Переводы людям месяца — раздел `sc_people` без отвеченных: ответ «Кому → что» (правило `person` в `rules`) оставляет
+ * перевод в разделе, но он уже разобран — мимо суммы, числа и `top` (возврат приёмки 4б); перенос в другой раздел — тоже
+ * не здесь. `top` — получатель с наибольшей суммой (имя только для строки карточки на телефоне хозяина).
+ */
+export function peopleShare(ops: Operation[], period: string, rules: MerchantRule[] = []): ShareFind & { top: string | null } {
+  const open = ops.filter((op) => op.categoryId !== 'sc_people' || !('person' in (ruleFor(op, rules)?.to ?? {})))
+  const share = shareIn(open, period, 'sc_people')
+  const sums = new Map<string, number>()
+  for (const op of spendIn(open, period)) {
+    if (op.categoryId !== 'sc_people' || !op.counterparty) continue
+    sums.set(op.counterparty, (sums.get(op.counterparty) ?? 0) + spendOf(op))
+  }
+  const top = [...sums].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
+  return { ...share, top: top ? top[0] : null }
+}
+
+/** Наличные месяца — раздел `sc_cash`; `bare` — снятий без заметки (их и просит «На что?»). */
+export function cashShare(ops: Operation[], period: string): ShareFind & { bare: number } {
+  const share = shareIn(ops, period, 'sc_cash')
+  const bare = spendIn(ops, period).filter((op) => op.categoryId === 'sc_cash' && !op.memo).length
+  return { ...share, bare }
+}
+
+/** «Не разобрано» месяца — траты без раздела (`UNKNOWN_CATEGORY`, как в итогах). */
+export const unknownShare = (ops: Operation[], period: string): ShareFind => shareIn(ops, period, UNKNOWN_CATEGORY)
+
+/**
+ * Похоже на разовую: свободная покупка от `ONE_OFF_MIN` и от `ONE_OFF_SHARE` % факта `fact`, у продавца без операций за
+ * 3 прошлых месяца; до `ONE_OFF_MAX` по сумме. Без своих операций раньше месяца — пусто: «новым» был бы каждый продавец.
+ * Трата без раздела — мимо: её сначала разбирают карточкой «Не разобрано» (одна операция — одна карточка).
+ */
+export function oneOffLike(ops: Operation[], period: string, fact: number, categories: Categories = []): { opId: string; name: string; amount: number; categoryId: string }[] {
+  const from = addMonths(period, -ONE_OFF_MONTHS)
+  const before = ops.filter((op) => op.date.slice(0, 7) >= from && op.date.slice(0, 7) < period && isSpend(op))
+  // Свои траты — в каждом из 3 прошлых месяцев: выписка с 28-го прошлого месяца строку «впервые за 3 месяца» не даёт.
+  if (new Set(before.map((op) => op.date.slice(0, 7))).size < ONE_OFF_MONTHS || fact <= 0) return []
+  const seen = new Set(before.map(keyOf))
+  return ops
+    .filter((op) => inMonth(op, period) && !!op.categoryId && op.categoryId !== UNKNOWN_CATEGORY && freeOk(op, categories) && sellerOk(op) && !seen.has(keyOf(op)))
+    .filter((op) => spendOf(op) >= ONE_OFF_MIN && spendOf(op) * 100 >= fact * ONE_OFF_SHARE)
+    .sort((a, b) => spendOf(b) - spendOf(a) || a.id.localeCompare(b.id))
+    .slice(0, ONE_OFF_MAX)
+    .map((op) => ({ opId: op.id, name: clipName(op.merchant), amount: spendOf(op), categoryId: op.categoryId! }))
+}
+
+/**
+ * Неделя месяца дороже обычной: ISO-неделя с понедельником в месяце, целиком в своих операциях (от первой до последней
+ * даты), чьи свободные траты — от `WEEK_DEAR_PCT` % средней из `WEEK_BASE` полных недель перед ней; из таких — с
+ * наибольшим ростом. `pct` — на сколько процентов выше средней; `opId` — самая крупная свободная трата недели.
+ */
+export function dearerWeek(ops: Operation[], period: string, categories: Categories = []): { week: string; amount: number; usual: number; pct: number; opId: string } | null {
+  const free = ops.filter((op) => freeOk(op, categories))
+  const dates = ops.map((op) => op.date).sort()
+  if (!free.length || !dates.length) return null
+  const [first, last] = [dates[0], dates[dates.length - 1]]
+  const inWeek = (from: string, to: string) => free.filter((op) => op.date >= from && op.date <= to)
+  let best: { week: string; amount: number; usual: number; pct: number; opId: string } | null = null
+  for (let day = `${period}-01`; day.slice(0, 7) === period; day = addDaysIso(day, 1)) {
+    const week = weekKey(day)
+    const r = weekRange(week)
+    if (r.from !== day || r.to > last) continue
+    const base = Array.from({ length: WEEK_BASE }, (_, i) => weekRange(weekKey(addDaysIso(r.from, -7 * (i + 1)))))
+    if (base[WEEK_BASE - 1].from < first) continue
+    const usual = Math.round(base.reduce((s, b) => s + sumOf(inWeek(b.from, b.to)), 0) / WEEK_BASE)
+    const list = inWeek(r.from, r.to)
+    const amount = sumOf(list)
+    if (usual <= 0 || amount * 100 < usual * WEEK_DEAR_PCT) continue
+    const pct = Math.round((amount * 100) / usual) - 100
+    if (best && best.pct >= pct) continue
+    const top = list.reduce((a, b) => (spendOf(b) > spendOf(a) || (spendOf(b) === spendOf(a) && b.id < a.id) ? b : a))
+    best = { week, amount, usual, pct, opId: top.id }
+  }
+  return best
+}
+
+/** Мелкие свободные покупки месяца — дешевле `SMALL_MAX`: число и сумма. */
+export function smallBuys(ops: Operation[], period: string, categories: Categories = []): { count: number; amount: number } {
+  const list = ops.filter((op) => inMonth(op, period) && freeOk(op, categories) && op.kind === 'purchase' && spendOf(op) < SMALL_MAX)
+  return { count: list.length, amount: sumOf(list) }
+}
+
+/**
+ * Выходные месяца: доля свободных трат в сб–вс (`share`, целые %) и доля таких дней в месяце (`days`, целые %); трат нет
+ * — null. Картинка «Куда ушло» (Р-25), без кнопки.
+ */
+export function weekendShare(ops: Operation[], period: string, categories: Categories = []): { share: number; days: number } | null {
+  const list = ops.filter((op) => inMonth(op, period) && freeOk(op, categories))
+  const total = sumOf(list)
+  if (total <= 0) return null
+  const weekend = (iso: string) => [0, 6].includes(new Date(`${iso}T00:00:00Z`).getUTCDay())
+  const part = sumOf(list.filter((op) => weekend(op.date)))
+  const length = daysInMonth(period)
+  const days = Array.from({ length }, (_, i) => `${period}-${String(i + 1).padStart(2, '0')}`).filter(weekend).length
+  return { share: Math.round((part * 100) / total), days: Math.round((days * 100) / length) }
 }
 
 /** Итог тот же, что в документе: запись не нужна (B2C-25 — открытие ревизию не растит). */

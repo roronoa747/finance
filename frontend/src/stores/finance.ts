@@ -1056,28 +1056,46 @@ export const useFinanceStore = defineStore('finance', () => {
     })
   }
 
-  /** Разбор месяца ИИ (AI-09): последний живой по `at`; нет — null. */
-  const aiReviewOf = (month: string): AiReview | null =>
-    (householdDoc.value.aiReviews ?? [])
+  /** Свои разборы v4 (бэклог «Фидбек», Р-27) — личный документ, с надгробиями обрезки (повод их уже был). */
+  const myAiReviews = computed(() => (privateDoc.value.aiReviews as AiReview[] | undefined) ?? [])
+
+  /** Последний живой разбор месяца по `at`; равное `at` (два телефона разом) — по id: оба показывают один и тот же. */
+  const latestReview = (list: AiReview[], month: string): AiReview | null =>
+    list
       .filter((r) => !r.deletedAt && r.month === month)
-      // Равное `at` (два телефона разом) — по id: оба телефона показывают один и тот же разбор.
       .reduce<AiReview | null>((a, r) => (!a || r.at > a.at || (r.at === a.at && r.id > a.id) ? r : a), null)
 
+  /** Разбор месяца ИИ (AI-09): свой v4 из личного документа (Р-27), нет — последний из общего (v1–v3); нет — null. */
+  const aiReviewOf = (month: string): AiReview | null => latestReview(myAiReviews.value, month) ?? latestReview(householdDoc.value.aiReviews ?? [], month)
+
+  /** Список с новым разбором: живых — не больше `AI_REVIEWS_KEPT`, старшие по `at` — надгробия без текста и сводки. */
+  function keptReviews(list: AiReview[], review: AiReview, t: string): AiReview[] {
+    const all = [...list, review]
+    const live = all.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
+    return all.map((x) =>
+      drop.has(x.id)
+        ? { ...x, good: '', risk: '', steps: [], step: undefined, where: undefined, advices: undefined, lead: undefined, next: undefined, work: undefined, sent: null, deletedAt: t, updatedAt: t }
+        : x,
+    )
+  }
+
   /**
-   * Разбор месяца — в общий документ (AI-09, Р-4): партнёр и viewer видят его после синка. Живых — не больше
-   * `AI_REVIEWS_KEPT`: старшие по `at` становятся надгробиями без текста и сводки (документ не растёт).
+   * Разбор месяца v1–v3 — в общий документ (AI-09, Р-4): партнёр и viewer видят его после синка. v4 (бэклог «Фидбек»,
+   * Р-27) — в личный документ: свой у каждого, партнёр его не видит. Документ не растёт (`keptReviews`).
    */
   function saveAiReview(r: Omit<AiReview, 'id' | 'updatedAt'>): AiReview {
     const t = new Date().toISOString()
     const review: AiReview = { ...r, id: Math.random().toString(36).slice(2, 10), updatedAt: t }
-    mutateHouseholdDoc((doc) => {
-      const list = [...(doc.aiReviews ?? []), review]
-      const live = list.filter((x) => !x.deletedAt).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
-      const drop = new Set(live.slice(AI_REVIEWS_KEPT).map((x) => x.id))
-      doc.aiReviews = list.map((x) =>
-        drop.has(x.id) ? { ...x, good: '', risk: '', steps: [], step: undefined, where: undefined, advices: undefined, work: undefined, sent: null, deletedAt: t, updatedAt: t } : x,
-      )
-    })
+    if (r.v === 4) {
+      mutatePrivateDoc((doc) => {
+        doc.aiReviews = keptReviews((doc.aiReviews as AiReview[] | undefined) ?? [], review, t)
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        doc.aiReviews = keptReviews(doc.aiReviews ?? [], review, t)
+      })
+    }
     return review
   }
 
@@ -2459,6 +2477,7 @@ export const useFinanceStore = defineStore('finance', () => {
     setHouseholdDoc,
     mutateHouseholdDoc,
     aiReviewOf,
+    myAiReviews,
     saveAiReview,
     termSnapFor,
     ensureTermSnap,

@@ -1,7 +1,7 @@
 import type { CategoryKey, HueKey, ThemeChoice } from '@/lib/palette'
 import type { HabitTotal, ReviewFind, SpendCategory, SpendTotal } from '@/lib/statements/types'
 import type { MonthSummaryAI } from '@/lib/aiSummary'
-import type { StepCandidate } from '@/lib/finance'
+import type { ReviewCardKind, StepCandidate } from '@/lib/finance'
 
 export type PersonId = 'a' | 'b' | 'c'
 
@@ -48,8 +48,8 @@ export type AiReview = Tracked & {
   good: string
   risk: string
   steps: AiReviewStep[]
-  sent: MonthSummaryAI | ReviewPayload | ReviewPayloadV3 | null
-  v?: 2 | 3
+  sent: MonthSummaryAI | ReviewPayload | ReviewPayloadV3 | ReviewPayloadV4 | null
+  v?: 2 | 3 | 4
   reason?: ReviewReason
   reasonKey?: string
   step?: { text: string; candidate: StepCandidate | null }
@@ -62,6 +62,13 @@ export type AiReview = Tracked & {
    * него хранят `yearly` (₸ в год) и не переписываются — читает одно место (`reviewWorkMonthly`).
    */
   work?: { ops: number; found: number; monthly?: number; yearly?: number }
+  /**
+   * v4 (бэклог «Фидбек», Р-23, Р-27) — в **личном документе** (`privateDoc.aiReviews`), свой у каждого: первая карточка
+   * отчёта — одна главная мысль месяца с крупной цифрой факта; `next` — id карточки кода (`ReviewCard.id`, `kind:key`),
+   * которую показать второй. Сами карточки не хранятся — считаются при открытии.
+   */
+  lead?: { title: string; text: string; figure: { about: string; value: string; label?: string } | null }
+  next?: string
 }
 
 /** Экран предмета находки для «Открыть» (бэклог «Разбор», Р-18): путь строит код (`openPath`). */
@@ -100,6 +107,12 @@ export type ReviewAction = { id: string; kind: 'do' | 'open'; about: string; val
 
 /** Тело разбора v3 без повода (Р-16): всё, что уходит в модель, и «что ушло». */
 export type ReviewPayloadV3 = { v: 3; facts: ReviewFact[]; actions: ReviewAction[] }
+
+/** Карточка кода в теле разбора v4 (бэклог «Фидбек», Р-26, Р-28): вид и о чём — без цифр и без имён людей. */
+export type ReviewCardFact = { id: string; kind: ReviewCardKind; about: string }
+
+/** Тело разбора v4 без повода: факты карточек и месяца и карточки кода — всё, что уходит в модель, и «что ушло». */
+export type ReviewPayloadV4 = { v: 4; facts: ReviewFact[]; cards: ReviewCardFact[] }
 
 /**
  * Снимок плана месяца для метки «мечта сдвинулась» (бэклог «ИИ-польза», Р-6, AU-04): первый участник, открывший месяц,

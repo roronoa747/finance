@@ -76,6 +76,8 @@ function familyDoc(): SyncDoc {
   })
 }
 const LABEL = '+4\u00a0недели · кафе и рестораны выше плана'
+/** У Аруны кафе выше плана нет — раздел Ильяса не называем («Фидбек», Х-8, Р-29). */
+const PARTNER = LABEL.replace('кафе и рестораны', 'траты')
 const dreams = (p: Phone) => screen(p.pinia, Dreams, '/dreams')
 const goal = (p: Phone, act?: (s: Record<string, unknown>) => void) => screen(p.pinia, GoalDetail, '/goals/car', undefined, act ? [screenMixin({ returnOpen: true }, act)] : [])
 
@@ -129,7 +131,8 @@ describe('e2e / ИИ-польза Блок 2 — мечта и строки', ()
     at('2026-10-12T07:00:00Z')
     const b = await phone(server, st, 'b')
     const v = await phone(server, st, 'b', 'viewer')
-    for (const p of [a, b, v]) expect(part(await dreams(p), 'data-hero-note')).toBe(LABEL)
+    for (const p of [a, v]) expect(part(await dreams(p), 'data-hero-note')).toBe(LABEL)
+    expect(part(await dreams(b), 'data-hero-note')).toBe(PARTNER)
     expect(part(await goal(v), 'data-goal-shift')).toBe(LABEL)
     expect(await goal(v)).not.toContain('data-return-term')
 
@@ -154,7 +157,7 @@ describe('e2e / ИИ-польза Блок 2 — мечта и строки', ()
     // «Отменить» на телефоне Ильяса — надгробие; у Аруны после синка метка и план прежние.
     on(a).undoPlanShift(shift.id)
     await sync(a, b)
-    expect(part(await dreams(b), 'data-hero-note')).toBe(LABEL)
+    expect(part(await dreams(b), 'data-hero-note')).toBe(PARTNER)
     const { state, ctx } = on(b).planInput(K)
     expect(monthPlan(state, ctx).spend.find((s) => s.by === 'b')!.plan).toBe(300_000)
   })
