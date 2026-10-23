@@ -16,7 +16,8 @@ import type { AiReview, SyncDoc } from '@/types/finance'
  * Разбор месяца демо-семьи v4 (бэклог «Фидбек», Р-27, FB-17; v3 — «Разбор», RZ-09): заранее написанная мысль, без запроса
  * — в демо отчёт показывает её с пометкой «Пример». Слова **без цифр** — цифра только крупная (`figure` — готовый факт
  * кода по `about`); слова верны в любой день месяца (`demo.review.test.ts`). Карточки кода — демо-операций
- * (`reviewCards`); следующая за мыслью — «Не разобрано» (у демо сегодня пачка незнакомых продавцов), нет её — первая.
+ * (`reviewCards`); следующая за мыслью — «Не разобрано» (у демо сегодня пачка незнакомых продавцов). Нет её (первые дни
+ * месяца) — нет и мысли: она про траты без раздела; отчёт начинается с карточек, как у семьи без ИИ (ревью frontend 4б Н-6).
  */
 export const DEMO_REVIEW = {
   title: 'Разберём месяц',
@@ -38,14 +39,15 @@ export function demoReview(doc: SyncDoc, input: PlanInput, ops: Operation[]): Om
   const { payload, cards, labels } = buildReviewFactsV4(before, { state, ctx: input.ctx }, ops, 'a', 'month')
   const fact = payload.facts.find((f) => f.about === DEMO_REVIEW.figure)
   const label = fact ? labels.get(fact.id) : undefined
-  const next = cards.find((c) => c.kind === DEMO_REVIEW.next) ?? cards[0]
+  const unknown = cards.find((c) => c.kind === DEMO_REVIEW.next)
+  const next = unknown ?? cards[0]
   return {
     v: 4,
     reason: 'month',
     good: '',
     risk: '',
     steps: [],
-    lead: { title: DEMO_REVIEW.title, text: DEMO_REVIEW.text, figure: fact ? { about: fact.about, value: fact.value, ...(label ? { label } : {}) } : null },
+    ...(unknown ? { lead: { title: DEMO_REVIEW.title, text: DEMO_REVIEW.text, figure: fact ? { about: fact.about, value: fact.value, ...(label ? { label } : {}) } : null } } : {}),
     ...(next ? { next: next.id } : {}),
     work: reviewWork(state, input.ctx, cards, cards, 'a'),
     sent: payload,

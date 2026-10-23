@@ -50,12 +50,14 @@ describe('DEMO_REVIEW v4 — без цифр, верен в любой день,
 
       const r = demoReview(finance.householdDoc, finance.planInput(key), ops.all)
       expect(r.v).toBe(4)
-      expect(r.lead).toMatchObject({ title: DEMO_REVIEW.title, text: DEMO_REVIEW.text })
       const unknown = cards.find((c) => c.kind === 'unknown')
       expect(r.next).toBe(unknown?.id ?? cards[0].id)
-      // Крупная цифра — факт «не разобрано», когда карточка есть (в первые дни месяц находок — прошлый).
-      if (unknown) expect(r.lead!.figure).toMatchObject({ about: DEMO_REVIEW.figure, value: `${unknown.figure.value} %`, label: 'своих трат без раздела' })
-      else expect(r.lead!.figure).toBeNull()
+      // Мысль и крупная цифра — факт «не разобрано», когда карточка есть; нет её (первые дни) — мысли нет: она про траты
+      // без раздела (ревью frontend 4б Н-6).
+      if (unknown) {
+        expect(r.lead).toMatchObject({ title: DEMO_REVIEW.title, text: DEMO_REVIEW.text })
+        expect(r.lead!.figure).toMatchObject({ about: DEMO_REVIEW.figure, value: `${unknown.figure.value} %`, label: 'своих трат без раздела' })
+      } else expect(r.lead).toBeUndefined()
       expect(r.work).toEqual(reviewWork(state, ctx, cards, cards, 'a'))
       expect(r.sent && 'cards' in r.sent && r.sent.cards.map((c) => c.kind)).toEqual(cards.map((c) => c.kind))
       expect(JSON.stringify(r.sent)).not.toMatch(/за год|в год/)
