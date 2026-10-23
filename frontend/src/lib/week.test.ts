@@ -432,6 +432,27 @@ describe('sectionMonth — свои операции раздела за мес�
     ])
     expect(sectionMonth(list, { month: '2026-10', categoryId: 'sc_utilities', marked: new Set(['u1']), categories: [] }).days.flatMap((d) => d.ops.map((o) => o.id))).toEqual(['u2'])
   })
+
+  it('`payments` (Х-6): строки всех разделов платежей без отметки — сумма = `unmarked` итогов; `recurring` — у строки', () => {
+    const list: Operation[] = [
+      ...OPS,
+      op('2026-10-14', 4_990, 'sc_subscriptions', 'Yandex Plus', { id: 's1' }),
+      op('2026-10-15', 1_990, 'sc_subscriptions', 'Yandex Plus', { id: 's2', oneOff: true }),
+      op('2026-10-16', 3_000, 'sc_telecom', 'Beeline', { id: 't1' }),
+    ]
+    // Алсеко 25 000 и подписка 4 990 отмечены → без отметки: 1 990 (разовая в разделе платежей — обычная строка) + 3 000.
+    const marked = new Set([OPS.find((o) => o.merchant === 'Алсеко')!.id, 's1'])
+    const m = sectionMonth(list, { month: '2026-10', payments: true, marked, categories: [], recurring: (o) => (o.id === 't1' ? { name: 'Beeline', amount: 3_000, day: 16, kind: 'telecom' } as never : null) })
+    expect(m).toMatchObject({ total: 4_990, count: 2, more: null })
+    expect(m.days.flatMap((d) => d.ops.map((o) => [o.id, o.amount, !!o.recurring]))).toEqual([['t1', 3_000, true], ['s2', 1_990, false]])
+    const unmarked = periodsOf(list)
+      .flatMap(({ kind, period }) => spendTotals(list, 'a', kind, period, T0, { marked, categories: [] }))
+      .filter((t) => t.kind === 'month' && t.period === '2026-10')
+      .reduce((s, t) => s + (t.unmarked ?? 0), 0)
+    expect(m.total).toBe(unmarked)
+    // Без набора отметок — строк нет, как у раздела платежей.
+    expect(sectionMonth(list, { month: '2026-10', payments: true }).count).toBe(0)
+  })
 })
 
 describe('«Разовая» в неделе и месяце (FB-07, Р-16)', () => {

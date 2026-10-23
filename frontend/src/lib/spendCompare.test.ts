@@ -176,13 +176,24 @@ describe('spendCompare — порог точки и текущий месяц', 
 })
 
 describe('spendCompare — «не разобрано» и переводы в конце (Х-1, Х-3)', () => {
-  it('«не разобрано» — отдельным полем: строки + оно + платежи = потрачено месяца', () => {
-    const r = spendCompare(family(), ctxOf())
+  it('«не разобрано» и «Платежи без отметки» — отдельными полями: строки + они + разовые = потрачено месяца (Х-6)', () => {
+    // Коммуналка 25 000: 18 000 отмечено платежом (уже в платежах месяца), 7 000 без отметки (`unmarked`) — трата.
+    const totals = TOTALS.map((t) => (t.period === KEY && t.categoryId === 'sc_utilities' ? { ...t, unmarked: 7_000 } : t))
+    const r = spendCompare(family(), ctxOf({ totals }))
     expect(r.unknown).toBe(5_000)
-    // 100 000 + 60 000 + 0 (строки) + 5 000 (не разобрано) + 25 000 (коммуналка — раздел платежей) = 190 000 итогов октября.
+    expect(r.unmarkedPayments).toBe(7_000)
+    // 100 000 + 60 000 + 0 (строки) + 5 000 (не разобрано) + 0 (разовые) + 7 000 (платежи без отметки) = 172 000 = потрачено.
     const rows = r.rows.reduce((s, x) => s + (x.amount ?? 0), 0)
-    expect(rows + r.unknown + 25_000).toBe(TOTALS.filter((t) => t.period === KEY).reduce((s, t) => s + t.amount, 0))
-    expect(spendCompare(family(), ctxOf({ uploads: UPLOADS.filter((u) => u.period_from < KEY) })).unknown).toBe(0)
+    expect(rows + r.unknown + r.oneOff + r.unmarkedPayments).toBe(172_000)
+    expect(spendFact(monthPlan(family(), ctxOf({ totals })).spend)).toBe(172_000)
+    // Коммуналка отмечена целиком — в сумму не входит: строки сходятся с потрачено без неё.
+    const paid = spendCompare(family(), ctxOf())
+    expect(paid.unmarkedPayments).toBe(0)
+    expect(paid.rows.reduce((s, x) => s + (x.amount ?? 0), 0) + paid.unknown + paid.oneOff).toBe(spendFact(monthPlan(family(), ctxOf()).spend))
+    // Без разделов платежей — 0; выписок месяца нет — 0.
+    expect(spendCompare(family(), ctxOf({ totals: TOTALS.filter((t) => t.categoryId !== 'sc_utilities') })).unmarkedPayments).toBe(0)
+    const none = spendCompare(family(), ctxOf({ totals, uploads: UPLOADS.filter((u) => u.period_from < KEY) }))
+    expect([none.unknown, none.unmarkedPayments]).toEqual([0, 0])
   })
   it('переводы людям и наличные — последними и без точки, даже крупнейшие и выше обычного', () => {
     // Переводы: обычно 10 000, октябрь 500 000 — по сумме первые и выше порога, но идут после трат и точки не дают.

@@ -4262,7 +4262,7 @@ export function spendCompare(
   state: MonthPlanState,
   ctx: MonthPlanCtx,
   by?: PersonId,
-): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number; oneOff: number } {
+): { income: number; usualFrom: string[]; rows: SpendCompareRow[]; unknown: number; oneOff: number; unmarkedPayments: number } {
   const { key } = ctx
   const people = peopleOf(state.people ?? [], by)
   const live = ctx.spendCategories.filter(alive)
@@ -4308,14 +4308,17 @@ export function spendCompare(
         (b.amount ?? b.plan ?? 0) - (a.amount ?? a.plan ?? 0) ||
         a.categoryId.localeCompare(b.categoryId),
     )
-  // «Не разобрано» (Х-1) и «Разовые» (FB-07): тихие строки внизу «Трат», чтобы строки сходились с «потрачено» заголовка;
-  // выписок нет — 0.
+  // «Не разобрано» (Х-1), «Разовые» (FB-07) и «Платежи без отметки» (Х-6, Р-7: строки разделов платежей без отметки —
+  // `unmarked` итогов, они же в «потрачено» через `factOf`): тихие строки внизу «Трат», чтобы строки сходились с
+  // «потрачено» заголовка; выписок нет — 0.
+  const unmarkedPayments = byCategory.rows.filter((r) => plannedElsewhere(r.categoryId, live)).reduce((s, r) => s + r.amount, 0)
   return {
     income,
     usualFrom: usual?.months ?? [],
     rows,
     unknown: hasFact ? byCategory.unknown : 0,
     oneOff: hasFact ? byCategory.oneOff : 0,
+    unmarkedPayments: hasFact ? unmarkedPayments : 0,
   }
 }
 
@@ -5448,23 +5451,27 @@ export type SectionMonth = Omit<SectionWeek, 'tops'>
  * раздела (`isSpend`; у разделов платежей — только строки без отметки `marked`, как `weekFeed` и итоги `unmarked`),
  * сумма строки — `spendOf` (с «вернули»), дни свежими сверху, первые `limit` и «Ещё N · сумма». Сумма всех строк —
  * своя часть факта раздела: разовые (FB-07) — не в разделе, а в листе «Разовые» (`oneOff: true` — все свои разовые
- * месяца, `categoryId` не смотрится; в разделах платежей разовая — обычная строка, как в `oneOffOf`). Топа продавцов
- * нет: в месяце он у находок.
+ * месяца, `categoryId` не смотрится; в разделах платежей разовая — обычная строка, как в `oneOffOf`). `payments: true` —
+ * лист «Платежи без отметки» (Х-6, Р-7): строки всех разделов платежей без отметки `marked`, сумма — `unmarkedPayments`
+ * `spendCompare`; `recurring` — «В платежи» у строки, как у листа раздела недели. Топа продавцов нет: в месяце он у находок.
  */
 export function sectionMonth(
   ops: Operation[],
   where: {
     month: string
-    /** Раздел; не нужен при `oneOff`. */
+    /** Раздел; не нужен при `oneOff` и `payments`. */
     categoryId?: string
     oneOff?: boolean
+    payments?: boolean
     limit?: number
     marked?: ReadonlySet<string>
     categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[]
+    recurring?: (op: Operation) => RecurringPrefill | null
   },
 ): SectionMonth {
   const categories = where.categories ?? []
   const isOneOff = (op: Operation) => !!op.oneOff && !(op.categoryId && plannedElsewhere(op.categoryId, categories))
+  const unmarked = (op: Operation) => !!where.marked && !where.marked.has(op.id)
   const planned = !!where.categoryId && plannedElsewhere(where.categoryId, categories)
   const list = ops
     .filter(
@@ -5473,17 +5480,17 @@ export function sectionMonth(
         op.date.slice(0, 7) === where.month &&
         (where.oneOff
           ? isOneOff(op)
-          : (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId &&
-            !isOneOff(op) &&
-            (!planned || (!!where.marked && !where.marked.has(op.id)))),
+          : where.payments
+            ? !!op.categoryId && plannedElsewhere(op.categoryId, categories) && unmarked(op)
+            : (op.categoryId ?? UNKNOWN_CATEGORY) === where.categoryId && !isOneOff(op) && (!planned || unmarked(op))),
     )
-    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff }))
+    .map((op) => ({ id: op.id, date: op.date, name: op.counterparty ?? (isHand(op) ? op.merchant : shortMerchant(op.merchant)), amount: spendOf(op), hand: isHand(op), refund: op.refund?.amount, oneOff: !!op.oneOff && !where.oneOff, recurring: !isHand(op) && where.recurring ? where.recurring(op) : null }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount || a.id.localeCompare(b.id))
   const shown = list.slice(0, where.limit ?? SECTION_OPS)
   const days: SectionMonth['days'] = []
   for (const op of shown) {
     const last = days.at(-1)
-    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}) }
+    const item = { id: op.id, name: op.name, amount: op.amount, hand: op.hand, ...(op.refund ? { refund: op.refund } : {}), ...(op.oneOff ? { oneOff: true as const } : {}), ...(op.recurring ? { recurring: op.recurring } : {}) }
     if (last?.date === op.date) last.ops.push(item)
     else days.push({ date: op.date, ops: [item] })
   }

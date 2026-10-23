@@ -173,13 +173,14 @@ const freedMeta = computed(() => {
 
 const spentFact = computed(() => spendFact(plan.value.spend))
 /**
- * Траты в сравнении (Р-5, AU-01) — только свои разделы (FB-12, Р-18): факт, план, «обычно», «Не разобрано» и «Разовые» —
- * мои; точка — у раздела выше обычного и у заголовка «Траты». Семейное «потрачено» в заголовке — как было. Viewer
- * разделов не видит (матрица §3); его слот может совпасть со слотом участника — поэтому пусто по `canEdit`, не по `me`.
+ * Траты в сравнении (Р-5, AU-01) — только свои разделы (FB-12, Р-18): факт, план, «обычно», «Не разобрано», «Разовые» и
+ * «Платежи без отметки» — мои; точка — у раздела выше обычного и у заголовка «Траты». Семейное «потрачено» в заголовке —
+ * как было. Viewer разделов не видит (матрица §3); его слот может совпасть со слотом участника — поэтому пусто по
+ * `canEdit`, не по `me`.
  */
 const compare = computed(() => {
   const c = spendCompare(state.value, ctx.value, me.value)
-  return canEdit.value ? c : { ...c, rows: [], unknown: 0, oneOff: 0 }
+  return canEdit.value ? c : { ...c, rows: [], unknown: 0, oneOff: 0, unmarkedPayments: 0 }
 })
 /**
  * Строки участников (Р-7): у каждого «факт / план» одной строкой, свой первым. В семье из одного своя строка повторила
@@ -490,6 +491,7 @@ function openCatHand(id: string) {
   closeCat()
   closeOneOff()
   closeUnknown()
+  closeUnmarked()
   catHand.value = id
 }
 /**
@@ -533,6 +535,21 @@ const unknownOps = computed(() => {
   if (!unknownOpen.value || !canEdit.value) return null
   const { marked, categories } = ops.totalMarks(ops.shown)
   const list = sectionMonth(ops.shown, { month: sheetMonth.value, categoryId: UNKNOWN_CATEGORY, marked, categories, ...(unknownAll.value ? { limit: Infinity } : {}) })
+  return list.count ? list : null
+})
+/**
+ * «Платежи без отметки» (Х-6, Р-7): тихая строка под «Разовыми» — сумма строк разделов платежей без отметки
+ * (`spendCompare.unmarkedPayments`); лист — эти строки (`sectionMonth` с `payments`), у строки с повтором продавца —
+ * «В платежи» (`AddPaymentSheet`; кредит — лист кредита). Строка с вопросом «это платёж по …?» уже отмечена
+ * (`markedOps`) — её здесь нет. Отметили — строка уходит, сумма пересчитывается. Viewer — без листа.
+ */
+const { open: unmarkedOpen, close: closeUnmarked } = useQuerySheet('unmarked')
+const unmarkedAll = ref(false)
+watch(unmarkedOpen, () => (unmarkedAll.value = false))
+const unmarkedOps = computed(() => {
+  if (!unmarkedOpen.value || !canEdit.value) return null
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  const list = sectionMonth(ops.shown, { month: props.monthKey, payments: true, marked, categories, recurring: ops.recurringFor, ...(unmarkedAll.value ? { limit: Infinity } : {}) })
   return list.count ? list : null
 })
 
@@ -894,7 +911,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                 <i class="block h-full rounded-pill bg-s8" :style="{ width: `${spendShare(r.amount, r.plan)}%` }" />
               </span>
             </div>
-            <!-- «Не разобрано» (Х-1): тихо, без листа и точки — чтобы строки сходились с «потрачено» заголовка -->
+            <!-- «Не разобрано» (Х-1): тихо, без точки, лист своих трат без раздела — чтобы строки сходились с «потрачено» заголовка -->
             <button
               v-if="compare.unknown > 0"
               type="button"
@@ -916,6 +933,18 @@ function addFund(kind: 'reserve' | 'cushion') {
             >
               <span>Разовые</span>
               <span class="whitespace-nowrap num">{{ plain(compare.oneOff) }}</span>
+            </button>
+            <!-- «Платежи без отметки» (Х-6): как «Не разобрано» — строки разделов платежей без отметки, лист с «В платежи» -->
+            <button
+              v-if="compare.unmarkedPayments > 0"
+              type="button"
+              class="press flex w-full cursor-pointer items-center justify-between gap-2 border-t border-line py-2.5 text-left text-[15px] text-ink-2 first:border-t-0"
+              data-spend-unmarked
+              :disabled="!canEdit"
+              @click="unmarkedOpen = true"
+            >
+              <span>Платежи без отметки</span>
+              <span class="whitespace-nowrap num">{{ plain(compare.unmarkedPayments) }}</span>
             </button>
             <button
               v-if="canEdit"
@@ -1186,6 +1215,18 @@ function addFund(kind: 'reserve' | 'cushion') {
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-unknown-amount>{{ money(sheetCompare.unknown) }}</p>
       <p class="mt-1 text-[14px] text-ink-2">траты без раздела</p>
       <SectionOpsList v-if="unknownOps" :ops="unknownOps" data-unknown-ops @more="unknownAll = true" @open="(id) => (catOp = id)" @hand="openCatHand" />
+    </Sheet>
+    <Sheet :open="unmarkedOpen && canEdit" title="Платежи без отметки" :z="sheetZ" @close="closeUnmarked">
+      <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-unmarked-amount>{{ money(compare.unmarkedPayments) }}</p>
+      <p class="mt-1 text-[14px] text-ink-2">ещё не в платежах</p>
+      <SectionOpsList
+        v-if="unmarkedOps"
+        :ops="unmarkedOps"
+        @more="unmarkedAll = true"
+        @open="(id) => (catOp = id)"
+        @hand="openCatHand"
+        @pay="(id) => (payOp = id)"
+      />
     </Sheet>
     <OpSheet :op-id="catOp" :z="sheetZ + 10" @close="catOp = null" />
     <AddPaymentSheet :op-id="payOp" :z="sheetZ + 20" @close="payOp = null" />

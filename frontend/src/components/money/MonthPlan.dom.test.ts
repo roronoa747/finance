@@ -1391,6 +1391,100 @@ describe('FB-17: «Не разобрано» на «Месяце» — тиха�
 })
 
 /**
+ * TL-05 (Х-6, Р-7): «Платежи без отметки» — сентябрь Ильяса: APPLE.COM 4 990 (было и в августе — повтор, «В платежи»),
+ * коммуналка ALSECO 25 000 (словарный вид — «В платежи» и у одной строки), кафе 2 500. Без отметки: 4 990 + 25 000 = 29 990; потрачено Ильяса —
+ * 2 500 + 29 990 = 32 490 (у Аруны выписки нет).
+ */
+describe('TL-05: «Платежи без отметки» на «Месяце» — тихая строка и лист строк платежей без отметки', () => {
+  const opOf = (id: string, date: string, amount: number, merchant: string, categoryId: string): Operation => ({
+    id, bank: 'kaspi', date, amount: -amount, kind: 'purchase', merchant, categoryId, internal: false,
+  })
+  const OPS = [
+    opOf('ap8', '2026-08-14', 4_990, 'APPLE.COM BILL', 'sc_subscriptions'),
+    opOf('ap9', '2026-09-10', 4_990, 'APPLE.COM BILL', 'sc_subscriptions'),
+    opOf('ut9', '2026-09-12', 25_000, 'ALSECO', 'sc_utilities'),
+    opOf('cf9', '2026-09-14', 2_500, 'Starbucks', 'sc_cafe'),
+  ]
+  const tot = (period: string, categoryId: string, amount: number, unmarked?: number): SpendTotal => ({
+    id: `a:month:${period}:${categoryId}`, by: 'a', kind: 'month', period, categoryId, amount, ops: 1, updatedAt: T0, ...(unmarked !== undefined ? { unmarked } : {}),
+  })
+  const totals = [tot('2026-08', 'sc_subscriptions', 4_990, 4_990), tot(KEY, 'sc_subscriptions', 4_990, 4_990), tot(KEY, 'sc_utilities', 25_000, 25_000), tot(KEY, 'sc_cafe', 2_500)]
+  async function openMonth(role: 'member' | 'viewer' = 'member', slot: 'a' | 'b' = 'a') {
+    vi.setSystemTime(new Date('2026-09-17T07:00:00Z'))
+    vi.spyOn(apiClient, 'listStatementUploads').mockResolvedValue({ uploads: [{ id: 'u1', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-17', ops_count: 4, created_at: T0 }] } as never)
+    const finance = await open(role, familyDoc({ obligations: [], credits: [], payments: [], spendTotals: totals }), '/month', slot)
+    const ops = useOperationsStore()
+    if (role === 'member' && slot === 'a') for (const o of OPS) ops.ops[o.id] = o
+    await ops.loadUploads()
+    await flush()
+    await press(section('spend'))
+    return finance
+  }
+  const spentRows = () =>
+    [...all('[data-spend-row] [data-spend-amount]'), ...all('[data-spend-unknown] .num, [data-spend-oneoff] .num, [data-spend-unmarked] .num')].reduce(
+      (s, el) => s + Number(txt(el).replace(/\D/g, '')),
+      0,
+    )
+
+  it('строка внизу «Трат»: строки + «Платежи без отметки» = потрачено; лист — строки с «В платежи»; «В платежи» → строка ушла, сумма пересчитана', async () => {
+    const finance = await openMonth()
+    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${plain(29_990)}`))
+    expect(spentRows()).toBe(32_490)
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(32_490)}`))
+    // Тихая, как «Не разобрано»: не брендовая.
+    expect(q('[data-spend-unmarked]')!.className).not.toContain('bg-brand')
+
+    await press(q('[data-spend-unmarked]'))
+    expect(txt(q('[data-unmarked-amount]'))).toBe(norm(money(29_990)))
+    expect(all('[role="dialog"] [data-cat-op]').map((el) => el.dataset.catOp)).toEqual(['ut9', 'ap9'])
+    // «В платежи» — небольшая (`xs`) у каждой строки: повтор продавца и словарная коммуналка.
+    const pay = q('[data-cat-pay="ap9"]')!
+    expect(pay.className).toContain('h-[26px]')
+    expect(q('[data-cat-pay="ut9"]')).not.toBeNull()
+    await press(pay)
+    expect(txt(all('[role="dialog"]').at(-1)!)).toContain('Регулярный платёж')
+    await press(all('[role="dialog"] button').find((b) => txt(b) === 'Добавить'))
+    await flush()
+    expect(finance.obligations.map((o) => o.name)).toEqual(['APPLE.COM BILL'])
+    expect(finance.payments.find((p) => p.opId === 'ap9')).toMatchObject({ kind: 'obligation', period: KEY, amount: 4_990 })
+    // Строка ушла из листа, сумма — 25 000; «Подписки» отмечены — в «потрачено» их больше нет, строки снова сходятся.
+    expect(txt(q('[data-unmarked-amount]'))).toBe(norm(money(25_000)))
+    expect(all('[role="dialog"] [data-cat-op]').map((el) => el.dataset.catOp)).toEqual(['ut9'])
+    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${plain(25_000)}`))
+    expect(spentRows()).toBe(27_500)
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(27_500)}`))
+  })
+
+  it('строка коммуналки → лист операции поверх; все отмечены — строки нет', async () => {
+    const finance = await openMonth()
+    await press(q('[data-spend-unmarked]'))
+    await press(q('[data-cat-op="ut9"]'))
+    expect(all('[role="dialog"]')).toHaveLength(2)
+    expect(txt(all('[role="dialog"]')[1]!)).toContain('ALSECO')
+    app?.unmount()
+    document.body.innerHTML = ''
+    finance.householdDoc.spendTotals = []
+    await open('member', familyDoc({ obligations: [], credits: [], payments: [], spendTotals: totals.map((t) => ({ ...t, unmarked: 0 })) }))
+    await useOperationsStore().loadUploads()
+    await flush()
+    await press(section('spend'))
+    expect(q('[data-spend-row]')).not.toBeNull()
+    expect(q('[data-spend-unmarked]')).toBeNull()
+  })
+
+  it('viewer — строки нет (разделов у него нет, как «Не разобрано»); партнёр — только своё (у Аруны выписки нет — строки нет)', async () => {
+    await openMonth('viewer')
+    expect(q('[data-spend-unmarked]')).toBeNull()
+    expect(q('[data-unmarked-amount]')).toBeNull()
+    app?.unmount()
+    document.body.innerHTML = ''
+    await openMonth('member', 'b')
+    expect(q('[data-spend-unknown]')).toBeNull()
+    expect(q('[data-spend-unmarked]')).toBeNull()
+  })
+})
+
+/**
  * Ревью frontend 4б Н-5: маршрут кнопки карточки отчёта (`reviewAct`) — на каждую цель свой лист поверх отчёта (слой
  * `sheetZ` 60 и выше), закрыли — отчёт открыт. `do` и «Отметить разовой» отчёт делает сам, `obligation` — переход.
  */

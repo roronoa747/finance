@@ -3,10 +3,12 @@ import { PhCaretRight, PhPencilSimple } from '@phosphor-icons/vue'
 import type { SectionMonth } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import { dayWeekdayLabel } from '@/lib/dates'
+import Button from '@/components/ui/Button.vue'
 
 /**
  * Свои операции месяца по дням (FB-05, Р-14) — лист раздела «Месяца» и лист «Разовые» (FB-07): первые пять и тихое
  * «Ещё N · сумма»; строка выписки — лист операции (`open`), ручная — «Трата» (`hand`). Числа — из `sectionMonth`.
+ * Строка с повтором продавца (`recurring`, лист «Платежи без отметки», Х-6) — небольшая «В платежи» у суммы (`pay`).
  */
 defineProps<{ ops: SectionMonth }>()
 const emit = defineEmits<{
@@ -16,6 +18,8 @@ const emit = defineEmits<{
   (e: 'open', id: string): void
   /** Ручная трата — лист «Трата». */
   (e: 'hand', id: string): void
+  /** «В платежи» у строки — лист нового платежа (`AddPaymentSheet`). */
+  (e: 'pay', id: string): void
 }>()
 </script>
 
@@ -24,21 +28,22 @@ const emit = defineEmits<{
   <div class="flex flex-col" data-cat-ops>
     <template v-for="d in ops.days" :key="d.date">
       <p class="pb-1 pt-2 text-[12px] font-semibold uppercase tracking-[0.04em] text-ink-2">{{ dayWeekdayLabel(d.date) }}</p>
-      <button
-        v-for="o in d.ops"
-        :key="o.id"
-        type="button"
-        class="press flex w-full cursor-pointer items-center gap-2 border-t border-line py-[7px] text-left text-[14.5px] text-ink"
-        :aria-label="o.hand ? `Поправить: ${o.name}` : o.name"
-        :data-cat-op="o.id"
-        @click="o.hand ? emit('hand', o.id) : emit('open', o.id)"
-      >
-        <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
-        <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
-        <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
-        <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
-        <PhCaretRight v-else :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
-      </button>
+      <div v-for="o in d.ops" :key="o.id" class="flex items-center gap-2 border-t border-line">
+        <button
+          type="button"
+          class="press flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-[7px] text-left text-[14.5px] text-ink"
+          :aria-label="o.hand ? `Поправить: ${o.name}` : o.name"
+          :data-cat-op="o.id"
+          @click="o.hand ? emit('hand', o.id) : emit('open', o.id)"
+        >
+          <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
+          <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
+          <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+          <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+          <PhCaretRight v-else-if="!o.recurring" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
+        </button>
+        <Button v-if="o.recurring" variant="secondary" size="xs" class="shrink-0" :data-cat-pay="o.id" @click="emit('pay', o.id)">В платежи</Button>
+      </div>
     </template>
   </div>
   <button
