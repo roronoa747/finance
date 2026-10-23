@@ -210,3 +210,32 @@ describe('FB-05: свои операции в листе раздела «Мес
     expect(q('[data-cat-ops]')).toBeNull()
   })
 })
+
+describe('TL-06: «Наличные» и «Переводы людям» — только сумма и операции (Х-14, Р-9)', () => {
+  const OPS: SectionMonth = {
+    total: 50_000, count: 2,
+    days: [{ date: '2026-09-24', ops: [{ id: 'c1', name: 'Kaspi ATM', amount: 30_000, hand: false }, { id: 'c2', name: 'Halyk ATM', amount: 20_000, hand: false }] }],
+    more: null,
+  }
+  const BARE = ['[data-cat-share]', '[data-cat-usual]', '[data-cat-plan]', '[data-cat-advice-box]', '[data-cat-plans-title]', '[data-cat-person]', '[data-cat-edit]', '[data-cat-rk]']
+
+  it.each([
+    ['sc_cash', 'Наличные'],
+    ['sc_people', 'Переводы людям'],
+  ])('%s: крупно сумма, операции; доли, «обычно», плана, «до плана» и «Изменить» нет — даже при «обычно у вас 0» и плане', async (categoryId, name) => {
+    // `usual: 0` — раздел без прошлых месяцев («обычно у вас 0» было бы шумом), план есть, совет есть.
+    await mount({ categoryId, name, amount: 50_000, usual: 0, share: 4, group: null }, { ops: OPS })
+    expect(txt(q('[role="dialog"] h3'))).toBe(name)
+    expect(txt(q('[data-cat-amount]'))).toBe(norm(money(50_000)))
+    for (const sel of BARE) expect(q(sel), sel).toBeNull()
+    expect(document.querySelectorAll('[data-cat-op]')).toHaveLength(2)
+    // Действие листа — прежнее: строка → лист операции.
+    q('[data-cat-op="c1"]')!.click()
+    expect(events).toEqual([['open', 'c1']])
+  })
+
+  it('обычный раздел — как был: доля, «обычно», план, «до плана» и «Изменить»', async () => {
+    await mount({}, { ops: OPS })
+    for (const sel of ['[data-cat-share]', '[data-cat-usual]', '[data-cat-plan]', '[data-cat-advice]', '[data-cat-plans-title]', '[data-cat-edit]', '[data-cat-rk]']) expect(q(sel), sel).not.toBeNull()
+  })
+})

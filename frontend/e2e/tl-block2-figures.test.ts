@@ -2,9 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { createWebHistory, RouterView } from 'vue-router'
-import { createAppRouter } from '../src/router'
+import { createMemoryHistory, createRouter, createWebHistory, RouterView } from 'vue-router'
+import { createAppRouter, routes } from '../src/router'
 import { startDemo } from '../src/lib/demo'
+import { reviewCards } from '../src/lib/finance'
 import type { ApiClient } from '../src/api/client'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
@@ -18,7 +19,7 @@ import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, scree
 
 /**
  * Блок 2 «Хвосты» (TL-04…TL-06; Р-7…Р-9): цифры экранов сходятся со строками. TL-04 — демо-семья, настоящий роутер на
- * web-истории, сети нет; TL-05 — новая семья на фейковом сервере, экран «Месяца» строкой (SSR).
+ * web-истории, сети нет; TL-05 и TL-06 — новая семья на фейковом сервере, экран «Месяца» строкой (SSR).
  */
 let app: App | null = null
 
@@ -195,5 +196,66 @@ describe('e2e / Хвосты Блок 2 — «Платежи без отметк
     const after = await spend(A)
     expect(after.html).not.toContain('Платежи без отметки')
     expect(after).toMatchObject({ rows: 37_600, unmarked: 0, spent: 37_600 })
+  })
+
+  /**
+   * TL-06 (Х-14, Р-9): октябрь — продукты Magnum 40 000; снятия Kaspi ATM 30 000 и Halyk ATM 20 000 без заметки
+   * (наличные 50 000 — 43 % факта 115 000, порог 10 %); перевод Айгуль Б. 25 000 (22 %, порог 20 %). План: продукты
+   * 50 000, наличные 30 000, переводы 10 000 — в листах наличных и переводов его нет.
+   */
+  it('TL-06: карточка «На что?» → лист «Наличные» — сумма и снятия, без плана, «обычно» и доли; «Переводы людям» — так же; продукты — как были', async () => {
+    server.data.spendPlans = [
+      { id: 'a:sc_food', by: 'a', categoryId: 'sc_food', amount: 50_000, updatedAt: T0 },
+      { id: 'a:sc_cash', by: 'a', categoryId: 'sc_cash', amount: 30_000, updatedAt: T0 },
+      { id: 'a:sc_people', by: 'a', categoryId: 'sc_people', amount: 10_000, updatedAt: T0 },
+    ]
+    const A = await phone()
+    setActivePinia(A.pinia)
+    const ops = useOperationsStore()
+    const parsed = statement([
+      op('2026-10-03', -40_000, 'Magnum', 'sc_food'),
+      { ...op('2026-10-05', -30_000, 'Kaspi ATM', 'sc_cash'), kind: 'cash' },
+      { ...op('2026-10-12', -20_000, 'Halyk ATM', 'sc_cash'), kind: 'cash' },
+      { ...op('2026-10-09', -25_000, 'Перевод', 'sc_people'), kind: 'transfer-out', counterparty: 'Айгуль Б.' },
+    ])
+    await ops.upload([{ name: 'x.pdf', parsed }], A.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    await A.store.syncHousehold(A.client)
+
+    setActivePinia(A.pinia)
+    const { state, ctx } = A.store.planInput('2026-10')
+    const cards = reviewCards(state, ctx, ops.all, 'a', { rules: A.store.merchantRules })
+    expect(cards.find((c) => c.kind === 'cash')).toMatchObject({ button: 'На что?', target: { kind: 'cat', categoryId: 'sc_cash' } })
+    expect(cards.find((c) => c.kind === 'people')).toMatchObject({ target: { kind: 'cat', categoryId: 'sc_people' } })
+
+    // Кнопка карточки открывает лист раздела (`reviewAct` → `catFor`, тот же адрес `?cat=`). Лист — в `body` (телепорт),
+    // поэтому «Месяц» монтируется в DOM на сторе телефона.
+    const sheet = async (cat: string) => {
+      app?.unmount()
+      document.body.innerHTML = ''
+      const router = createRouter({ history: createMemoryHistory(), routes })
+      await router.push(`/month?cat=${cat}`)
+      await router.isReady()
+      const root = document.createElement('div')
+      document.body.appendChild(root)
+      app = createApp(Month)
+      app.use(A.pinia)
+      app.use(router)
+      app.mount(root)
+      for (let i = 0; i < 4; i++) await vi.advanceTimersByTimeAsync(0)
+      return q('[role="dialog"]')!
+    }
+    const BARE = ['[data-cat-share]', '[data-cat-usual]', '[data-cat-plan]', '[data-cat-advice-box]', '[data-cat-plans-title]', '[data-cat-person]', '[data-cat-edit]']
+    const cash = await sheet('sc_cash')
+    expect(tenge(cash.querySelector('[data-cat-amount]'))).toBe(50_000)
+    expect([...cash.querySelectorAll<HTMLElement>('[data-cat-op]')].map((el) => txt(el))).toEqual([expect.stringContaining('Halyk ATM'), expect.stringContaining('Kaspi ATM')])
+    for (const sel of BARE) expect(cash.querySelector(sel), sel).toBeNull()
+    const people = await sheet('sc_people')
+    expect(tenge(people.querySelector('[data-cat-amount]'))).toBe(25_000)
+    expect(txt(people)).toContain('Айгуль Б.')
+    for (const sel of BARE) expect(people.querySelector(sel), sel).toBeNull()
+    // Обычный раздел — «обычно», план и «Изменить» на месте.
+    const food = await sheet('sc_food')
+    for (const sel of ['[data-cat-usual]', '[data-cat-plan]', '[data-cat-plans-title]', '[data-cat-edit]']) expect(food.querySelector(sel), sel).not.toBeNull()
   })
 })

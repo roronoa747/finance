@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { earlierLabel, type HabitImage, type ImageAction, type SectionMonth, type SpendCompareRow } from '@/lib/finance'
+import { SPEND_LAST, earlierLabel, type HabitImage, type ImageAction, type SectionMonth, type SpendCompareRow } from '@/lib/finance'
 import { RK_SPEND_GROUPS } from '@/lib/statements/dictionary'
 import { money, plain } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
@@ -17,6 +17,8 @@ import Button from '@/components/ui/Button.vue'
  * Брендовой кнопки нет (правило 12: действия плана — тихие). Под цифрами — свои операции раздела за месяц (FB-05, Р-14):
  * первые пять по дням и тихое «Ещё N · сумма»; строка выписки — лист операции (`open`), ручная — «Трата» (`hand`); своих
  * операций нет (партнёр, viewer) — блока нет. Все числа — из `spendCompare` / `rkShare` / `sectionMonth`, лист не считает.
+ * «Наличные» и «Переводы людям» (`SPEND_LAST`, Х-14, Р-9) — только крупная сумма и операции: без доли дохода, «обычно»,
+ * плана и «до плана» (план этих разделов в данных остаётся — его видно в листе «План трат»).
  */
 const props = defineProps<{
   row: SpendCompareRow | null
@@ -58,6 +60,8 @@ const emit = defineEmits<{
   (e: 'hand', id: string): void
 }>()
 const opsShown = computed(() => (props.ops?.count ? props.ops : null))
+/** Раздел «только операции» (Х-14): наличные и переводы людям. */
+const opsOnly = computed(() => !!props.row && SPEND_LAST.includes(props.row.categoryId))
 
 const IMAGE_ACTION_LABEL: Record<ImageAction['kind'], string> = {
   goal: 'Сделать мечтой', wish: 'В желания', move: 'Перенести в мечту', faster: 'Как закрыть быстрее',
@@ -85,34 +89,38 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-cat-amount>
         {{ money(row.amount ?? row.plan ?? 0) }}<span v-if="row.amount === null" class="ml-1.5 text-[15px] font-semibold text-ink-2">план</span>
       </p>
-      <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">
-        <span v-if="row.share" data-cat-share>{{ row.share }} % дохода</span>
-        <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
-        <!-- Выписок нет — план уже крупно («150 000 ₸ план»), второй раз строкой его не пишем (`/ux` «Разбор» 3). -->
-        <span v-if="row.amount !== null || row.plan === null" data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
-      </div>
-      <div v-if="adviceLine || imageInAdvice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
-        <p v-if="adviceLine && row.advice" class="text-[14px] font-semibold text-ink num" data-cat-advice>
-          до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
-        </p>
-        <HabitImageRow v-if="image && imageInAdvice" :class="{ 'mt-2': adviceLine }" :short="adviceLine" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
-      </div>
-      <!-- Образ привычки раздела (Р-24, AU-29): строка, «?» и небольшая кнопка действия; viewer — без кнопки. -->
-      <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
+      <template v-if="!opsOnly">
+        <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">
+          <span v-if="row.share" data-cat-share>{{ row.share }} % дохода</span>
+          <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
+          <!-- Выписок нет — план уже крупно («150 000 ₸ план»), второй раз строкой его не пишем (`/ux` «Разбор» 3). -->
+          <span v-if="row.amount !== null || row.plan === null" data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
+        </div>
+        <div v-if="adviceLine || imageInAdvice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
+          <p v-if="adviceLine && row.advice" class="text-[14px] font-semibold text-ink num" data-cat-advice>
+            до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
+          </p>
+          <HabitImageRow v-if="image && imageInAdvice" :class="{ 'mt-2': adviceLine }" :short="adviceLine" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
+        </div>
+        <!-- Образ привычки раздела (Р-24, AU-29): строка, «?» и небольшая кнопка действия; viewer — без кнопки. -->
+        <HabitImageRow v-if="image && !imageInAdvice" class="mt-3" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
+      </template>
       <!-- Свои операции раздела за месяц (FB-05, Р-14): строка — лист операции или «Трата»; «Ещё N» — тихая строка. -->
       <SectionOpsList v-if="opsShown" :ops="opsShown" @more="emit('more')" @open="(id) => emit('open', id)" @hand="(id) => emit('hand', id)" />
-      <p v-if="row.group && rk !== null" class="mt-2 flex items-center gap-1 text-[12.5px] text-ink-2 num" data-cat-rk>
-        {{ RK_SPEND_GROUPS[row.group].name }}: у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %
-        <Hint label="Справка">Доля {{ RK_SPEND_GROUPS[row.group].label }} в тратах семей Алматы, {{ RK_SPEND_GROUPS[row.group].source }}, {{ RK_SPEND_GROUPS[row.group].period }}</Hint>
-      </p>
-      <p v-if="plans.length" class="mt-4 text-[13px] font-semibold text-ink-2" data-cat-plans-title>{{ plans.length > 1 ? 'План каждого' : 'План' }}</p>
-      <div class="mt-1.5 flex flex-col border-t border-line">
-        <div v-for="p in plans" :key="p.by" class="flex items-center gap-2 border-b border-line py-2" :data-cat-person="p.by">
-          <span class="min-w-0 flex-1 truncate text-[15px] text-ink">{{ p.name }}</span>
-          <span class="text-[15px] font-semibold text-ink num">{{ p.amount > 0 ? plain(p.amount) : '—' }}</span>
-          <Button v-if="canEdit" variant="ghost" size="sm" data-cat-edit @click="$emit('edit', p.by, p.amount)">Изменить</Button>
+      <template v-if="!opsOnly">
+        <p v-if="row.group && rk !== null" class="mt-2 flex items-center gap-1 text-[12.5px] text-ink-2 num" data-cat-rk>
+          {{ RK_SPEND_GROUPS[row.group].name }}: у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %
+          <Hint label="Справка">Доля {{ RK_SPEND_GROUPS[row.group].label }} в тратах семей Алматы, {{ RK_SPEND_GROUPS[row.group].source }}, {{ RK_SPEND_GROUPS[row.group].period }}</Hint>
+        </p>
+        <p v-if="plans.length" class="mt-4 text-[13px] font-semibold text-ink-2" data-cat-plans-title>{{ plans.length > 1 ? 'План каждого' : 'План' }}</p>
+        <div class="mt-1.5 flex flex-col border-t border-line">
+          <div v-for="p in plans" :key="p.by" class="flex items-center gap-2 border-b border-line py-2" :data-cat-person="p.by">
+            <span class="min-w-0 flex-1 truncate text-[15px] text-ink">{{ p.name }}</span>
+            <span class="text-[15px] font-semibold text-ink num">{{ p.amount > 0 ? plain(p.amount) : '—' }}</span>
+            <Button v-if="canEdit" variant="ghost" size="sm" data-cat-edit @click="$emit('edit', p.by, p.amount)">Изменить</Button>
+          </div>
         </div>
-      </div>
+      </template>
     </template>
   </Sheet>
 </template>
