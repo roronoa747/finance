@@ -1,9 +1,9 @@
 # Бэклог «Хвосты» (TL)
 
-> **Статус:** 2026-10-24 — Блок 2 ✅ принят (приёмка: критерии TL-04…TL-06, стенд Chrome 390, vitest 293/2998; Х-26
-> закрыт). Деплой — после «да» владельца.
-> Блок 1 🏁 на проде: Production `dpl_2Kh5kgUAWE2iC4RgLCR847Gvye2L` (main `084e778f`); откат — promote
-> `dpl_EqCkVpa2dGRNceK7b1LpgS8xMiJx`. Хвосты Х-24…Х-27 — владельцу.
+> **Статус:** 2026-10-24 — Блок 2 🏁 на проде: Production `dpl_962mKtZYgd6A62PwT21XJmaMBE6g` (main `2e623435`); откат —
+> promote `dpl_3jf6GrUEg273Hmtg8C2Sxh51NanG` (фронт Блока 1). Следующее — `/worker Хвосты 3`. Хвосты Х-24, Х-25, Х-27 —
+> владельцу (Х-26 закрыт Блоком 2).
+> Блок 1 🏁: Production `dpl_2Kh5kgUAWE2iC4RgLCR847Gvye2L` (main `084e778f`).
 > Прод перед стартом: Production `dpl_FzEAgExD1VN2iQqmDYRDoq4kbsB6` (main `ee1c9286`, Блок 5 «Фидбека»).
 
 Источник: `Хвосты-brief.md` (резюме интервью подтверждено 2026-10-23). Описания хвостов — архив
@@ -61,7 +61,7 @@ Chrome 390, смоук на проде после каждого блока.
 | 1. Платежи из выписки 🏁 *(M с `/ux`)* | TL-01 «Нашли в выписке» — только похожее на платежи | `block-1-found-payments/TL-01-found-only-payments.md` | — | ✅ |
 | | TL-02 Правило платежа по продавцу и сумме | `block-1-found-payments/TL-02-rule-by-amount.md` | TL-01 | ✅ |
 | | TL-03 Строка кредита → лист кредита | `block-1-found-payments/TL-03-credit-sheet.md` | TL-02 | ✅ |
-| 2. Цифры сходятся ✅ *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ✅ |
+| 2. Цифры сходятся 🏁 *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ✅ |
 | | TL-05 «Платежи без отметки» в «Месяц → Траты» | `block-2-figures/TL-05-unmarked-payments-row.md` | TL-04 | ✅ |
 | | TL-06 Лист «Наличные» и «Переводы людям» — только операции | `block-2-figures/TL-06-cash-people-sheet.md` | — | ✅ |
 | 3. Операции ⬜ *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ⬜ |
