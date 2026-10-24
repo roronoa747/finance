@@ -506,6 +506,10 @@ describe('правки операций: withEdits, spendOf, refundCandidates (F
     expect(refundCandidates(go, [go, back]).map((o) => o.id)).toEqual(['f2'])
     // Отмеченный возврат этой покупки (internal через withEdits) — остаётся в списке.
     expect(refundCandidates({ ...go, refund: { amount: 1_160, opId: 'f2' } }, [go, { ...back, internal: true }]).map((o) => o.id)).toEqual(['f2'])
+    // Критик Блока 3: «Отмена покупки» без «Возврат» — тот же продавец; кешбэк — не кандидат и в виде возврата продавца.
+    const cancel = op({ id: 'f3', bank: 'freedom', date: '2026-07-16', amount: 500, merchant: 'Отмена покупки YANDEX. GO' })
+    const storeBonus = op({ id: 'f4', bank: 'freedom', date: '2026-07-16', amount: 30, merchant: 'YANDEX. GO', note: 'Кешбэк' })
+    expect(refundCandidates(go, [go, back, cancel, storeBonus]).map((o) => o.id)).toEqual(['f2', 'f3'])
   })
 })
 

@@ -171,3 +171,17 @@ Chrome 390, смоук на проде после каждого блока.
 - `SectionOpsList` (листы «Месяца») — эмит `pay` и кнопка `data-cat-pay` у строки с `recurring`; «Платежи без отметки» —
   `MonthPlan.vue` `?unmarked=1`, `OpSheet` поверх (`sheetZ + 10`). Листы `SPEND_LAST` (`sc_cash`, `sc_people`) — только
   сумма и операции (`SpendCategorySheet` `opsOnly`).
+
+**После Блока 3** (критик, ветка `tl-block-3-operations`):
+- «Мне вернули» (`model.ts` `refundCandidates`): кандидат — ещё и `purchase` с «+» того же продавца (`refundMerchant` снимает
+  «возврат» / «отмена (покупки)»), такие — первыми; кешбэк и бонусы (`BONUS_WORDS` по `merchant` + `note`) — никогда.
+- Новый список личного документа **`answers`** (`types/finance.ts` `Answer {id, kind: declined|deferred, until?}`) в `known`
+  `mergePrivateDocs`: «Нет, это другое» (id — `declineKey`) и «Потом» «Недели» (id — ключ решения, `until` +24 ч). Стор
+  `finance`: `declinedKeys`, `deferredUntil(now)`, `declineAnswers`, `deferAnswers`; протухший «Потом» выбрасывается
+  следующей записью (не надгробие — ключ повторяется). `operations.declined` и `deferred` «Недели» — computed из документа.
+  Ключи устройства `ff_match_declined` / `ff_decisions_deferred` только читаются — переезд `moveDeviceAnswers` после
+  каждого удачного `pullPrivateDoc`, удаляются после отправки документа.
+- **`operations.loaded(client)`** — одна точка «свои операции (`pull`) и записи выписок (`loadUploads`) этого запуска
+  пришли»; `afterPull` (находки + автозапуск разбора), `autoReview`, `runReview` ждут её. В тестах и e2e фейк без
+  `listStatementUploads` / `GET /api/statements` = находок и разбора нет: помощники `noStatements` / `apiNoStatements`
+  (`e2e/support/family.ts`).
