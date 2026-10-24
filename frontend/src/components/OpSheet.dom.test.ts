@@ -126,6 +126,7 @@ describe('FB-04: лист операции (OpSheet)', () => {
     await press(dialog()!.querySelector('[data-op-refund]'))
     const rows = [...dialog()!.querySelectorAll<HTMLElement>('[data-op-income]')].map((el) => el.dataset.opIncome)
     expect(rows).toEqual(['r1', 'i2'])
+    expect(txt(dialog()!.querySelector('[data-op-income="r1"]'))).toBe('Возврат · 15 октября · 2 000')
     await press(dialog()!.querySelector<HTMLElement>('[data-op-income="r1"]'))
     expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('14 октября · 8 000 ₸ · вернули 2 000')
     expect(store.all.find((o) => o.id === 'r1')?.internal).toBe(true)

@@ -78,8 +78,10 @@ watch(
 
 /* ---------- «Мне вернули» (Р-12) ---------- */
 const incomes = computed(() => (op.value && refundMode.value === 'pick' ? store.refundsFor(op.value).slice(0, 5) : []))
+// Возврат магазина (кандидат-`purchase`, TL-07) — «Возврат»: имя продавца уже в заголовке листа, а «MAGNUM · 2 400» читалось
+// второй покупкой, Freedom «Возврат. Отмена покупки …» не влезал в строку (`/ux` Блока 3).
 const incomeLabel = (i: Operation) =>
-  `${i.counterparty ? `От ${i.counterparty}` : shortMerchant(i.merchant)} · ${dayLabel(Number(i.date.slice(8, 10)), i.date.slice(0, 7))} · ${plain(i.amount)}`
+  `${i.counterparty ? `От ${i.counterparty}` : i.kind === 'purchase' ? 'Возврат' : shortMerchant(i.merchant)} · ${dayLabel(Number(i.date.slice(8, 10)), i.date.slice(0, 7))} · ${plain(i.amount)}`
 function toggleRefund() {
   const o = op.value
   if (!o) return
@@ -128,7 +130,7 @@ function saveCash() {
       </div>
       <p v-if="op.oneOff && spend" class="mt-1.5 type-meta" data-op-oneoff-note>не входит в обычные траты</p>
       <div v-if="refundMode === 'pick'" class="mt-2 flex flex-col gap-2" data-op-refund-pick>
-        <Chip v-for="i in incomes" :key="i.id" class="justify-start" :data-op-income="i.id" @click="pickIncome(i)">{{ incomeLabel(i) }}</Chip>
+        <Chip v-for="i in incomes" :key="i.id" class="justify-start text-left" :data-op-income="i.id" @click="pickIncome(i)">{{ incomeLabel(i) }}</Chip>
         <div>
           <Chip quiet data-op-cash @click="startCash">Наличными</Chip>
         </div>
