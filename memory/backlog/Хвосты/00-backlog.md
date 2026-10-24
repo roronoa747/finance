@@ -64,9 +64,9 @@ Chrome 390, смоук на проде после каждого блока.
 | 2. Цифры сходятся 🏁 *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ✅ |
 | | TL-05 «Платежи без отметки» в «Месяц → Траты» | `block-2-figures/TL-05-unmarked-payments-row.md` | TL-04 | ✅ |
 | | TL-06 Лист «Наличные» и «Переводы людям» — только операции | `block-2-figures/TL-06-cash-people-sheet.md` | — | ✅ |
-| 3. Операции ⬜ *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ⬜ |
-| | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ⬜ |
-| | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ⬜ |
+| 3. Операции 🔄 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
+| | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ✅ |
+| | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ✅ |
 | 4. Первый запуск ⬜ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ⬜ |
 
 Порядок блоков = приоритет (бриф). Блок 2 после Блока 1: строка «Платежи без отметки» (TL-05) ведёт в те же действия
