@@ -2,13 +2,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { routes } from '../src/router'
 import type { ApiClient } from '../src/api/client'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
+import { useAiStore } from '../src/stores/ai'
 import { useAuthStore } from '../src/stores/auth'
 import { defaultSyncDoc, useFinanceStore } from '../src/stores/finance'
 import { UPLOAD_HOLD_MS, useOperationsStore } from '../src/stores/operations'
 import { T0 } from '../src/test/planFamily'
+import { leadFor } from '../src/test/reviewV4'
 import { screenMixin } from '../src/test/screenState'
 import OpSheet from '../src/components/OpSheet.vue'
 import Month from '../src/views/Month.vue'
@@ -230,5 +234,74 @@ describe('e2e / Хвосты Блок 3 — ответы во всех теле�
     expect(await asks(two)).toBe(false)
     at('2026-10-24T08:00:00Z')
     expect(await asks(two)).toBe(true)
+  })
+})
+
+/**
+ * TL-09 (Х-1, Р-6): Ильяс загрузил выписку 1 сентября – 22 октября с одного телефона (сентябрь: Magnum 3 × 10 000;
+ * октябрь: Magnum 2 × 12 000 и «SHOP X» 5 000 без раздела — карточка «Не разобрано»). Новый запуск на другом телефоне:
+ * документ и личный документ пришли, а `GET /api/statements` отвечает с задержкой. Разбор сам ждёт выписки, потом один
+ * запрос; «Работа ИИ» — «K находок из 6 операций»: октябрь (3) и сентябрь (3, «обычный» месяц по выписке), не «из 0».
+ */
+describe('e2e / Хвосты Блок 3 — разбор ИИ ждёт выписки (TL-09)', () => {
+  it('медленный список выписок → запроса нет, пока он не пришёл; отчёт «Работа ИИ» — 6 операций', async () => {
+    const A = await phone()
+    setActivePinia(A.pinia)
+    await useOperationsStore().upload([{ name: 'x.pdf', parsed: statement([
+      op('2026-09-03', -10_000, 'Magnum', 'sc_food'),
+      op('2026-09-12', -10_000, 'Magnum', 'sc_food'),
+      op('2026-09-24', -10_000, 'Magnum', 'sc_food'),
+      op('2026-10-03', -12_000, 'Magnum', 'sc_food'),
+      op('2026-10-10', -12_000, 'Magnum', 'sc_food'),
+      op('2026-10-15', -5_000, 'SHOP X', null),
+    ]) }], A.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    await A.store.syncHousehold(A.client)
+
+    // Второй телефон: только документы — операции и выписки этого запуска ещё не пришли.
+    storage.clear()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuthStore()
+    auth.setAuthData({
+      token: 't-u-a', user: { id: 'u-a', email: 'u-a@family.kz', created_at: '' },
+      household: { id: 'h-family', name: 'Семья', created_by: 'u-a', created_at: '' },
+      member: { household_id: 'h-family', user_id: 'u-a', slot: 'a', display_name: 'a', role: 'member', joined_at: '' },
+    })
+    auth.ai = true
+    pv.docs.set('u-a', { rev: (pv.docs.get('u-a')?.rev ?? 0) + 1, data: { ...(pv.docs.get('u-a')?.data ?? {}), aiConsent: { on: true, at: T0, v: 3 } } })
+    const own = statementsFor(st, 'u-a', 'a')
+    let arrive!: () => void
+    const slow = vi.fn(() => new Promise<Awaited<ReturnType<typeof own.listStatementUploads>>>((r) => (arrive = () => void own.listStatementUploads().then(r))))
+    const aiReview = vi.fn(async (body: unknown) => leadFor(body))
+    const client = { ...backend(server), ...own, listStatementUploads: slow, ...privateFor(pv, 'u-a'), aiReview } as unknown as ApiClient
+    const store = useFinanceStore()
+    store.claimFor('h-family')
+    await store.pullHousehold(client)
+    await store.pullPrivateDoc(client)
+    const B: Phone = { pinia, client, store }
+
+    const run = useAiStore().autoReview(client)
+    await vi.waitFor(() => expect(slow).toHaveBeenCalled())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    const review = await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(review!.work!.ops).toBe(6)
+    // Отчёт — лист «Месяца» (`?review=1`) в `body` (телепорт): «Месяц» монтируется в DOM на сторе телефона.
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    await router.push('/month?review=1')
+    await router.isReady()
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp(Month)
+    app.use(B.pinia)
+    app.use(router)
+    app.mount(root)
+    await flush()
+    const report = txt(q('[role="dialog"]'))
+    expect(report).toContain('из 6 операций')
+    expect(report).not.toMatch(/из 0 операций|(^|\D)0 операций/)
   })
 })

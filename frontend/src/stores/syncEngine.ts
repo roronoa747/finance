@@ -101,8 +101,13 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     if (!pulled) return
     finance.ensureTermSnap()
     // Находки месяцев без записи — до разбора (RZ-HF3): выписки, загруженные до Блока 1, иначе их не получат никогда.
-    useOperationsStore().settleFinds()
-    void useAiStore().autoReview()
+    // Оба — после своих операций и выписок с сервера (FB-HF1): иначе разбор уходит раньше них, «из 0 операций».
+    const operations = useOperationsStore()
+    void operations.loaded().then((ok) => {
+      if (!ok) return
+      operations.settleFinds()
+      void useAiStore().autoReview()
+    })
   }
 
   const sync = () => {

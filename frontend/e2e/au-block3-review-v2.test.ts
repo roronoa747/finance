@@ -9,7 +9,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { Goal, SyncDoc } from '../src/types/finance'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, setOnline, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Блок 3 «ИИ-польза» (AU-09…AU-14) — после v4 (бэклог «Фидбек», Р-26, Р-27): разбор приходит сам — на двух телефонах
@@ -73,7 +73,7 @@ describe('e2e / ИИ-польза Блок 3 — разбор приходит �
     const ai = useAiStore()
     ai.sheetMounted = true
     // Клиент ИИ и личного документа; `client` телефона — синк общего документа.
-    const aiClient = { ...priv, aiReview } as unknown as ApiClient
+    const aiClient = { ...priv, ...noStatements(), aiReview } as unknown as ApiClient
     return { ...p, ai, aiClient, priv }
   }
   type Phone = Awaited<ReturnType<typeof as>>
@@ -111,7 +111,8 @@ describe('e2e / ИИ-польза Блок 3 — разбор приходит �
     const one = await as('member', 'a')
     const two = await as('member', 'b', { clear: false })
     // Телефоны в тесте делят одно хранилище; попытку повода телефон 1 пишет до запроса (возврат AU-33) — у телефона 2
-    // своё хранилище, где её нет. Попытка пишется после свежего личного документа (критик 4б) — стираем после запроса.
+    // своё хранилище, где её нет. Попытка пишется после своих операций и выписок (FB-HF1) и свежего личного документа
+    // (критик 4б) — стираем после запроса.
     const first = one.ai.autoReview(one.aiClient)
     await vi.waitFor(() => expect(aiReview).toHaveBeenCalledTimes(1))
     storage.delete('ff_ai_auto')

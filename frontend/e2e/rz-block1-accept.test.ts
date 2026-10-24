@@ -10,7 +10,7 @@ import type { MeResponse } from '../src/types/api'
 import type { SyncDoc } from '../src/types/finance'
 import type { ReviewFind } from '../src/lib/statements/types'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Приёмка Блока 1 «Разбор» (стенд — Chrome 390, обе темы; здесь — тот же сценарий на фейковом сервере): согласие v3
@@ -71,7 +71,7 @@ describe('e2e / Разбор Блок 1 — приёмка: согласие v3 
     if (slot === 'a') await seedOwnMonth(K, 'a')
     const ai = useAiStore()
     ai.sheetMounted = true
-    const aiClient = { ...priv, aiReview } as unknown as ApiClient
+    const aiClient = { ...priv, ...noStatements(), aiReview } as unknown as ApiClient
     return { ...p, ai, priv, aiClient }
   }
   type Phone = Awaited<ReturnType<typeof as>>

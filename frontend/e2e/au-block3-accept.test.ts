@@ -10,7 +10,7 @@ import type { MeResponse } from '../src/types/api'
 import type { Goal, Payment, SyncDoc } from '../src/types/finance'
 import Month from '../src/views/Month.vue'
 import Week from '../src/views/Week.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Приёмка Блока 3 «ИИ-польза» (2026-10-17): сценарий стенда, которого не было в наборе. 1-е число, разбор месяца пришёл
@@ -73,7 +73,7 @@ describe('e2e / приёмка ИИ-польза Блок 3 — 1-е число 
     await seedOwnMonth('2026-10', 'a')
     const ai = useAiStore()
     ai.sheetMounted = true
-    const run = ai.autoReview({ ...priv, aiReview } as unknown as ApiClient)
+    const run = ai.autoReview({ ...priv, ...noStatements(), aiReview } as unknown as ApiClient)
     if (waitReview) await run
     return { ...p, ai }
   }

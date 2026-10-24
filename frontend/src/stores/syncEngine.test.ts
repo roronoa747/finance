@@ -57,9 +57,10 @@ describe('startSyncEngine — правки партнёра без собств�
     const pull = vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
     const sync = vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
     const opsPull = vi.spyOn(useOperationsStore(), 'pull').mockResolvedValue([])
+    const loaded = vi.spyOn(useOperationsStore(), 'loaded').mockResolvedValue(true)
     const env = fakeEnv()
     startSyncEngine(env.win, env.doc)
-    return { finance, pull, sync, opsPull, ...env }
+    return { finance, pull, sync, opsPull, loaded, ...env }
   }
 
   it('B2C-25: старт без неотправленного — только забираем документ и операции (ревизия не растёт)', () => {
@@ -166,6 +167,29 @@ describe('startSyncEngine — правки партнёра без собств�
     win.dispatchEvent(new Event('focus'))
     await vi.waitFor(() => expect(auto).toHaveBeenCalledTimes(1))
     expect(order).toEqual(['finds', 'review'])
+  })
+
+  it('FB-HF1: находки и разбор сам — только после своих операций и выписок с сервера; не пришли — ни того, ни другого', async () => {
+    const settle = vi.spyOn(useOperationsStore(), 'settleFinds').mockImplementation(() => {})
+    const auto = vi.spyOn(useAiStore(), 'autoReview').mockResolvedValue(null)
+    const { finance, pull, loaded, win } = setup('real-token')
+    let arrive!: (ok: boolean) => void
+    loaded.mockImplementation(() => new Promise((r) => (arrive = r)))
+    pull.mockResolvedValue({ rev: 2, data: {} } as never)
+    finance.status = 'idle'
+    win.dispatchEvent(new Event('focus'))
+    await vi.waitFor(() => expect(loaded).toHaveBeenCalled())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settle).not.toHaveBeenCalled()
+    expect(auto).not.toHaveBeenCalled()
+    arrive(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(settle).not.toHaveBeenCalled()
+    expect(auto).not.toHaveBeenCalled()
+    loaded.mockResolvedValue(true)
+    win.dispatchEvent(new Event('focus'))
+    await vi.waitFor(() => expect(auto).toHaveBeenCalledTimes(1))
+    expect(settle).toHaveBeenCalledTimes(1)
   })
 
   it('правка без сети: offline → online — полный круг со слиянием, а не затирание', () => {
