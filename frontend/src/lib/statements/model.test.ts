@@ -487,6 +487,26 @@ describe('правки операций: withEdits, spendOf, refundCandidates (F
     const ops = [spend, near, far, tooBig, older, internal, salary, taken, other]
     expect(refundCandidates(spend, ops, new Set(['i6'])).map((o) => o.id)).toEqual(['i1', 'i4'])
   })
+
+  it('refundCandidates: возврат того же продавца первым (Kaspi, Freedom); чужой магазин, больше покупки, за окном, кешбэк и бонус — нет (TL-07)', () => {
+    const buy = op({ id: 'b1', date: '2026-10-10', amount: -5_000, merchant: 'Small ALMATY KZ' })
+    const kaspi = op({ id: 'k1', date: '2026-10-14', amount: 1_990, merchant: 'Small' })
+    const transfer = income('t1', '2026-10-11', 2_000)
+    const otherStore = op({ id: 'k2', date: '2026-10-12', amount: 1_000, merchant: 'Magnum' })
+    const tooBig = op({ id: 'k3', date: '2026-10-12', amount: 6_000, merchant: 'Small' })
+    const late = op({ id: 'k4', date: '2026-10-30', amount: 1_000, merchant: 'Small' })
+    const cashback = op({ id: 'c1', date: '2026-10-10', amount: 150, kind: 'income', merchant: 'Кешбэк за покупки' })
+    const bonus = op({ id: 'c2', date: '2026-10-10', amount: 300, kind: 'transfer-in', merchant: 'Kaspi', note: 'Бонусы' })
+    const cashbackEn = op({ id: 'c3', date: '2026-10-10', amount: 50, kind: 'income', merchant: 'CASHBACK' })
+    const ops = [buy, kaspi, transfer, otherStore, tooBig, late, cashback, bonus, cashbackEn]
+    expect(refundCandidates(buy, ops).map((o) => o.id)).toEqual(['k1', 't1'])
+
+    const go = op({ id: 'f1', bank: 'freedom', date: '2026-07-14', amount: -1_160, merchant: 'YANDEX. GO' })
+    const back = op({ id: 'f2', bank: 'freedom', date: '2026-07-15', amount: 1_160, merchant: 'Возврат. Отмена покупки YANDEX. GO' })
+    expect(refundCandidates(go, [go, back]).map((o) => o.id)).toEqual(['f2'])
+    // Отмеченный возврат этой покупки (internal через withEdits) — остаётся в списке.
+    expect(refundCandidates({ ...go, refund: { amount: 1_160, opId: 'f2' } }, [go, { ...back, internal: true }]).map((o) => o.id)).toEqual(['f2'])
+  })
 })
 
 describe('spendTotals — разовые (FB-07, Р-16)', () => {

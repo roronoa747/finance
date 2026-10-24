@@ -114,6 +114,23 @@ describe('FB-04: лист операции (OpSheet)', () => {
     expect(store.all.find((o) => o.id === 'i1')?.internal).toBe(false)
   })
 
+  it('TL-07: «Мне вернули» — возврат того же магазина первой строкой, кешбэка нет; выбор — покупка меньше, возврат internal', async () => {
+    const store = await mount()
+    const extra: Operation[] = [
+      { id: 'i2', bank: 'kaspi', date: '2026-10-14', amount: 1_000, kind: 'transfer-in', merchant: 'Марат С.', counterparty: 'Марат С.', categoryId: null, internal: false },
+      { id: 'r1', bank: 'kaspi', date: '2026-10-15', amount: 2_000, kind: 'purchase', merchant: 'MAGNUM ALMATY KZ', categoryId: null, internal: false },
+      { id: 'c1', bank: 'kaspi', date: '2026-10-14', amount: 120, kind: 'income', merchant: 'Kaspi Кешбэк', categoryId: null, internal: false },
+    ]
+    for (const o of extra) store.ops[o.id] = o
+    await open('p1')
+    await press(dialog()!.querySelector('[data-op-refund]'))
+    const rows = [...dialog()!.querySelectorAll<HTMLElement>('[data-op-income]')].map((el) => el.dataset.opIncome)
+    expect(rows).toEqual(['r1', 'i2'])
+    await press(dialog()!.querySelector<HTMLElement>('[data-op-income="r1"]'))
+    expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('14 октября · 8 000 ₸ · вернули 2 000')
+    expect(store.all.find((o) => o.id === 'r1')?.internal).toBe(true)
+  })
+
   it('«Наличными» — сумма по умолчанию вся трата; больше траты — срезается; 0 — снимает', async () => {
     const store = await mount()
     await open('p1')
