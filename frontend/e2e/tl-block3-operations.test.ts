@@ -12,6 +12,7 @@ import { T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import OpSheet from '../src/components/OpSheet.vue'
 import Month from '../src/views/Month.vue'
+import Week from '../src/views/Week.vue'
 import { at, backend, fakePrivate, fakeServer, fakeStatements, privateFor, screen, statementsFor, type FakePrivate, type FakeServer, type FakeStatements } from './support/family'
 
 /**
@@ -137,5 +138,97 @@ describe('e2e / Хвосты Блок 3 — «Мне вернули» (TL-07)', 
 
     await A.store.syncHousehold(A.client)
     expect(await spent(A)).toBe(10_000)
+  })
+})
+
+/**
+ * TL-08 (Х-2, Р-5): платёж «Коммуналка» 30 000 14-го у семьи; у Ильяса в выписке списание 30 000 14 октября — вопрос
+ * «Похоже, это платёж по Коммуналка?». Два телефона Ильяса — свои сторы и диски, один личный документ на сервере; Дана
+ * (партнёр) — свой документ и свой такой же вопрос.
+ */
+describe('e2e / Хвосты Блок 3 — ответы во всех телефонах человека (TL-08)', () => {
+  const RENT = { id: 'o1', name: 'Коммуналка', note: '', day: 14, category: 'd1' as const, versions: [{ from: '2000-01', amount: 30_000 }], updatedAt: T0 }
+  const line = (who: string) => statement([op('2026-10-14', -30_000, `ТОО ${who}`, 'sc_utilities')])
+
+  async function person(user: 'u-a' | 'u-b', slot: 'a' | 'b'): Promise<Phone> {
+    storage.clear()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().setAuthData({
+      token: `t-${user}`, user: { id: user, email: `${user}@family.kz`, created_at: '' },
+      household: { id: 'h-family', name: 'Семья', created_by: 'u-a', created_at: '' },
+      member: { household_id: 'h-family', user_id: user, slot, display_name: slot, role: 'member', joined_at: '' },
+    })
+    const client = { ...backend(server), ...statementsFor(st, user, slot), ...privateFor(pv, user) } as unknown as ApiClient
+    const store = useFinanceStore()
+    store.claimFor('h-family')
+    await store.pullHousehold(client)
+    await store.pullPrivateDoc(client)
+    await useOperationsStore().loadUploads(client)
+    await useOperationsStore().pull(client)
+    return { pinia, client, store }
+  }
+  /** Есть ли вопрос на «Неделе» (точка «!» у строки вопросов). */
+  const asks = async (p: Phone) => (await screen(p.pinia, Week, '/week')).includes('data-bang')
+  const pending = (p: Phone) => {
+    setActivePinia(p.pinia)
+    return useOperationsStore().pendingMatches.map((c) => c.targetId)
+  }
+
+  beforeEach(() => {
+    server.data.obligations = [RENT]
+    server.data.people = [
+      { id: 'a', name: 'Ильяс', salary: 0, payday: 10, updatedAt: T0 },
+      { id: 'b', name: 'Дана', salary: 0, payday: 10, updatedAt: T0 },
+    ]
+  })
+
+  it('«Нет, это другое» на первом телефоне → второй после синка не спрашивает; у партнёра свой вопрос остаётся', async () => {
+    const one = await person('u-a', 'a')
+    await useOperationsStore().upload([{ name: 'x.pdf', parsed: line('Алсеко') }], one.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    expect(pending(one)).toEqual(['o1'])
+    const dana = await person('u-b', 'b')
+    await useOperationsStore().upload([{ name: 'y.pdf', parsed: line('Алсеко') }], dana.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    expect(pending(dana)).toEqual(['o1'])
+
+    const two = await person('u-a', 'a')
+    expect(pending(two)).toEqual(['o1'])
+    expect(await asks(two)).toBe(true)
+
+    setActivePinia(one.pinia)
+    useOperationsStore().declineMatch(useOperationsStore().pendingMatches[0]!)
+    await one.store.syncPrivate(one.client)
+    expect(pending(one)).toEqual([])
+
+    setActivePinia(two.pinia)
+    await two.store.pullPrivateDoc(two.client)
+    expect(pending(two)).toEqual([])
+    expect(await asks(two)).toBe(false)
+    // Партнёр ответов Ильяса не видит: его документ без них, его вопрос на месте.
+    setActivePinia(dana.pinia)
+    await dana.store.pullPrivateDoc(dana.client)
+    expect(pv.docs.get('u-b')?.data.answers ?? []).toEqual([])
+    expect(pending(dana)).toEqual(['o1'])
+  })
+
+  it('«Потом» на первом телефоне → второй сутки не показывает вопрос, через 25 часов — снова', async () => {
+    const one = await person('u-a', 'a')
+    await useOperationsStore().upload([{ name: 'x.pdf', parsed: line('Алсеко') }], one.client)
+    await vi.advanceTimersByTimeAsync(UPLOAD_HOLD_MS)
+    const two = await person('u-a', 'a')
+    expect(await asks(two)).toBe(true)
+
+    setActivePinia(one.pinia)
+    const c = useOperationsStore().pendingMatches[0]!
+    one.store.deferAnswers([`match:${c.kind}:${c.targetId}:${c.period}`])
+    await one.store.syncPrivate(one.client)
+
+    setActivePinia(two.pinia)
+    await two.store.pullPrivateDoc(two.client)
+    expect(await asks(two)).toBe(false)
+    at('2026-10-24T08:00:00Z')
+    expect(await asks(two)).toBe(true)
   })
 })

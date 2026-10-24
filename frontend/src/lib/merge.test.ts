@@ -929,7 +929,18 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [], notes: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [], notes: [], answers: [] })
+  })
+
+  it('TL-08: ответы по операциям (answers) — по ключу, позднее побеждает («Потом» продлён с другого телефона), надгробие побеждает', () => {
+    const phone = { answers: [{ id: 'p1|obligation:o1:2026-10', kind: 'declined', updatedAt: T1 }, { id: 'unknownBatch:2026-W42', kind: 'deferred', until: T1, updatedAt: T1 }, { id: 'x', kind: 'declined', updatedAt: T2 }] }
+    const laptop = { answers: [{ id: 'unknownBatch:2026-W42', kind: 'deferred', until: T2, updatedAt: T2 }, { id: 'x', kind: 'declined', deletedAt: T1, updatedAt: T1 }, { id: 'p2|salary:a:2026-10', kind: 'declined', updatedAt: T1 }] }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const list = merged.answers as { id: string; until?: string; deletedAt?: string }[]
+      expect(list.map((a) => a.id).sort()).toEqual(['p1|obligation:o1:2026-10', 'p2|salary:a:2026-10', 'unknownBatch:2026-W42', 'x'])
+      expect(list.find((a) => a.id === 'unknownBatch:2026-W42')!.until).toBe(T2)
+      expect(list.find((a) => a.id === 'x')!.deletedAt).toBe(T1)
+    }
   })
 
   it('FB-02: правки операций (opEdits) — по id операции, позднее побеждает; снятая заметка (null) не воскресает', () => {
