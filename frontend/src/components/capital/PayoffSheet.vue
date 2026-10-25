@@ -71,6 +71,17 @@ const creditPrepays = computed(() =>
     .filter((p) => p.kind === 'prepay' && !p.deletedAt && p.targetId === props.creditId)
     .sort((a, b) => b.at.localeCompare(a.at)),
 )
+// Взнос записан — калькулятор снова чистый, как после прежнего «Применить»: та же сумма с «Внёс досрочно» звала бы
+// внести её второй раз.
+let prepaysBefore = 0
+function openPrepay() {
+  prepaysBefore = creditPrepays.value.length
+  prepayAmount.value = parseMoney(payoffAmount.value)
+}
+function closePrepay() {
+  if (creditPrepays.value.length > prepaysBefore) payoffAmount.value = ''
+  prepayAmount.value = null
+}
 
 // Другой кредит — чистый калькулятор (React `PayoffDialog`).
 watch(
@@ -177,7 +188,7 @@ function prepayUndoNote(p: Payment): string {
         size="md"
         class="-mt-1 mb-3 w-full"
         data-payoff-prepay
-        @click="prepayAmount = parseMoney(payoffAmount)"
+        @click="openPrepay"
       >
         Внёс досрочно
       </Button>
@@ -256,7 +267,7 @@ function prepayUndoNote(p: Payment): string {
   <PrepaySheet
     :credit-id="prepayAmount !== null ? (activePayoffCredit?.id ?? null) : null"
     :amount="prepayAmount ?? undefined"
-    @close="prepayAmount = null"
-    @payoff="prepayAmount = null"
+    @close="closePrepay"
+    @payoff="closePrepay"
   />
 </template>
