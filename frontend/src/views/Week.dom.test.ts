@@ -343,6 +343,41 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(txt(document.body)).not.toContain('вне плана')
   })
 
+  it('К-6: раскрывашка тренда — «Статистика»', async () => {
+    await openWeek()
+    expect(txt(q('[data-week-trend] button'))).toBe('Статистика')
+  })
+
+  it('К-1 (FG-07): стрелки недели крупнее (36 px, иконка 20, ink-2), подпись обычным регистром; свайп по шапке листает, вертикальный жест — нет', async () => {
+    await openWeek()
+    const back = q<HTMLButtonElement>('button[aria-label="Прошлая неделя"]')!
+    expect(back.className).toContain('size-9')
+    expect(back.className).toContain('text-ink-2')
+    expect(back.querySelector('svg')!.getAttribute('width')).toBe('20')
+    expect(q('[data-week-label]')!.className).not.toContain('type-section')
+    const swipe = async (dx: number, dy: number) => {
+      const head = q('[data-week-head]')!
+      const at = (type: string, key: 'touches' | 'changedTouches', x: number, y: number) => {
+        const e = new Event(type)
+        Object.defineProperty(e, key, { value: [{ clientX: x, clientY: y }] })
+        head.dispatchEvent(e)
+      }
+      at('touchstart', 'touches', 300, 200)
+      at('touchend', 'changedTouches', 300 + dx, 200 + dy)
+      await flush()
+    }
+    expect(txt(q('[data-week-label]'))).toBe('21–27 сентября')
+    await swipe(-100, 10) // влево — следующей нет (текущая неделя)
+    expect(txt(q('[data-week-label]'))).toBe('21–27 сентября')
+    await swipe(100, 10) // вправо — прошлая
+    expect(txt(q('[data-week-label]'))).toBe('14–20 сентября')
+    await swipe(60, 80) // почти вертикально — прокрутка, не листает
+    await swipe(30, 0) // короткий — не листает
+    expect(txt(q('[data-week-label]'))).toBe('14–20 сентября')
+    await swipe(-100, 0) // влево — обратно
+    expect(txt(q('[data-week-label]'))).toBe('21–27 сентября')
+  })
+
   it('тренд 8 недель — свёрнут; раскрытие — восемь столбцов, текущая неделя последней', async () => {
     await openWeek()
     expect(q('[data-trend-bars]')).toBeNull()
@@ -384,17 +419,20 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
   it('WK-01/02: выписка ждёт тост — её траты уже в «Траты недели · N» и в строке «Не разобрано»; вопрос о ней — после отправки (Р-97)', async () => {
     server()
     await openWeek({ uploads: [BOTH[1]!] })
-    expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 8')
+    expect(txt(q('[data-week-feed]'))).toBe('История') // К-5: счётчика в строке нет — он в листе
     expect(row('_unknown')).toBeNull()
     readResult.value = { ok: [parsed([...NEW, op('2026-09-23', 4_000, null, 'ИП ТОСТОВ')])], errors: [] }
     await pickFile()
     expect(txt(q('[data-toast]'))).toBe('Загружено 3 операцииОтменить')
     // 8 своих + 3 из выписки — в ленте сразу; «Не разобрано» — 4 000 строкой, а «Разобрать» — после отправки (Р-97).
-    expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 11')
+    expect(txt(q('[data-week-feed]'))).toBe('История')
+    // К-3: «Не разобрано» — последней строкой списка.
+    expect(all('[data-week-list] [data-row]').at(-1)!.dataset.row).toBe('_unknown')
     expect(txt(row('_unknown')!.querySelector('[data-amount]'))).toBe(norm(money(4_000)))
     expect(q('[data-bang]')).toBeNull()
     // Критик: трата выписки, что ждёт тост, в ленте нажимается — лист «куда отнести?» ищет её среди показанных (`shown`).
     await press(q('[data-week-feed]'))
+    expect(txt(q('[data-feed-meta]'))).toBe('11 операций')
     await press(all('[data-feed-op]').find((r) => txt(r).includes('ТОСТОВ')))
     expect(all('[role="dialog"]')).toHaveLength(2)
     expect(txt(all('[role="dialog"]')[1])).toContain('ТОСТОВ') // лист операции (FB-04): заголовок — продавец коротко
@@ -534,6 +572,8 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     // «! N» вверху нет (Р-116); чипа «Разобрать» нет (FB-19): строка «Не разобрано» (или своя строка «Вопросы») — сама кнопка с подписью «N вопроса».
     const bangRow = () => q('[data-bang]')!.closest('[data-row], [data-questions-row]')
     expect(q('[data-bang]')!.tagName).toBe('BUTTON')
+    // К-3: кнопка «Не разобрано» с вопросами — последней строкой списка.
+    if (q('[data-bang]')!.dataset.row) expect(all('[data-week-list] [data-row]').at(-1)).toBe(q('[data-bang]'))
     expect(txt(document.body)).not.toContain('Разобрать')
     expect(txt(bangRow())).toContain('2 вопроса')
     // На экране вопросов нет — только в листе.
@@ -597,14 +637,14 @@ describe('WK-01: «Траты недели · N» — лента трат по �
     expect(feed.count).toBe(10)
     expect(feed.days.flatMap((d) => d.ops).some((o) => o.id === 'c1')).toBe(true)
     const line = q('[data-week-feed]')!
-    expect(txt(line)).toBe('Траты недели · 10')
+    expect(txt(line)).toBe('История')
     // Строка — тихая, не брендовая и ниже разделов (правило 12: действие у предмета, не крупный блок).
     expect(line.className).not.toContain('bg-brand')
     expect(q('[data-week-list]')!.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await press(line)
     const sheet = q('[role="dialog"]')!
-    expect(txt(sheet.querySelector('h3'))).toBe('Траты недели')
-    expect(txt(q('[data-feed-meta]'))).toBe('21–27 сентября · 10 трат')
+    expect(txt(sheet.querySelector('h3'))).toBe('История')
+    expect(txt(q('[data-feed-meta]'))).toBe('10 операций')
     expect(all('[data-feed-day]').map(txt)).toEqual(feed.days.map((d) => norm(dayWeekdayLabel(d.date))))
     const rows = all('[data-feed-op]')
     expect(rows.map((r) => r.dataset.feedOp)).toEqual(feed.days.flatMap((d) => d.ops.map((o) => o.id)))
@@ -625,7 +665,9 @@ describe('WK-01: «Траты недели · N» — лента трат по �
     // ‹ — прошлая неделя: в строке — её траты (W38: продукты 20 000 и такси 5 000).
     await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     await press(q('button[aria-label="Прошлая неделя"]'))
-    expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 2')
+    expect(txt(q('[data-week-feed]'))).toBe('История')
+    await press(q('[data-week-feed]'))
+    expect(txt(q('[data-feed-meta]'))).toBe('2 операции')
   })
 
   it('своих трат за неделю нет — строки нет; у партнёра на экране — только его траты (чужих операций стор не отдаёт)', async () => {

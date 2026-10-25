@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { dayWeekdayLabel, weekRange, weekRangeLabel } from '@/lib/dates'
+import { dayWeekdayLabel } from '@/lib/dates'
 import { liveSpendCategories, type WeekFeedOp } from '@/lib/finance'
 import { spendColor } from '@/lib/palette'
 import { UNKNOWN_CATEGORY } from '@/lib/statements/dictionary'
@@ -31,11 +31,12 @@ function tap(o: WeekFeedOp) {
   if (o.hand) emit('edit', o.id)
   else opOpen.value = o.id
 }
-const meta = computed(() => `${weekRangeLabel(weekRange(props.week))} · ${props.feed.count} ${plural(props.feed.count, 'трата', 'траты', 'трат')}`)
+// Под заголовком «История» — одна строка «N операций» (К-5, Р-14 «Figma»: счётчик переехал сюда со строки «Недели»).
+const meta = computed(() => `${props.feed.count} ${plural(props.feed.count, 'операция', 'операции', 'операций')}`)
 </script>
 
 <template>
-  <Sheet :open="open" title="Траты недели" @close="emit('close')">
+  <Sheet :open="open" title="История" @close="emit('close')">
     <p class="mb-1 type-meta num" data-feed-meta>{{ meta }}</p>
     <div class="flex flex-col" data-feed>
       <template v-for="d in feed.days" :key="d.date">

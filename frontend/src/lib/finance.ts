@@ -5365,7 +5365,8 @@ export function myWeek(
         low: !!row && rest !== null && rest < row.plan * LOW_REST_SHARE,
       }
     })
-    .sort((a, b) => b.amount - a.amount || (b.plan ?? 0) - (a.plan ?? 0) || a.name.localeCompare(b.name))
+    // «Не разобрано» — всегда последней строкой (К-3, FG-07): разделы — от большего к меньшему, неразобранное — после них.
+    .sort((a, b) => Number(a.categoryId === UNKNOWN_CATEGORY) - Number(b.categoryId === UNKNOWN_CATEGORY) || b.amount - a.amount || (b.plan ?? 0) - (a.plan ?? 0) || a.name.localeCompare(b.name))
 
   const total = mapTotal(now)
   const prev = mapTotal(before)

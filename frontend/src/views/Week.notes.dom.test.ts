@@ -98,7 +98,9 @@ describe('FB-20: заметка себе с датой на «Неделе»', (
     expect(all('[data-note]').map((el) => el.dataset.note)).toEqual(['n1', 'n2'])
     expect(txt(q('[data-note="n1"] [data-note-open]'))).toContain('Продлить страховку')
     expect(txt(q('[data-note="n1"] [data-note-open]'))).toContain('22 сентября')
-    expect(txt(q('[data-note="n2"] [data-note-open]'))).toContain('26 сентября · 120 000')
+    expect(txt(q('[data-note="n2"] [data-note-open]'))).toContain('26 сентября · 120 000 ₸')
+    // К-2: значок карточки — «записка» (PhNote), как пункт «Заметка» в листе «+».
+    expect(q('[data-note="n1"] [data-note-icon="note"] svg')).not.toBeNull()
     expect(q('[data-note="n1"]')!.dataset.done).toBeUndefined()
     // ✓ — сделано: `doneAt`, карточка приглушена и остаётся до конца недели; ещё раз — снято.
     await press(q('[data-note="n1"] [data-note-done]'))

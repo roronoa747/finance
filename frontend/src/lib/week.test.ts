@@ -87,12 +87,12 @@ describe('myWeek — мои разделы недели (Р-95, Р-98)', () => {
     expect(w.prev).toBe(31_000)
     expect(w.delta).toBe(10_400)
     expect(w.pct).toBe(34)
-    // Продукты 25 000 → не разобрано 12 400 → транспорт 4 000 → кафе (план без трат); развлечений на неделе нет.
+    // Продукты 25 000 → транспорт 4 000 → кафе (план без трат) → «Не разобрано» 12 400 последней (К-3); развлечений нет.
     expect(w.rows.map((r) => [r.categoryId, r.amount])).toEqual([
       ['sc_food', 25_000],
-      [UNKNOWN_CATEGORY, 12_400],
       ['sc_transport', 4_000],
       ['sc_cafe', 0],
+      [UNKNOWN_CATEGORY, 12_400],
     ])
   })
 
@@ -163,8 +163,16 @@ describe('myWeek — мои разделы недели (Р-95, Р-98)', () => {
     const w = week('2026-W41', '2026-10-21')
     expect(row(w, 'sc_fun')).toMatchObject({ amount: 9_000, plan: null, spent: null, rest: null, low: false })
     const bare = week('2026-W42', '2026-10-21', 'a', state({ spendPlans: [] }))
-    expect(bare.rows.map((r) => r.categoryId)).toEqual(['sc_food', UNKNOWN_CATEGORY, 'sc_transport'])
+    expect(bare.rows.map((r) => r.categoryId)).toEqual(['sc_food', 'sc_transport', UNKNOWN_CATEGORY])
     expect(bare.rows.every((r) => r.plan === null && r.rest === null)).toBe(true)
+  })
+
+  it('К-3 (FG-07): «Не разобрано» — последней строкой, даже когда больше всех по сумме', () => {
+    const ops = [op('2026-10-12', 1_000, 'sc_food', 'Magnum'), op('2026-10-13', 50_000, null, 'ИП Ахметова')]
+    const totals = periodsOf(ops).flatMap(({ kind, period }) => spendTotals(ops, 'a', kind, period, T0))
+    const w = myWeek(state(), { ...base, totals, ops, by: 'a', week: '2026-W42', today: '2026-10-21' })
+    expect(w.rows[0]).toMatchObject({ categoryId: 'sc_food', amount: 1_000 })
+    expect(w.rows.at(-1)).toMatchObject({ categoryId: UNKNOWN_CATEGORY, amount: 50_000 })
   })
 
   it('мало: остаток меньше 15 % плана или сверх плана', () => {

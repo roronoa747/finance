@@ -214,7 +214,8 @@ describe('e2e / B2C Блок 15 — «Неделя» и «Месяц» на дв
     const { state, ctx } = A.store.planInput(K)
     const mine = myWeek(state, { ...ctx, uploads: ops.uploads, by: 'a', week: weekKey(), ops: ops.all })
     expect(mine).toMatchObject({ total: 22_500, prev: 40_000 })
-    expect(mine.rows.map((r) => [r.categoryId, r.amount, r.rest])).toEqual([['sc_food', 12_000, 108_000], ['_unknown', 7_000, null], ['sc_cafe', 3_500, 26_500]])
+    // «Не разобрано» — последней (К-3, FG-07), даже когда больше раздела.
+    expect(mine.rows.map((r) => [r.categoryId, r.amount, r.rest])).toEqual([['sc_food', 12_000, 108_000], ['sc_cafe', 3_500, 26_500], ['_unknown', 7_000, null]])
 
     const list = await week(A)
     expect(list).not.toContain('data-upload="lead"')

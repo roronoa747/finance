@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { PhCaretLeft, PhCaretRight, PhCheck, PhClock, PhCoins, PhCreditCard, PhPlus } from '@phosphor-icons/vue'
+import { PhCaretLeft, PhCaretRight, PhCheck, PhCoins, PhCreditCard, PhNote, PhPlus } from '@phosphor-icons/vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
@@ -66,7 +66,7 @@ import { useIncomeAnswer } from '@/components/useIncomeAnswer'
  * ни полосы, ни призыва (призыв к плану — точка на «Месяце», FB-21). Разделы — значок, имя, сумма за неделю, без полос
  * (остаток раздела на месяц — в листе раздела); строка «Не разобрано» с вопросами — сама кнопка в лист «Вопросы» (по
  * одному). Между полосой и разделами — карточки заметок себе на эту неделю (Р-33, FB-20: личный документ, ✓ — сделано,
- * нажатие — правка; из «+ → Заметка», `/week?note=1`). Лента «Траты недели» и тренд 8 недель — свёрнуты. Цифр партнёра
+ * нажатие — правка; из «+ → Заметка», `/week?note=1`). Лента «История» и «Статистика» (тренд 8 недель) — свёрнуты. Цифр партнёра
  * нет: его траты — в «Месяце». Считает
  * `finance.ts` (`myWeek`, `sectionWeek`, `weekTrend`); файл выписки разбирается на телефоне и никуда не уходит (Р-4).
  *
@@ -118,6 +118,27 @@ function turn(step: -1 | 1) {
   turned.value = true
   week.value = step < 0 ? prevWeekKey(week.value) : weekKey(addDaysIso(weekRange(week.value).from, 7))
 }
+/**
+ * Свайп по шапке листает неделю (К-1, FG-07, вариант составителя): горизонтальный жест ≥ 48 px и вдвое длиннее
+ * вертикального — влево следующая, вправо прошлая; те же границы, что у стрелок. Вертикальная прокрутка не листает.
+ */
+const SWIPE_MIN = 48
+let swipeFrom: { x: number; y: number } | null = null
+function swipeStart(e: TouchEvent) {
+  const t = e.touches[0]
+  swipeFrom = t ? { x: t.clientX, y: t.clientY } : null
+}
+function swipeEnd(e: TouchEvent) {
+  const t = e.changedTouches[0]
+  const from = swipeFrom
+  swipeFrom = null
+  if (!from || !t) return
+  const dx = t.clientX - from.x
+  const dy = t.clientY - from.y
+  if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= 2 * Math.abs(dy)) return
+  if (dx < 0 && canForward.value) turn(1)
+  else if (dx > 0 && canBack.value) turn(-1)
+}
 
 /** Мои траты недели — всё из `myWeek`: сумма, сравнение, разделы с остатком (одна дорога с «Месяцем»). */
 const mine = computed(() => {
@@ -148,7 +169,7 @@ const trendOpen = ref(false)
 const trendDay = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`
 
 /**
- * Лента трат недели (бэклог «Лента недели», Р-1): тихая строка «Траты недели · N» под разделами → лист по дням. Отбор —
+ * Лента трат недели (бэклог «Лента недели», Р-1): тихая строка «История» под разделами (К-5, Р-14 «Figma»: счётчик — в листе) → лист по дням. Отбор —
  * тот же, что у суммы недели (`weekFeed`: отмеченные платежи — не траты).
  */
 const feed = computed(() => {
@@ -459,17 +480,17 @@ onBeforeUnmount(() => {
     <!--
       Шапка в два яруса (FB-19, Р-30, Figma `18:11`): слева ‹неделя› и моя сумма крупно, справа кружки выписок 26 px
       (загрузил за неделю — полный цвет, нет — бледный; свой — лист «Мои выписки») и загрузка: своей выписки за неделю
-      нет — маленькая брендовая «Загрузить» (главное действие), есть — кружок «+». Сравнение с прошлой — в «8 недель».
+      нет — маленькая брендовая «Загрузить» (главное действие), есть — кружок «+». Сравнение с прошлой — в «Статистике» (тренд 8 недель).
     -->
-    <Card tight class="flex items-start justify-between gap-3" data-week-head>
+    <Card tight class="flex items-start justify-between gap-3" data-week-head @touchstart.passive="swipeStart" @touchend="swipeEnd">
       <div class="flex min-w-0 flex-col gap-1">
         <div class="flex items-center gap-1.5">
-          <button type="button" class="press -ml-1.5 grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
-            <PhCaretLeft :size="16" />
+          <button type="button" class="press -ml-2 grid size-9 cursor-pointer place-items-center text-ink-2 disabled:opacity-30" :disabled="!canBack" aria-label="Прошлая неделя" @click="turn(-1)">
+            <PhCaretLeft :size="20" />
           </button>
-          <span class="type-section" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
-          <button type="button" class="press grid size-7 cursor-pointer place-items-center text-ink-3 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
-            <PhCaretRight :size="16" />
+          <span class="text-[15px] font-semibold text-ink" data-week-label>{{ weekRangeLabel(mine.range) }}</span>
+          <button type="button" class="press grid size-9 cursor-pointer place-items-center text-ink-2 disabled:opacity-30" :disabled="!canForward" aria-label="Следующая неделя" @click="turn(1)">
+            <PhCaretRight :size="20" />
           </button>
         </div>
         <span class="font-num text-[34px] font-bold leading-none num" :class="mine.total ? 'text-ink' : 'text-ink-2'" data-week-total>{{ money(mine.total) }}</span>
@@ -552,7 +573,7 @@ onBeforeUnmount(() => {
 
     <!-- Заметки себе на этой неделе (Р-33): карточка — текст, «12 ноября · 60 000», ✓ справа; нажатие строки — правка -->
     <Card v-for="n in weekNotes" :key="n.id" tight class="flex items-center gap-2.5" :data-note="n.id" :data-done="n.doneAt ? 'true' : undefined">
-      <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2" aria-hidden="true"><PhClock :size="16" /></span>
+      <span class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-ink-2" aria-hidden="true" data-note-icon="note"><PhNote :size="16" /></span>
       <button type="button" class="press min-w-0 flex-1 cursor-pointer text-left" data-note-open @click="noteEdit = n.id">
         <span class="block truncate text-[15.5px] font-semibold" :class="n.doneAt ? 'text-ink-2' : 'text-ink'">{{ n.text }}</span>
         <span class="block type-meta num">{{ noteMeta(n) }}</span>
@@ -622,7 +643,7 @@ onBeforeUnmount(() => {
       data-week-feed
       @click="feedOpen = true"
     >
-      <span class="num">Траты недели · {{ feed.count }}</span>
+      <span>История</span>
       <PhCaretRight :size="15" class="text-ink-3" />
     </button>
 
@@ -635,7 +656,7 @@ onBeforeUnmount(() => {
         :aria-expanded="trendOpen"
         @click="trendOpen = !trendOpen"
       >
-        <span>8 недель</span>
+        <span>Статистика</span>
         <PhCaretRight :size="15" class="text-ink-3 transition-transform" :class="trendOpen && 'rotate-90'" />
       </button>
       <div v-if="trendOpen" class="flex h-[110px] items-end gap-[7px] rounded-b-[20px] bg-surface px-4 pb-3.5 pt-1" data-trend-bars>
