@@ -320,6 +320,8 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     expect(shown()).toEqual(['tab-month'])
     await vi.advanceTimersByTimeAsync(4_000)
     expect(readTipsSeen()).toEqual(['tab-month'])
+    // Отмечен, но не пропал на глазах (критик Блока 1): стоит, пока «Месяц» открыт.
+    expect(shown()).toEqual(['tab-month'])
     await go(router, '/')
     expect(shown()).toEqual(['tab-dreams'])
     await go(router, '/month')

@@ -178,13 +178,25 @@ describe('kit/Tip — подсказка у предмета', () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }))
     afterEach(() => vi.useRealTimers())
 
-    it('4 с на экране — отмечен без «Понятно», после перемонтирования не показан', async () => {
-      mount(() => tip('tab-money'))
+    it('4 с на экране — отмечен без «Понятно» и не пропадает на глазах; после перемонтирования не показан', async () => {
+      mount(() => [tip('tab-money'), tip('tab-week')])
       await nextTick()
       expect(tips()).toEqual(['tab-money'])
       vi.advanceTimersByTime(TIP_SEEN_MS)
       await nextTick()
       expect(readTipsSeen()).toEqual(['tab-money'])
+      // Критик Блока 1: пузырь стоит, пока экран открыт, — очередь не подменяет его следующим.
+      expect(tips()).toEqual(['tab-money'])
+      // Лист поверх и обратно — тот же пузырь на месте; «Понятно» — уходит, следующий в очереди.
+      const release = holdTips()
+      await nextTick()
+      expect(tips()).toEqual([])
+      release()
+      await nextTick()
+      expect(tips()).toEqual(['tab-money'])
+      ;(document.querySelector('[data-tip-ok]') as HTMLElement).click()
+      await nextTick()
+      expect(tips()).toEqual(['tab-week'])
       mount(() => tip('tab-money'))
       await nextTick()
       expect(tips()).toEqual([])

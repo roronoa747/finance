@@ -6,7 +6,8 @@ import { markTipSeen, readTipsSeen } from '@/lib/storage'
  * смонтированный из ещё не увиденных, остальные ждут его «Понятно»; пока открыт лист (`Sheet`) или тост (`Toast`) —
  * ни одного: пузырь ждёт их закрытия.
  */
-const mounted = reactive<{ key: symbol; id: string; ready: () => boolean }[]>([])
+/** `keep` — простоял на экране и уже увиден (F2-Х3): стоит, пока смонтирован, хотя в «видел» он уже есть. */
+const mounted = reactive<{ key: symbol; id: string; ready: () => boolean; keep?: boolean }[]>([])
 /** Открытые листы и тосты. */
 const overlays = ref(0)
 /** «Видел» — на устройстве; число растёт при отметке, чтобы очередь перечитала хранилище. */
@@ -16,12 +17,13 @@ const active = computed(() => {
   void marks.value
   if (overlays.value > 0) return null
   const seen = readTipsSeen()
-  return mounted.find((t) => t.ready() && !seen.includes(t.id))?.key ?? null
+  return mounted.find((t) => t.ready() && (t.keep || !seen.includes(t.id)))?.key ?? null
 })
 
 /**
  * Пузырь `id` в очереди, пока смонтирован (в DOM; SSR-рендер очередь не трогает) и `ready` (предмет есть — пустой экран
- * пузыря не показывает и очередь не держит): `shown` — он сейчас тот самый один, `done` — «Понятно».
+ * пузыря не показывает и очередь не держит): `shown` — он сейчас тот самый один, `done` — «Понятно», `seen` — простоял на
+ * экране (F2-Х3): «видел» записано, но пузырь не пропадает на глазах — уходит вместе с экраном, второй раз его нет.
  */
 export function useTip(id: string, ready: () => boolean = () => true) {
   const key = Symbol(id)
@@ -30,11 +32,19 @@ export function useTip(id: string, ready: () => boolean = () => true) {
     const i = mounted.findIndex((t) => t.key === key)
     if (i >= 0) mounted.splice(i, 1)
   })
+  const entry = () => mounted.find((t) => t.key === key)
   return {
     shown: computed(() => active.value === key),
     done() {
       markTipSeen(id)
+      const t = entry()
+      if (t) t.keep = false
       marks.value++
+    },
+    seen() {
+      markTipSeen(id)
+      const t = entry()
+      if (t) t.keep = true
     },
   }
 }

@@ -40,7 +40,8 @@ onBeforeUnmount(() => root.value?.removeEventListener('click', onSubject, true))
 
 /**
  * Показанная — значит увиденная (F2-Х3, Р-13 «Figma», вариант составителя): пузырь, простоявший на экране `TIP_SEEN_MS`
- * подряд, отмечается сам — ушёл со вкладки, не ответив, второй раз его не будет. Таймер идёт только пока пузырь показан:
+ * подряд, отмечается сам и остаётся на месте, пока экран открыт (не пропадает на глазах, критик Блока 1) — ушёл со
+ * вкладки, не ответив, второй раз его не будет. Таймер идёт только пока пузырь показан:
  * под листом или тостом (`holdTips`) и пока предмета нет (`wait`) `shown` ложно — таймер сброшен.
  */
 let seenTimer: ReturnType<typeof setTimeout> | null = null
@@ -52,7 +53,7 @@ watch(
   () => tip.shown.value,
   (on) => {
     stopSeen()
-    if (on) seenTimer = setTimeout(() => tip.done(), TIP_SEEN_MS)
+    if (on) seenTimer = setTimeout(() => tip.seen(), TIP_SEEN_MS)
   },
   { immediate: true },
 )
