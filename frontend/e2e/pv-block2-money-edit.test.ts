@@ -765,18 +765,19 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const payoffA = mountLive(A.pinia, router, { view: PayoffSheet, props: () => ({ creditId: screenA.payoffCreditId }) })
       payoffA.payoffMode = 'once'
       payoffA.payoffAmount = '100 000'
-      payoffA.applyMode = 'payment'
       await nextTick()
-      // 1 000 000 − 100 000 = 900 000.
-      expect(payoffA.applyPlan).toMatchObject({ paid: 100_000, left: 900_000 })
+      // Вносят листом `PrepaySheet` (F2-04): «Разово» с суммой — «Внёс досрочно» есть; лист открыт с этой суммой.
+      expect(payoffA.canPrepay).toBe(true)
+      payoffA.prepayAmount = 100_000
+      await nextTick()
       // Другой кредит — чистый калькулятор: сумма пустая, режим «каждый месяц», и
-      // «Снизить платёж» кредита «Кредит» не переходит к рассрочке (клинап).
+      // лист взноса кредита «Кредит» не переходит к рассрочке (клинап).
       screenA.payoffCreditId = inst.id
       await nextTick()
       expect(payoffA.payoffAmount).toBe('')
       expect(payoffA.payoffMode).toBe('monthly')
-      expect(payoffA.applyMode).toBe('term')
-      expect(payoffA.applyPlan).toBe(null)
+      expect(payoffA.prepayAmount).toBe(null)
+      expect(payoffA.canPrepay).toBe(false)
 
       // Калькулятор рассрочки на A: 240 000 / 20 000 = 12 платежей, переплаты 0;
       // подсказка суммы — первый чип: половина платежа 10 000.

@@ -6,35 +6,28 @@ import { money, plain, parseMoney } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
 import {
   afterAnchor,
-  closerWish,
   creditOutlook,
   halfOverpayExtra,
-  lastAccountFor,
   liveCredits,
-  lumpPlan,
-  NO_SAVING,
-  payableAccounts,
   paymentSplit,
   payoffChips,
   payoffLadder,
   prepayOutcome,
-  type LumpMode,
 } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
-import { cn, plural, sentence } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
-import { useFormCheck } from '@/components/kit/useFormCheck'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
-import AccountChoice from '@/components/AccountChoice.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import Button from '@/components/ui/Button.vue'
+import PrepaySheet from './PrepaySheet.vue'
 
 /**
- * Калькулятор досрочного погашения (React `PayoffDialog`) и применение досрочки
- * к кредиту (RP-08): вывод, чипы, лесенка отдачи, применённые досрочки со снятием. Шаг плана «Сначала долги» отсюда
- * не вносится (Блок 16, Р-110: «Изменить режим» убран — шаг записывает «Отложил» в «Месяце»).
+ * Калькулятор досрочного погашения (React `PayoffDialog`): вывод, чипы, лесенка отдачи, применённые досрочки со
+ * снятием. Вносят досрочку листом `PrepaySheet` (F2-04) — отсюда тихой «Внёс досрочно» с суммой калькулятора. Шаг плана
+ * «Сначала долги» отсюда не вносится (Блок 16, Р-110: «Изменить режим» убран — шаг записывает «Отложил» в «Месяце»).
  */
 const props = defineProps<{ creditId: string | null }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -44,9 +37,6 @@ const authStore = useAuthStore()
 
 // Кредит без ставки (B2C-19) калькулятор не открывает и по адресу `?payoff=`: срок и экономия с нулём врут.
 const activePayoffCredit = computed(() => liveCredits(financeStore.credits).find((c) => c.id === props.creditId && !c.rateUnknown))
-// Досрочка — тенговая сумма: у валютного счёта тенге по курсу, и следующая правка курса
-// или суммы в валюте молча стёрла бы сдвиг.
-const payAccounts = computed(() => payableAccounts(financeStore.accounts))
 
 const payoffMode = ref<'monthly' | 'once'>('monthly')
 const payoffAmount = ref('')
@@ -70,40 +60,26 @@ const payoffResult = computed(() => {
 })
 const ladder = computed(() => (activePayoffCredit.value ? payoffLadder(activePayoffCredit.value) : []))
 
-/* ------------------ Применить досрочку (RP-08) ------------------ */
-const applyMode = ref<LumpMode>('term')
-// '' — счёт не выбран, 'none' — «не списывать», иначе id счёта.
-// Счёт списания — как у взносов и отметок (`AccountChoice`): не выбран (undefined), «только отметить» (null) или id.
-const applyAccount = ref<string | null | undefined>(undefined)
-const applyDone = ref<Payment | null>(null)
+/* Вносят досрочку из одного места — листа `PrepaySheet` (F2-04, Р-3): здесь в «Разово» с суммой — тихая «Внёс досрочно». */
+const prepayAmount = ref<number | null>(null)
 const removingPrepay = ref<string | null>(null)
-// «Это приближает» (ТЗ B2C-18 п. 4): что из желаний ближе на то, что не отдадим банку, — одна строка,
-// как было в прежней раскладке зарплаты. Экономии нет или желаний с ценой нет — строки нет.
-const closer = computed(() => (applyDone.value ? closerWish(financeStore.wishlist, applyDone.value.saved ?? 0, 'once') : null))
-
-const applyPlan = computed(() => {
-  const c = activePayoffCredit.value
-  const v = parseMoney(payoffAmount.value)
-  return c && v > 0 ? lumpPlan(c.principal, c.annualRate, c.payment, v, applyMode.value) : null
-})
+const canPrepay = computed(
+  () => !authStore.isViewer && payoffMode.value === 'once' && (activePayoffCredit.value?.principal ?? 0) > 0 && parseMoney(payoffAmount.value) > 0,
+)
 const creditPrepays = computed(() =>
   financeStore.payments
     .filter((p) => p.kind === 'prepay' && !p.deletedAt && p.targetId === props.creditId)
     .sort((a, b) => b.at.localeCompare(a.at)),
 )
 
-// Другой кредит — чистый калькулятор (React `PayoffDialog`); счёт по умолчанию —
-// прошлой оплаты этого кредита (Р-5).
+// Другой кредит — чистый калькулятор (React `PayoffDialog`).
 watch(
   () => props.creditId,
-  (id) => {
+  () => {
     payoffAmount.value = ''
     payoffMode.value = 'monthly'
-    applyMode.value = 'term'
-    applyDone.value = null
+    prepayAmount.value = null
     removingPrepay.value = null
-    const last = id ? lastAccountFor(financeStore.payments, id, financeStore.accounts) : undefined
-    applyAccount.value = last
   },
   { immediate: true },
 )
@@ -119,19 +95,6 @@ function prepayUndoNote(p: Payment): string {
   if (p.accountId && (!acc || afterAnchor(p, acc.amountSetAt))) parts.push('деньги вернутся на счёт')
   if (p.prevPayment !== undefined && c?.payment === p.newPayment) parts.push('платёж — к прежнему')
   return parts.join(', ') + '.'
-}
-
-const form = useFormCheck(() => [['applyAccount', applyAccount.value === undefined && 'Выберите счёт']])
-
-function applyPrepay() {
-  const c = activePayoffCredit.value
-  if (!c || !applyPlan.value || applyAccount.value === undefined) return
-  applyDone.value = financeStore.applyPrepayment(c.id, authStore.slot ?? 'a', {
-    amount: parseMoney(payoffAmount.value),
-    mode: applyMode.value,
-    accountId: applyAccount.value ?? null,
-  })
-  payoffAmount.value = ''
 }
 </script>
 
@@ -208,60 +171,16 @@ function applyPrepay() {
         больше — считать по деньгам, которых нет, смысла нет.
       </p>
 
-      <!-- Применить разовую досрочку (Р-6) -->
-      <div
-        v-if="payoffMode === 'once' && applyPlan && !authStore.isViewer"
-        class="mb-3 rounded-xl border border-line p-3.5"
+      <Button
+        v-if="canPrepay"
+        variant="ghost"
+        size="md"
+        class="-mt-1 mb-3 w-full"
+        data-payoff-prepay
+        @click="prepayAmount = parseMoney(payoffAmount)"
       >
-        <div class="mb-2 text-[13px] font-medium text-ink">Применить к кредиту</div>
-        <Segmented
-          v-model="applyMode"
-          :options="[
-            { value: 'term', label: 'Сократить срок' },
-            { value: 'payment', label: 'Снизить платёж' },
-          ]"
-          class="mb-3"
-        />
-        <div class="mb-3 flex flex-col gap-1.5 text-[13px]">
-          <div class="flex justify-between">
-            <span class="text-ink-2">Остаток долга</span>
-            <b class="num text-ink">{{ money(applyPlan.left) }}</b>
-          </div>
-          <div v-if="applyPlan.left === 0" class="text-ink-2">Долг закроется этим взносом.</div>
-          <!-- Платёж не покрывает проценты (Р-11): сравнивать не с чем, платёж прежний в обоих режимах. -->
-          <div v-else-if="applyPlan.openEnded" class="flex justify-between">
-            <span class="text-ink-2">Платежей останется</span>
-            <b class="num text-ink">{{ Number.isFinite(applyPlan.months) ? applyPlan.months : '—' }}</b>
-          </div>
-          <div v-else-if="applyMode === 'term'" class="flex justify-between">
-            <span class="text-ink-2">Платежей останется</span>
-            <b class="num text-ink">{{ applyPlan.months }} вместо {{ applyPlan.monthsBefore }}</b>
-          </div>
-          <div v-else class="flex justify-between">
-            <span class="text-ink-2">Платёж</span>
-            <b class="num text-ink">{{ money(applyPlan.payment) }} вместо {{ money(activePayoffCredit.payment) }}</b>
-          </div>
-        </div>
-        <div v-if="applyPlan.openEnded" class="mb-3 rounded-xl bg-warn-soft px-3 py-2 text-[13px] text-ink-2">
-          {{ sentence(NO_SAVING) }}
-        </div>
-        <div v-else class="mb-3 rounded-xl bg-brand-soft px-3 py-2 text-[13px] text-ink-2">
-          Не отдадим банку <b class="num text-brand">{{ money(applyPlan.saved) }}</b>
-        </div>
-        <AccountChoice v-model="applyAccount" :accounts="payAccounts" label="Откуда списать" name="applyAccount" />
-        <Button class="w-full" @click="form.submit(applyPrepay)">Применить досрочку</Button>
-      </div>
-
-      <div
-        v-if="applyDone"
-        class="mb-3 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13px] text-ink-2"
-      >
-        Досрочка применена<template v-if="(applyDone.saved ?? 0) > 0">: не отдадим банку
-        <b class="num text-brand">{{ money(applyDone.saved ?? 0) }}</b></template>.
-        <div v-if="closer" class="mt-1 num">
-          Это приближает: «{{ closer.wish.name }}» — {{ closer.covers ? 'хватит целиком' : `ближе на ${money(closer.closer)}` }}.
-        </div>
-      </div>
+        Внёс досрочно
+      </Button>
 
       <div v-if="creditPrepays.length > 0" class="mb-3">
         <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
@@ -299,7 +218,7 @@ function applyPrepay() {
               <Button variant="outline" class="flex-1 bg-surface" @click="removingPrepay = null">Отмена</Button>
               <Button
                 class="flex-1"
-                @click="() => { financeStore.removePrepayment(p.id); removingPrepay = null; applyDone = null }"
+                @click="() => { financeStore.removePrepayment(p.id); removingPrepay = null }"
               >
                 Снять
               </Button>
@@ -333,4 +252,11 @@ function applyPrepay() {
       <Button class="w-full" @click="emit('close')">Закрыть</Button>
     </template>
   </Sheet>
+  <!-- «Подробнее» в листе взноса ведёт сюда же — просто закрыть его. -->
+  <PrepaySheet
+    :credit-id="prepayAmount !== null ? (activePayoffCredit?.id ?? null) : null"
+    :amount="prepayAmount ?? undefined"
+    @close="prepayAmount = null"
+    @payoff="prepayAmount = null"
+  />
 </template>
