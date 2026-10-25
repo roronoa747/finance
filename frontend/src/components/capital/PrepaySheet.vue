@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
-import { lastAccountFor, liveCredits, lumpPlan, NO_SAVING, payableAccounts, type LumpMode } from '@/lib/finance'
+import { lastAccountFor, liveCredits, lumpPlan, NO_SAVING, payableAccounts, prepayBeforeAfter, type LumpMode } from '@/lib/finance'
 import type { Payment } from '@/types/finance'
 import { plural, sentence } from '@/lib/utils'
 
@@ -76,6 +76,9 @@ const preview = computed(() => {
   return `Платёж ${money(p.payment)} вместо ${money(c.payment)}`
 })
 
+// «Было → стало» всех долгов (F2-05, Р-4) — числа только из `finance.ts`.
+const result = computed(() => (done.value ? prepayBeforeAfter(financeStore.credits, done.value) : null))
+
 function apply() {
   const c = credit.value
   // Второе касание по кнопке до перерисовки не пишет вторую досрочку.
@@ -90,10 +93,16 @@ function apply() {
 
 <template>
   <Sheet :open="!!credit && !authStore.isViewer" title="Внёс досрочно" :z="60" @close="emit('close')">
-    <template v-if="credit && done" #default="{ close }">
-      <div class="mb-3.5 rounded-xl border border-brand bg-brand-soft px-3.5 py-3 text-[13px] text-ink-2" data-prepay-done>
-        <template v-if="(done.saved ?? 0) > 0">Не отдадите банку <b class="num text-brand">{{ money(done.saved ?? 0) }}</b></template>
-        <template v-else>Долг пересчитан</template>
+    <!-- Итог (F2-05): одна крупная цифра — «стало», «было» — зачёркнутым под ней; без механики. -->
+    <template v-if="credit && result" #default="{ close }">
+      <div class="mb-4 flex flex-col gap-1" data-prepay-done>
+        <span class="text-[15px] font-semibold text-ok">Молодец!</span>
+        <span v-if="result.after > 0" class="font-num text-[34px] font-bold leading-none num text-ink" data-prepay-after>{{ money(result.after) }}</span>
+        <span v-else class="type-num text-[24px] text-ok" data-prepay-after>Долг закрыт</span>
+        <span class="type-meta num">все долги, было <s data-prepay-before>{{ money(result.before) }}</s></span>
+        <span v-if="result.saved > 0" class="mt-2 text-[13.5px] text-ink-2" data-prepay-saved>
+          Не отдадите банку <b class="num text-brand">{{ money(result.saved) }}</b>
+        </span>
       </div>
       <Button class="w-full" @click="close">Готово</Button>
     </template>

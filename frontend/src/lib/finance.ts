@@ -790,6 +790,16 @@ export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c
 /** Остаток открытых долгов семьи — квадрат и карточка «Долги», строка под «Капиталом» (Р-91). */
 export const openDebt = (list: Credit[]) => openCredits(list).reduce((a, c) => a + c.principal, 0);
 /**
+ * «Было → стало» после досрочки (F2-05, Р-4): остаток всех открытых долгов — та же цифра, что крупно на «Долгах», — до и
+ * после взноса и проценты, которых не отдадим. Считается из состояния **после** записи: досрочка вся в тело, значит
+ * «было» = «стало» + `principal` записи — листу не нужен снимок до нажатия. Взнос, закрывший кредит, тоже верен: кредит
+ * выпал из открытых с остатком 0. Кредиты — производные, как у `openDebt`.
+ */
+export function prepayBeforeAfter(list: Credit[], record: Pick<Payment, 'principal' | 'saved'>): { before: number; after: number; saved: number } {
+  const after = openDebt(list);
+  return { before: after + Math.round(record.principal ?? 0), after, saved: Math.round(record.saved ?? 0) };
+}
+/**
  * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
  * первым (при равной ставке — тот, что больше съедает процентами в месяц).
  * Беспроцентные досрочно не гасятся: они ничего не стоят. Кредиты — производные,

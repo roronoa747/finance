@@ -5,7 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { authAs, planFamilyDoc } from '@/test/planFamily'
-import { lumpPlan } from '@/lib/finance'
+import { lumpPlan, openDebt, prepayBeforeAfter } from '@/lib/finance'
 import { money, plain } from '@/lib/money'
 import CreditSheet from './CreditSheet.vue'
 import PrepaySheet from './PrepaySheet.vue'
@@ -216,6 +216,59 @@ describe('F2-04: лист PrepaySheet', () => {
     open(pinia)
     await nextTick()
     expect(dialogs()).toHaveLength(0)
+  })
+})
+
+describe('F2-05: «было → стало» после взноса', () => {
+  const open = (pinia: ReturnType<typeof createPinia>, creditId = 'loan') =>
+    mount(pinia, () => h(PrepaySheet, { creditId, onClose: () => {} }))
+  async function prepay(text: string) {
+    const input = top().querySelector<HTMLInputElement>('[data-prepay-amount]')!
+    await type(input, text)
+    button('Не списывать — только отметить')!.click()
+    await nextTick()
+    button('Внёс')!.click()
+    await nextTick()
+  }
+  const cell = (name: string) => top().querySelector(`[data-prepay-${name}]`)?.textContent?.trim()
+
+  it('числа — из prepayBeforeAfter; «было» = все долги до нажатия; «не отдадите банку» при saved > 0; одна главная «Готово»', async () => {
+    const { pinia, store } = family()
+    const before = openDebt(store.credits)
+    open(pinia)
+    await nextTick()
+    await prepay('200 000')
+    const rec = store.payments.find((p) => p.kind === 'prepay')!
+    const r = prepayBeforeAfter(store.credits, rec)
+    expect(r.before).toBe(before)
+    expect(cell('before')).toBe(money(r.before))
+    expect(cell('after')).toBe(money(r.after))
+    expect(r.saved).toBeGreaterThan(0)
+    expect(cell('saved')).toBe(`Не отдадите банку ${money(r.saved)}`)
+    // Форма ушла: ни поля суммы, ни «Внёс»; одна главная.
+    expect(top().querySelector('[data-prepay-amount]')).toBeNull()
+    expect([...top().querySelectorAll('button')].map((b) => b.textContent?.trim()).filter((t) => t === 'Готово')).toHaveLength(1)
+    expect(top().textContent).not.toMatch(/досрочка применена/i)
+  })
+
+  it('без экономии (рассрочка без процентов) — строки «не отдадите банку» нет', async () => {
+    const { pinia } = family()
+    open(pinia, 'inst')
+    await nextTick()
+    await prepay('40 000')
+    expect(cell('after')).toBeDefined()
+    expect(top().querySelector('[data-prepay-saved]')).toBeNull()
+    expect(top().textContent).not.toContain('Не отдадите банку')
+  })
+
+  it('все долги закрыты — «Долг закрыт» вместо «стало 0»', async () => {
+    const { pinia, store } = family()
+    store.setHouseholdDoc(planFamilyDoc({ credits: planFamilyDoc().credits.filter((c) => c.id === 'cc') }), 2)
+    open(pinia, 'cc')
+    await nextTick()
+    await prepay('300 000')
+    expect(cell('after')).toBe('Долг закрыт')
+    expect(cell('before')).toBe(money(300_000))
   })
 })
 

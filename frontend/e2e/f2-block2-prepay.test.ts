@@ -14,7 +14,7 @@ import { at, backend, fakeServer, type FakeServer } from './support/family'
 /**
  * Блок 2 «Фидбек-2» (F2-04): «досрочно погасил — и правил остаток руками». Телефон A: «Долги» → «Кредит» → «Внёс
  * досрочно» → сумма → «Внёс» (счёт — прошлой оплаты, Kaspi Gold) — остаток в строке «Долгов» меньше на сумму, досрочка — в
- * «Применённых» калькулятора, «Снять» возвращает остаток. Семья `planFamilyDoc` на фейковом сервере, 12 сентября 2026.
+ * «Применённых» калькулятора, «Снять» возвращает остаток. F2-05: лист итога — «было» = крупная цифра «Долгов» до, «стало» — после. Семья `planFamilyDoc` на фейковом сервере, 12 сентября 2026.
  */
 
 type Phone = { pinia: Pinia; client: ReturnType<typeof backend>; store: ReturnType<typeof useFinanceStore> }
@@ -58,6 +58,7 @@ async function mount(p: Phone, path: string) {
 
 const rowSum = (id: string) =>
   document.querySelector(`[data-debt="${id}"]`)!.querySelector('[id] .num')!.textContent!.trim()
+const total = () => document.querySelector('[data-debts-total]')!.textContent!.trim()
 const top = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].at(-1)!
 const button = (text: string) => [...top().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === text)!
 
@@ -77,12 +78,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('e2e / F2-04 — «Внёс досрочно» в листе кредита', () => {
-  it('«Долги» → кредит → «Внёс досрочно» → сумма → «Внёс»: остаток строки меньше на сумму, досрочка в «Применённых», «Снять» возвращает', async () => {
+describe('e2e / F2-04, F2-05 — «Внёс досрочно» в листе кредита, «было → стало»', () => {
+  it('«Долги» → кредит → «Внёс досрочно» → сумма → «Внёс»: остаток строки меньше на сумму, «было → стало» = «Долги» до и после, досрочка в «Применённых», «Снять» возвращает', async () => {
     const A = await phone('a')
     await mount(A, '/money/debts')
     const before = A.store.credits.find((c) => c.id === 'loan')!.principal
     expect(rowSum('loan')).toBe(money(before))
+    const totalBefore = total()
 
     document.querySelector<HTMLElement>('[data-debt="loan"]')!.click()
     await tick()
@@ -99,6 +101,11 @@ describe('e2e / F2-04 — «Внёс досрочно» в листе креди
     const rec = A.store.payments.find((p) => p.kind === 'prepay' && !p.deletedAt)!
     expect(rec).toMatchObject({ targetId: 'loan', amount: 200_000, principal: 200_000, accountId: 'card', mode: 'term', by: 'a' })
     expect(rowSum('loan')).toBe(money(before - 200_000))
+    // F2-05: «было» — крупная цифра «Долгов» до нажатия, «стало» — после; «не отдадите банку» — экономия записи.
+    expect(top().querySelector('[data-prepay-before]')!.textContent!.trim()).toBe(totalBefore)
+    expect(top().querySelector('[data-prepay-after]')!.textContent!.trim()).toBe(total())
+    expect(total()).not.toBe(totalBefore)
+    expect(top().querySelector('[data-prepay-saved]')!.textContent).toContain(money(rec.saved!))
 
     // Готово → лист кредита; «Досрочные взносы · 1» → калькулятор с «Применёнными».
     button('Готово').click()
