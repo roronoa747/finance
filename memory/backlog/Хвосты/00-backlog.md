@@ -1,8 +1,9 @@
 # Бэклог «Хвосты» (TL)
 
-> **Статус:** 2026-10-24 — Блок 2 🏁 на проде: Production `dpl_962mKtZYgd6A62PwT21XJmaMBE6g` (main `2e623435`); откат —
-> promote `dpl_3jf6GrUEg273Hmtg8C2Sxh51NanG` (фронт Блока 1). Следующее — `/worker Хвосты 3`. Хвосты Х-24, Х-25, Х-27 —
-> владельцу (Х-26 закрыт Блоком 2).
+> **Статус:** 2026-10-25 — Блок 3 🏁 на проде: Production `dpl_95u5k2pispc2RSmavEeyuxg6v7LL` (main `bd5bdddc`); откат —
+> promote `dpl_6457kBLaAaSmWmGpxuN5kATH6u91` (main `ca5d3d75`, фронт Блока 2). Следующее — `/worker Хвосты 4`. Хвосты
+> Х-24, Х-25, Х-27 — владельцу (Х-26 закрыт Блоком 2); ветка `fb-hf1-review-waits` заменена TL-09 — её судьба за владельцем.
+> Блок 2 🏁: Production `dpl_962mKtZYgd6A62PwT21XJmaMBE6g` (main `2e623435`).
 > Блок 1 🏁: Production `dpl_2Kh5kgUAWE2iC4RgLCR847Gvye2L` (main `084e778f`).
 > Прод перед стартом: Production `dpl_FzEAgExD1VN2iQqmDYRDoq4kbsB6` (main `ee1c9286`, Блок 5 «Фидбека»).
 
@@ -64,7 +65,7 @@ Chrome 390, смоук на проде после каждого блока.
 | 2. Цифры сходятся 🏁 *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ✅ |
 | | TL-05 «Платежи без отметки» в «Месяц → Траты» | `block-2-figures/TL-05-unmarked-payments-row.md` | TL-04 | ✅ |
 | | TL-06 Лист «Наличные» и «Переводы людям» — только операции | `block-2-figures/TL-06-cash-people-sheet.md` | — | ✅ |
-| 3. Операции 🔄 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
+| 3. Операции 🏁 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
 | | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ✅ |
 | | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ✅ |
 | 4. Первый запуск ⬜ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ⬜ |
