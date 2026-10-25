@@ -1,8 +1,10 @@
 # Бэклог «Хвосты» (TL)
 
-> **Статус:** 2026-10-25 — Блок 3 🏁 на проде: Production `dpl_95u5k2pispc2RSmavEeyuxg6v7LL` (main `bd5bdddc`); откат —
-> promote `dpl_6457kBLaAaSmWmGpxuN5kATH6u91` (main `ca5d3d75`, фронт Блока 2). Следующее — `/worker Хвосты 4`. Хвосты
-> Х-24, Х-25, Х-27 — владельцу (Х-26 закрыт Блоком 2); ветка `fb-hf1-review-waits` заменена TL-09 — её судьба за владельцем.
+> **Статус:** 2026-10-25 — **все 4 блока 🏁 на проде.** Блок 4 🏁: Production `dpl_JCbkCXM1js2HyMuhZdQYjkWW7ABJ` (main
+> `d4dd9753`); откат — promote `dpl_ECwuRY64tQzAvP5oUnqu2DBPaush` (main `340ebd43` — фронт Блока 3, сверху только доки).
+> Следующее — закрытие бэклога (DoD): судьбы хвостов Х-24, Х-25, Х-27 и ветки `fb-hf1-review-waits` (заменена TL-09) —
+> за владельцем, затем каталог → `memory/archive/Хвосты/`.
+> Блок 3 🏁: Production `dpl_95u5k2pispc2RSmavEeyuxg6v7LL` (main `bd5bdddc`).
 > Блок 2 🏁: Production `dpl_962mKtZYgd6A62PwT21XJmaMBE6g` (main `2e623435`).
 > Блок 1 🏁: Production `dpl_2Kh5kgUAWE2iC4RgLCR847Gvye2L` (main `084e778f`).
 > Прод перед стартом: Production `dpl_FzEAgExD1VN2iQqmDYRDoq4kbsB6` (main `ee1c9286`, Блок 5 «Фидбека»).
@@ -68,7 +70,7 @@ Chrome 390, смоук на проде после каждого блока.
 | 3. Операции 🏁 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
 | | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ✅ |
 | | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ✅ |
-| 4. Первый запуск ✅ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ✅ |
+| 4. Первый запуск 🏁 *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ✅ |
 
 Порядок блоков = приоритет (бриф). Блок 2 после Блока 1: строка «Платежи без отметки» (TL-05) ведёт в те же действия
 «В платежи» / «это платёж по …?», что правит Блок 1. Блоки 3 и 4 от кода прошлых блоков не зависят — порядок только
