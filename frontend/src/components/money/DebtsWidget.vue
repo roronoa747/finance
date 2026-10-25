@@ -66,7 +66,8 @@ const addOpen = ref(false)
 /* ---------- «Отдал» у долга человеку, «Оплатил» у кредита (F2-03, Р-2) — у строки, одна отметка на месяц ---------- */
 // Та же запись, что «Оплатил» в «Месяце» и листе кредита (`paidFor`): отмечено там — здесь ✓ и кнопки нет.
 const given = (r: DebtRow) => paidFor(financeStore.payments, 'credit', r.creditId, key.value)
-const canGive = (r: DebtRow) => !authStore.isViewer && !given(r)
+// Платёж не заполнен (0) — «Месяц» такой долг не ждёт (`nextCreditDue`), кнопка записала бы нулевую отметку.
+const canGive = (r: DebtRow) => !authStore.isViewer && r.payment > 0 && !given(r)
 /** Счёт — тот, с которого платили в прошлый раз (Р-5); не с чего взять — лист отметки спросит один раз. */
 const giveFor = ref<DebtRow | null>(null)
 function give(r: DebtRow) {

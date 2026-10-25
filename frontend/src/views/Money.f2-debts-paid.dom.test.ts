@@ -131,6 +131,15 @@ describe('F2-03: «Оплатил» у строки кредита на «Дол
     expect(marks(finance, 'loan')).toHaveLength(1)
   })
 
+  it('платёж не заполнен (0) — кнопки нет: «Месяц» такой долг не ждёт, нулевой отметки не будет', async () => {
+    const base = planFamilyDoc()
+    const credits = [...base.credits!.map((c) => (c.id === 'loan' ? { ...c, payment: 0 } : c)), { ...BRO, payment: 0 }]
+    await open('member', planFamilyDoc({ credits, payments: [augLoan] }))
+    expect(payIn('loan')).toBeNull()
+    expect(giveIn('bro')).toBeNull()
+    expect(payIn('cc')).not.toBeNull()
+  })
+
   it('viewer — кнопок нет, отмеченное — с ✓', async () => {
     await open('viewer', doc([augLoan, paid('loan', KEY, 58_000)]))
     expect(all('[data-debt-pay], [data-debt-give]')).toEqual([])
