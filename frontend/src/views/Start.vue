@@ -106,10 +106,14 @@ function onTouchEnd(e: TouchEvent) {
 /** Мечта семьи — фото и имя (первая цель очереди); без мечты — плитка без фото. */
 const dream = computed(() => financeStore.heroGoal)
 const dreamSrc = usePhoto(() => dream.value?.photoId)
-/** Путь: выписка (по умолчанию) или Apple Pay — плитка только на iPhone, где подключение доступно. */
+/**
+ * Путь: выписка (по умолчанию) или Apple Pay. Плитки выбора — только при двух путях (iPhone, где подключение доступно;
+ * Р-10 «Хвостов»); с одним путём — без плиток, и пока `ap.load()` не ответил — тоже (на Android плитки не мигают).
+ */
 type Path = 'statement' | 'applepay'
 const path = ref<Path>('statement')
 const applePayShown = computed(() => ap.available && ap.isIPhone)
+const chosen = computed<Path>(() => (applePayShown.value ? path.value : 'statement'))
 onMounted(() => void ap.load())
 /** Что выбрали на шаге — куда ведёт `finish`: выписка → «Неделя», Apple Pay → лист подключения. */
 const uploaded = ref(false)
@@ -235,7 +239,10 @@ const sub = computed(() => titles[step.value].sub)
     <!-- Шаг 1: на что копим (B2C-18) — первым (Р-2). -->
     <GoalNew v-else-if="step === 'dream'" next="/start/spend" />
 
-    <!-- Шаг 2: «Тратьте как обычно» — фото мечты, две плитки-пути, одна брендовая кнопка по выбранной, тихое «Позже». -->
+    <!--
+      Шаг 2: «Тратьте как обычно» — фото мечты, одна брендовая кнопка по пути, тихое «Позже». Плитки-пути — только на
+      iPhone с Apple Pay (два пути); с одним путём выбирать нечего (Р-10 «Хвостов»).
+    -->
     <template v-else-if="step === 'spend'">
       <DreamHero v-if="dream" size="preview" :line="dream.name" :src="dreamSrc" data-start-dream />
       <div v-else class="grid min-h-[180px] place-items-center rounded-card bg-surface-2 text-[15px] font-semibold text-ink-2" data-start-dream>Мечта</div>
@@ -243,7 +250,7 @@ const sub = computed(() => titles[step.value].sub)
         <h1 class="type-h2-lg text-ink">{{ title }}</h1>
         <p class="mt-1.5 text-[14px] leading-relaxed text-ink-2">{{ sub }}</p>
       </div>
-      <div class="grid gap-2" :class="applePayShown ? 'grid-cols-2' : 'grid-cols-1'">
+      <div v-if="applePayShown" class="grid grid-cols-2 gap-2">
         <button
           type="button"
           class="press flex cursor-pointer flex-col items-center gap-1.5 rounded-[16px] border-[1.5px] px-3 py-4 text-[14px] font-semibold"
@@ -255,7 +262,6 @@ const sub = computed(() => titles[step.value].sub)
           <PhFileArrowUp :size="20" />Выписка
         </button>
         <button
-          v-if="applePayShown"
           type="button"
           class="press flex cursor-pointer flex-col items-center gap-1.5 rounded-[16px] border-[1.5px] px-3 py-4 text-[14px] font-semibold"
           :class="path === 'applepay' ? 'border-ink bg-surface text-ink' : 'border-line bg-surface text-ink-2'"
@@ -267,7 +273,7 @@ const sub = computed(() => titles[step.value].sub)
         </button>
       </div>
       <!-- Одна строка + подсказка (правило 12: пояснение длиннее строки — в Hint). -->
-      <Callout v-if="path === 'statement'" tone="neutral" icon="lock">
+      <Callout v-if="chosen === 'statement'" tone="neutral" icon="lock">
         <span class="inline-flex items-center gap-1.5">Файл остаётся на телефоне <Hint>Kaspi или Freedom: «Выписка → PDF». На сервер попадают только продавец, дата, сумма и раздел — без номеров и ФИО.</Hint></span>
       </Callout>
       <Callout v-for="e in errors" :key="e.name" tone="warn">
@@ -275,7 +281,7 @@ const sub = computed(() => titles[step.value].sub)
       </Callout>
       <input ref="fileInput" type="file" accept="application/pdf,.pdf" multiple class="hidden" @change="pick" />
       <div class="mt-auto flex flex-col gap-2 pt-2">
-        <Button v-if="path === 'statement'" size="lg" class="w-full" :disabled="reading" data-start-upload @click="fileInput?.click()">
+        <Button v-if="chosen === 'statement'" size="lg" class="w-full" :disabled="reading" data-start-upload @click="fileInput?.click()">
           {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
         </Button>
         <Button v-else size="lg" class="w-full" data-start-applepay @click="chooseApplePay">Подключить Apple Pay</Button>

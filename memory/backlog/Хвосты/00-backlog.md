@@ -68,7 +68,7 @@ Chrome 390, смоук на проде после каждого блока.
 | 3. Операции 🏁 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
 | | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ✅ |
 | | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ✅ |
-| 4. Первый запуск ⬜ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ⬜ |
+| 4. Первый запуск ✅ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ✅ |
 
 Порядок блоков = приоритет (бриф). Блок 2 после Блока 1: строка «Платежи без отметки» (TL-05) ведёт в те же действия
 «В платежи» / «это платёж по …?», что правит Блок 1. Блоки 3 и 4 от кода прошлых блоков не зависят — порядок только
@@ -186,3 +186,8 @@ Chrome 390, смоук на проде после каждого блока.
   пришли»; `afterPull` (находки + автозапуск разбора), `autoReview`, `runReview` ждут её. В тестах и e2e фейк без
   `listStatementUploads` / `GET /api/statements` = находок и разбора нет: помощники `noStatements` / `apiNoStatements`
   (`e2e/support/family.ts`).
+
+**После Блока 4** (критик, ветка `tl-block-4-first-run`):
+- Шаг трат `views/Start.vue`: плитки `data-start-path` — только при `applePayShown` (`ap.available && ap.isIPhone`, до
+  ответа `ap.load()` ложно); путь вне плиток — `chosen` (без плиток всегда `statement`). Плитка Apple Pay на стенде —
+  только с `APPLEPAY_SHORTCUT_URL` вида `https://www.icloud.com/shortcuts/…` у Go-моков.

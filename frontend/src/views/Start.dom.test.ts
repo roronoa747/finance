@@ -145,9 +145,10 @@ describe('FB-21: мечта → «Тратьте как обычно» → па�
     expect(finance.people[0].onboardedAt).toBe('2026-09-24T07:00:00.000Z')
   })
 
-  it('Apple Pay: плитка только на iPhone; выбрана — «Подключить Apple Pay» → партнёр → «Пропустить» — лист подключения `/settings?applepay=1`', async () => {
+  it('TL-10, Apple Pay: не iPhone — плиток нет, фото мечты, «Загрузить выписку» и «Позже»; iPhone — две плитки, выбрана Apple Pay — «Подключить Apple Pay» → партнёр → «Пропустить» — лист подключения `/settings?applepay=1`', async () => {
     const { router } = await mountStart('/start/spend')
-    expect(document.querySelector('[data-start-path="applepay"]')).toBeNull()
+    expect(document.querySelector('[data-start-path]')).toBeNull()
+    for (const sel of ['[data-start-dream]', '[data-start-upload]', '[data-start-later]']) expect(document.querySelector(sel), sel).not.toBeNull()
     app?.unmount()
     document.body.innerHTML = ''
 
