@@ -796,7 +796,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       const closed = await page(A.pinia, Money, `/money?payoff=${inst.id}`)
       expect(cell(closed, 'Переплата, если не трогать')).toBe('долг закрыт')
       expect(cell(closed, 'Осталось платежей')).toBe('—')
-      expect(closed).toContain('Применённые досрочки')
+      expect(closed).toContain('Досрочные взносы')
       expect(closed).toContain(`в долг ${plain(240_000)} · банку 0`)
       expect(await page(A.pinia, Money, `/money?credit=${inst.id}`, { state: HINT_OPEN })).toContain(
         `За всё время: в долг ${money(240_000)}, банку ${money(0)} (1 платёж)`,

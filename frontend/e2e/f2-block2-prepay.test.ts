@@ -112,7 +112,7 @@ describe('e2e / F2-04, F2-05 — «Внёс досрочно» в листе к�
     await tick()
     top().querySelector<HTMLElement>('[data-credit-payoff]')!.click()
     await tick()
-    expect(top().textContent).toContain('Применённые досрочки')
+    expect(top().textContent).toContain('Досрочные взносы')
     expect(top().textContent).toContain(money(200_000))
     button('Снять').click()
     await tick()

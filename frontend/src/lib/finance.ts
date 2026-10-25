@@ -2590,37 +2590,6 @@ export function doneTerm(goal: Pick<Goal, 'doneAt' | 'seedSetAt' | 'movements'>)
 /** «за 14 месяцев» — срок сбывшейся словами (момент, экран, карточка). */
 export const doneLabel = (months: number) => `за ${months} ${plural(months, 'месяц', 'месяца', 'месяцев')}`
 
-export type CloserWish = {
-  wish: WishItem
-  /** На сколько ближе: сумма покрывает цену целиком (`covers`) или её часть, ₸. */
-  closer: number
-  covers: boolean
-  /** Ежемесячно: через сколько месяцев покупка (сумма ≥ цена — 1). */
-  months?: number
-}
-
-/**
- * «Это приближает» (B2C-18, Р-9 RP): какое некупленное желание с ценой становится ближе от
- * суммы — разовой (`once`: самое дорогое, что покрывается целиком, иначе самое дешёвое — на
- * его долю) или ежемесячной (`monthly`: самое дешёвое, через `months` месяцев). null — нечего
- * приблизить: сумма 0, желаний с ценой нет или все куплены.
- */
-export function closerWish(wishes: WishItem[], amount: number, mode: 'once' | 'monthly'): CloserWish | null {
-  if (amount <= 0) return null
-  const open = liveWishlist(wishes).filter((w) => !w.bought && w.price > 0).sort((a, b) => a.price - b.price)
-  if (!open.length) return null
-  if (mode === 'monthly') {
-    const wish = open[0]
-    return { wish, closer: Math.min(amount, wish.price), covers: amount >= wish.price, months: Math.max(1, Math.ceil(wish.price / amount)) }
-  }
-  const covered = open.filter((w) => w.price <= amount)
-  if (covered.length) {
-    const wish = covered[covered.length - 1]
-    return { wish, closer: wish.price, covers: true }
-  }
-  return { wish: open[0], closer: amount, covers: false }
-}
-
 /* ---------------- выбранный план «Сначала долги» (PV-14) ---------------- */
 
 /** От чего считается план. Кредиты — производные (геттер стора), как у `openCredits`. */

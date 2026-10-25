@@ -195,7 +195,7 @@ function prepayUndoNote(p: Payment): string {
 
       <div v-if="creditPrepays.length > 0" class="mb-3">
         <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
-          Применённые досрочки
+          Досрочные взносы
         </div>
         <div
           v-for="p in creditPrepays"

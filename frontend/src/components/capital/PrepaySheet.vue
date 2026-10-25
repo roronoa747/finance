@@ -92,11 +92,10 @@ function apply() {
 </script>
 
 <template>
-  <Sheet :open="!!credit && !authStore.isViewer" title="Внёс досрочно" :z="60" @close="emit('close')">
-    <!-- Итог (F2-05): одна крупная цифра — «стало», «было» — зачёркнутым под ней; без механики. -->
+  <Sheet :open="!!credit && !authStore.isViewer" :title="result ? 'Молодец!' : 'Внёс досрочно'" :z="60" @close="emit('close')">
+    <!-- Итог (F2-05): похвала — заголовком листа, одна крупная цифра — «стало», «было» — зачёркнутым под ней; без механики. -->
     <template v-if="credit && result" #default="{ close }">
       <div class="mb-4 flex flex-col gap-1" data-prepay-done>
-        <span class="text-[15px] font-semibold text-ok">Молодец!</span>
         <span v-if="result.after > 0" class="font-num text-[34px] font-bold leading-none num text-ink" data-prepay-after>{{ money(result.after) }}</span>
         <span v-else class="type-num text-[24px] text-ok" data-prepay-after>Долг закрыт</span>
         <span class="type-meta num">все долги, было <s data-prepay-before>{{ money(result.before) }}</s></span>
@@ -116,7 +115,7 @@ function apply() {
           { value: 'term', label: 'Сократить срок' },
           { value: 'payment', label: 'Снизить платёж' },
         ]"
-        class="mb-2"
+        :class="preview ? 'mb-2' : 'mb-3.5'"
       />
       <p v-if="preview" class="mb-3.5 text-[13px] text-ink-2 num" data-prepay-preview>{{ preview }}</p>
       <AccountChoice v-model="account" :accounts="payAccounts" label="Откуда списать" name="account" />
