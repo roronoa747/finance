@@ -65,7 +65,7 @@ describe('views/Start.vue — первый запуск «сначала тра�
     vi.unstubAllGlobals()
   })
 
-  it('FB-21: после вступления новая семья начинает с мечты («1 из 3»); шаг «Тратьте как обычно» («2 из 3») — фото мечты, плитка «Выписка», одна брендовая «Загрузить выписку», тихое «Позже»; механики в заголовке нет', async () => {
+  it('FB-21, TL-10: после вступления новая семья начинает с мечты («1 из 3»); шаг «Тратьте как обычно» («2 из 3») — фото мечты, без плиток выбора, одна брендовая «Загрузить выписку», тихое «Позже»; механики в заголовке нет', async () => {
     const store = family()
     const dream = await renderScreen(Start, '/start/dream')
     expect(dream).toContain('На что копим?')
@@ -79,9 +79,9 @@ describe('views/Start.vue — первый запуск «сначала тра�
     // Мечта семьи — образом (Р-30): имя мечты на плитке.
     expect(html).toContain('data-start-dream')
     expect(html).toContain('Машина')
-    // Плитка «Выписка» нажата по умолчанию; Apple Pay — только на iPhone (здесь нет).
-    expect(html).toMatch(/aria-pressed="true"[^>]*data-start-path="statement"|data-start-path="statement"[^>]*aria-pressed="true"/)
-    expect(html).not.toContain('data-start-path="applepay"')
+    // Путь один (не iPhone) — выбирать нечего: плиток нет (Р-10 «Хвостов»).
+    expect(html).not.toContain('data-start-path')
+    expect(html).toContain('data-start-upload')
     // Одна брендовая кнопка (правило 12): «Загрузить выписку»; «Позже» — тихо; полей зарплаты и вопросов нет.
     expect(brandButtons(html)).toEqual(['Загрузить выписку'])
     expect(html).toContain('data-start-later')
@@ -95,24 +95,34 @@ describe('views/Start.vue — первый запуск «сначала тра�
     expect(html).toContain('aria-label="Пояснение"')
   })
 
-  it('FB-21: без мечты — плитка без фото; Apple Pay на iPhone — вторая плитка, выбрана — главная «Подключить Apple Pay»; не iPhone — плитки нет', async () => {
+  it('FB-21, TL-10: без мечты — плитка без фото; iPhone с ярлыком — две плитки («Выписка» нажата), выбрана Apple Pay — главная «Подключить Apple Pay»; iPhone до ответа статуса и Android — плиток нет', async () => {
     family()
     const ap = useApplePayStore()
     ap.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)'
+    // Статус Apple Pay ещё не пришёл (`ap.load()` в пути) — вид с одним путём: плитки не мигают.
+    const waiting = await renderScreen(Start, '/start/spend')
+    expect(waiting).not.toContain('data-start-path')
+    expect(brandButtons(waiting)).toEqual(['Загрузить выписку'])
     ap.status = { connected: false, phones: 0, waiting: false, shortcut_url: 'https://example.test/shortcut', shortcut_url_legacy: 'https://example.test/legacy' } as never
     expect(ap.available).toBe(true)
     const html = await renderScreen(Start, '/start/spend')
     expect(html).toContain('data-start-dream')
     expect(html).toContain('>Мечта</div>')
     expect(html).toContain('data-start-path="applepay"')
+    expect(html).toMatch(/aria-pressed="true"[^>]*data-start-path="statement"|data-start-path="statement"[^>]*aria-pressed="true"/)
+    expect(brandButtons(html)).toEqual(['Загрузить выписку'])
     // Слово «Apple Pay» — на плитке; без «Pay»-дублей в заголовке и подписи.
     expect(html.slice(html.indexOf('<h1'), html.indexOf('</p>', html.indexOf('<h1')))).not.toContain('Pay')
     const chosen = await renderScreen(Start, '/start/spend', undefined, [screenMixin({ path: 'applepay' })])
     expect(brandButtons(chosen)).toEqual(['Подключить Apple Pay'])
     expect(chosen).not.toContain('Файл остаётся на телефоне')
 
+    // Android с тем же статусом — путь один: плиток нет, выбор Apple Pay не действует.
     ap.userAgent = 'Mozilla/5.0 (Linux; Android 14)'
-    expect(await renderScreen(Start, '/start/spend')).not.toContain('data-start-path="applepay"')
+    const android = await renderScreen(Start, '/start/spend', undefined, [screenMixin({ path: 'applepay' })])
+    expect(android).not.toContain('data-start-path')
+    expect(brandButtons(android)).toEqual(['Загрузить выписку'])
+    expect(android).toContain('data-start-later')
   })
 
   it('FR-01: старые адреса — `/start/upload`, `/start/salary`, `/start/questions` → траты, `/start/month` → партнёр; чужой шаг → первый непройденный (FR-08)', async () => {
