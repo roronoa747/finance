@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MONTH_END_KEY, PLAN_VIEW_KEY, TIPS_SEEN_KEY, markTipSeen, readMonthEnd, readPlanView, readTipsSeen, writeMonthEnd, writePlanView } from './storage'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useFinanceStore } from '@/stores/finance'
 import { authAs } from '@/test/planFamily'
 
 // Ответ «остались деньги?» (Р-19): «Мечты» и «Неделя» пишут и читают одним форматом (критик Блока 3).
@@ -114,12 +115,23 @@ describe('readTipsSeen / markTipSeen', () => {
     expect(readTipsSeen()).toEqual(['tab-week'])
   })
 
-  it('ключ — в LOCAL_KEYS: выход стирает «видел»', () => {
+  it('Р-13 «Figma» (FG-11): ключа нет в LOCAL_KEYS — выход и другая семья «видел» не стирают, остальное своё стирается', () => {
     const map = stub()
     setActivePinia(createPinia())
     useAuthStore().setAuthData(authAs('member', 'a'))
     markTipSeen('tab-dreams')
+    map.set(MONTH_END_KEY, '"2026-09"') // ключ из LOCAL_KEYS — этого входа
     useAuthStore().logout('discard')
-    expect(map.has(TIPS_SEEN_KEY)).toBe(false)
+    expect(map.has(TIPS_SEEN_KEY)).toBe(true)
+    expect(readTipsSeen()).toEqual(['tab-dreams'])
+    expect(map.has(MONTH_END_KEY)).toBe(false)
+    // Смена семьи на этом телефоне (`claimFor` другой — `clearLocal`).
+    setActivePinia(createPinia())
+    const finance = useFinanceStore()
+    finance.claimFor('h-one')
+    map.set(MONTH_END_KEY, '"2026-09"')
+    finance.claimFor('h-two')
+    expect(readTipsSeen()).toEqual(['tab-dreams'])
+    expect(map.has(MONTH_END_KEY)).toBe(false)
   })
 })

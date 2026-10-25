@@ -97,7 +97,7 @@ describe('e2e / приёмка Фидбек Блок 5 — нажатиями в
     })
     storage.clear()
     // Подсказки вкладок уже видены — пузыри не перекрывают нажатия.
-    storage.set('ff_tips_seen', JSON.stringify(['tab-week', 'tab-month', 'tab-money', 'tab-plan', 'tab-dreams']))
+    storage.set('ff_tips_seen', JSON.stringify(['tab-week', 'tab-month', 'tab-money', 'tab-dreams']))
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('нет сети'))))
     vi.useFakeTimers()
     at('2026-10-23T07:00:00Z')

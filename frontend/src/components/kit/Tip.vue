@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PhLightbulb } from '@phosphor-icons/vue'
-import { useTip } from './tips'
+import { TIP_SEEN_MS, useTip } from './tips'
 
 /**
  * Подсказка у предмета (бэклог «первый» Р-7, FR-05): обёртка над предметом и пузырь со стрелкой к нему — синий кружок с
  * лампочкой, одна-две короткие строки и «Понятно» текстом (главная кнопка экрана остаётся одна). Тон — «спокойный синий»
  * (`--tip-soft`, рамка `--tip-line`, знак и «Понятно» — `--tip`; выбор владельца из шести снимков, 2026-10-15). Показывается сама, пока `id` не увиден на
- * этом устройстве (`ff_tips_seen`); «Понятно» или нажатие самого предмета — отметка навсегда. Одна за раз и не поверх
+ * этом устройстве (`ff_tips_seen`); «Понятно», нажатие самого предмета или 4 с на экране — отметка навсегда. Одна за раз и не поверх
  * листа или тоста (`tips.ts`). Без затемнения: пузырь стоит в потоке под предметом (`above` — над ним), ничего не
  * закрывает и едет с ним при прокрутке. Чем `Hint` не подходит: тот — по запросу и закрывается нажатием мимо.
  */
@@ -37,6 +37,26 @@ function onSubject(e: MouseEvent) {
 }
 onMounted(() => root.value?.addEventListener('click', onSubject, true))
 onBeforeUnmount(() => root.value?.removeEventListener('click', onSubject, true))
+
+/**
+ * Показанная — значит увиденная (F2-Х3, Р-13 «Figma», вариант составителя): пузырь, простоявший на экране `TIP_SEEN_MS`
+ * подряд, отмечается сам — ушёл со вкладки, не ответив, второй раз его не будет. Таймер идёт только пока пузырь показан:
+ * под листом или тостом (`holdTips`) и пока предмета нет (`wait`) `shown` ложно — таймер сброшен.
+ */
+let seenTimer: ReturnType<typeof setTimeout> | null = null
+const stopSeen = () => {
+  if (seenTimer) clearTimeout(seenTimer)
+  seenTimer = null
+}
+watch(
+  () => tip.shown.value,
+  (on) => {
+    stopSeen()
+    if (on) seenTimer = setTimeout(() => tip.done(), TIP_SEEN_MS)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(stopSeen)
 </script>
 
 <template>

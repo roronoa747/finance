@@ -195,6 +195,12 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     await understood()
     await go(router, '/month')
     expect(shown()).toEqual(['tab-month'])
+    await understood()
+    // Из демо — в свою семью (Р-13 «Figma», FG-11): увиденное в демо не возвращается.
+    const A = await phone('a')
+    await launch(A.pinia, '/')
+    expect(shown()).toEqual([])
+    expect(readTipsSeen()).toEqual(['tab-dreams', 'tab-month'])
   })
 
   it('приёмка — нажатие самого предмета вместо «Понятно» закрывает навсегда на всех четырёх вкладках; лист поверх — без пузыря', async () => {
@@ -286,17 +292,37 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     expect(shown()).toEqual([])
   })
 
-  it('(д) выход стирает «видел»: следующий вход на этом телефоне видит подсказки снова', async () => {
+  it('(д) один раз на устройство (Р-13 «Figma», FG-11): выход, вход и другая семья «видел» не стирают — подсказки не возвращаются', async () => {
     const A = await phone('a')
     await launch(A.pinia, '/')
     await understood()
     expect(readTipsSeen()).toEqual(['tab-dreams'])
     useAuthStore().logout('discard')
-    expect(readTipsSeen()).toEqual([])
-    expect(localStorage.getItem('ff_tips_seen')).toBeNull()
+    expect(readTipsSeen()).toEqual(['tab-dreams'])
 
     const again = await phone('a')
     await launch(again.pinia, '/')
+    expect(shown()).toEqual([])
+    // Другая семья на этом телефоне: `claimFor` стирает данные прошлой — «видел» остаётся.
+    useFinanceStore().claimFor('h-other')
+    expect(readTipsSeen()).toEqual(['tab-dreams'])
+  })
+
+  it('(е) пузырь, на который не ответили, после 4 с на экране отмечен сам — со вкладки ушли, второй раз его нет', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    const A = await phone('a')
+    const router = await launch(A.pinia, '/')
     expect(shown()).toEqual(['tab-dreams'])
+    await vi.advanceTimersByTimeAsync(3_000)
+    await go(router, '/month')
+    // 3 с — мало: «Мечты» не увидены, их пузырь вернётся.
+    expect(readTipsSeen()).toEqual([])
+    expect(shown()).toEqual(['tab-month'])
+    await vi.advanceTimersByTimeAsync(4_000)
+    expect(readTipsSeen()).toEqual(['tab-month'])
+    await go(router, '/')
+    expect(shown()).toEqual(['tab-dreams'])
+    await go(router, '/month')
+    expect(shown()).toEqual([])
   })
 })

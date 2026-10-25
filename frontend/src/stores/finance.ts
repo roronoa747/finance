@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, DEFER_MS, readDeferred, readStorage } from '@/lib/storage'
+import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, DEFER_MS, readDeferred, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   liveSpendCategories,
@@ -199,8 +199,7 @@ const LOCAL_KEYS = [
   DEMO_PENDING_KEY,
   // Неотправленные события удержания (B2C-28) — этого входа.
   EVENTS_QUEUE_KEY,
-  // Увиденные подсказки у предмета (бэклог «первый» Р-7): другой вход на этом телефоне — подсказки снова.
-  TIPS_SEEN_KEY,
+  // Увиденные подсказки (`ff_tips_seen`) здесь нет: один раз на устройство — выход, смена семьи и демо их не возвращают (Р-13 «Figma»).
   // Открытый на этом телефоне разбор месяца ИИ (AI-09): точка на кнопке — для этого входа.
   AI_REVIEW_SEEN_KEY,
   // Предложения ИИ продавцам (AI-12): продавцы этого входа другому не нужны.

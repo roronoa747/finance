@@ -48,3 +48,6 @@ export function holdTips(): () => void {
     held = false
   }
 }
+
+/** Сколько пузырь стоит на экране, чтобы считаться увиденным без «Понятно» (F2-Х3, Р-13 «Figma»). */
+export const TIP_SEEN_MS = 4000

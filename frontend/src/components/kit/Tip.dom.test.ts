@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, h, nextTick, ref, type App } from 'vue'
 import { TIPS_SEEN_KEY, readTipsSeen } from '@/lib/storage'
 import Tip from './Tip.vue'
 import Sheet from './Sheet.vue'
 import Toast from './Toast.vue'
-import { holdTips } from './tips'
+import { TIP_SEEN_MS, holdTips } from './tips'
 
 /**
  * Подсказка у предмета (бэклог «первый» FR-05) в DOM: показ по «видел», «Понятно» и нажатие предмета, одна за раз,
@@ -172,5 +172,48 @@ describe('kit/Tip — подсказка у предмета', () => {
     await nextTick()
     const bubble = document.querySelector('[data-tip]')!
     expect(bubble.className).toContain('order-first')
+  })
+
+  describe('F2-Х3 (FG-11): показанная 4 с — увиденная', () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }))
+    afterEach(() => vi.useRealTimers())
+
+    it('4 с на экране — отмечен без «Понятно», после перемонтирования не показан', async () => {
+      mount(() => tip('tab-money'))
+      await nextTick()
+      expect(tips()).toEqual(['tab-money'])
+      vi.advanceTimersByTime(TIP_SEEN_MS)
+      await nextTick()
+      expect(readTipsSeen()).toEqual(['tab-money'])
+      mount(() => tip('tab-money'))
+      await nextTick()
+      expect(tips()).toEqual([])
+    })
+
+    it('3 с и ушёл с экрана — не отмечен; под листом и пока предмета нет (wait) таймер не идёт', async () => {
+      mount(() => tip('tab-week'))
+      await nextTick()
+      vi.advanceTimersByTime(3_000)
+      app!.unmount()
+      app = null
+      vi.advanceTimersByTime(5_000)
+      expect(readTipsSeen()).toEqual([])
+
+      const release = holdTips()
+      mount(() => tip('tab-week'))
+      await nextTick()
+      expect(tips()).toEqual([])
+      vi.advanceTimersByTime(10_000)
+      expect(readTipsSeen()).toEqual([])
+      release()
+      await nextTick()
+      expect(tips()).toEqual(['tab-week'])
+
+      const waiting = ref(true)
+      mount(() => h(Tip, { id: 'tab-month', text: 'Подсказка', wait: waiting.value }, () => h('span', 'пусто')))
+      await nextTick()
+      vi.advanceTimersByTime(10_000)
+      expect(readTipsSeen()).toEqual([])
+    })
   })
 })
