@@ -215,7 +215,7 @@ const accountRemoveWarning = computed(() => {
           <div class="mb-3 flex items-center justify-between gap-3" data-spend-row>
             <span class="flex items-center gap-1.5 text-[14px] text-ink">
               Траты отсюда
-              <Hint>Ваши траты сами уменьшают остаток этого счёта.</Hint>
+              <Hint>Траты и переводы с этого счёта сами уменьшают его остаток.</Hint>
             </span>
             <Toggle
               :model-value="isSpend"
