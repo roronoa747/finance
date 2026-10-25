@@ -790,6 +790,16 @@ export const openCredits = (list: Credit[]) => liveCredits(list).filter((c) => c
 /** Остаток открытых долгов семьи — квадрат и карточка «Долги», строка под «Капиталом» (Р-91). */
 export const openDebt = (list: Credit[]) => openCredits(list).reduce((a, c) => a + c.principal, 0);
 /**
+ * «Было → стало» после досрочки (F2-05, Р-4): остаток всех открытых долгов — та же цифра, что крупно на «Долгах», — до и
+ * после взноса и проценты, которых не отдадим. Считается из состояния **после** записи: досрочка вся в тело, значит
+ * «было» = «стало» + `principal` записи — листу не нужен снимок до нажатия. Взнос, закрывший кредит, тоже верен: кредит
+ * выпал из открытых с остатком 0. Кредиты — производные, как у `openDebt`.
+ */
+export function prepayBeforeAfter(list: Credit[], record: Pick<Payment, 'principal' | 'saved'>): { before: number; after: number; saved: number } {
+  const after = openDebt(list);
+  return { before: after + Math.round(record.principal ?? 0), after, saved: Math.round(record.saved ?? 0) };
+}
+/**
  * Долги, которые стоит гасить досрочно: открытые с процентами, самый дорогой
  * первым (при равной ставке — тот, что больше съедает процентами в месяц).
  * Беспроцентные досрочно не гасятся: они ничего не стоят. Кредиты — производные,
@@ -2579,37 +2589,6 @@ export function doneTerm(goal: Pick<Goal, 'doneAt' | 'seedSetAt' | 'movements'>)
 
 /** «за 14 месяцев» — срок сбывшейся словами (момент, экран, карточка). */
 export const doneLabel = (months: number) => `за ${months} ${plural(months, 'месяц', 'месяца', 'месяцев')}`
-
-export type CloserWish = {
-  wish: WishItem
-  /** На сколько ближе: сумма покрывает цену целиком (`covers`) или её часть, ₸. */
-  closer: number
-  covers: boolean
-  /** Ежемесячно: через сколько месяцев покупка (сумма ≥ цена — 1). */
-  months?: number
-}
-
-/**
- * «Это приближает» (B2C-18, Р-9 RP): какое некупленное желание с ценой становится ближе от
- * суммы — разовой (`once`: самое дорогое, что покрывается целиком, иначе самое дешёвое — на
- * его долю) или ежемесячной (`monthly`: самое дешёвое, через `months` месяцев). null — нечего
- * приблизить: сумма 0, желаний с ценой нет или все куплены.
- */
-export function closerWish(wishes: WishItem[], amount: number, mode: 'once' | 'monthly'): CloserWish | null {
-  if (amount <= 0) return null
-  const open = liveWishlist(wishes).filter((w) => !w.bought && w.price > 0).sort((a, b) => a.price - b.price)
-  if (!open.length) return null
-  if (mode === 'monthly') {
-    const wish = open[0]
-    return { wish, closer: Math.min(amount, wish.price), covers: amount >= wish.price, months: Math.max(1, Math.ceil(wish.price / amount)) }
-  }
-  const covered = open.filter((w) => w.price <= amount)
-  if (covered.length) {
-    const wish = covered[covered.length - 1]
-    return { wish, closer: wish.price, covers: true }
-  }
-  return { wish: open[0], closer: amount, covers: false }
-}
 
 /* ---------------- выбранный план «Сначала долги» (PV-14) ---------------- */
 

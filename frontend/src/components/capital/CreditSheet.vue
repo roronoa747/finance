@@ -20,11 +20,12 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import ScheduleTable from '@/components/ScheduleTable.vue'
 import MarkSheet from '@/components/MarkSheet.vue'
+import PrepaySheet from './PrepaySheet.vue'
 
 /**
  * Окно кредита Капитала: «Оплатил» за ближайший платёж, правка полей (React
- * `CreditDialog`), выводы, график платежей, удаление. «Посчитать досрочное погашение»
- * просит Капитал открыть калькулятор (`payoff`).
+ * `CreditDialog`), выводы, график платежей, удаление. «Внёс досрочно» у остатка — лист `PrepaySheet`; калькулятор
+ * («Подробнее» в нём, «Досрочные взносы» здесь) Капитал открывает по `payoff`.
  */
 const props = defineProps<{ creditId: string | null }>()
 const emit = defineEmits<{
@@ -118,6 +119,13 @@ function give() {
   if (last === undefined) markOpen.value = 'mark'
   else financeStore.markPaid('credit', c.id, authStore.slot ?? 'a', { period: key.value, amount: giveAmount.value, accountId: last })
 }
+
+/* «Внёс досрочно» (F2-04): лист поверх этого; калькулятор — из него «Подробнее» (`payoff`). */
+const prepayOpen = ref(false)
+watch(() => props.creditId, () => (prepayOpen.value = false))
+const prepayCount = computed(
+  () => financeStore.payments.filter((p) => p.kind === 'prepay' && !p.deletedAt && p.targetId === props.creditId).length,
+)
 
 </script>
 
@@ -217,8 +225,21 @@ function give() {
         </div>
       </div>
       <template v-else>
+        <!-- «Внёс досрочно» — у остатка, своего предмета (Р-3, правило 12); без ставки досрочка врала бы «экономия 0» (B2C-19). -->
         <Field label="Остаток долга, ₸">
-          <NumFieldBlur :initial="plain(activeCredit.principal)" @commit="onCreditPrincipal" />
+          <span class="flex items-center gap-2">
+            <NumFieldBlur :initial="plain(activeCredit.principal)" class="min-w-0 flex-1" @commit="onCreditPrincipal" />
+            <Button
+              v-if="!activeCredit.rateUnknown && activeCredit.principal > 0"
+              variant="soft"
+              size="sm"
+              class="shrink-0"
+              data-credit-prepay
+              @click="prepayOpen = true"
+            >
+              Внёс досрочно
+            </Button>
+          </span>
         </Field>
         <p v-if="reconcile" class="-mt-2 mb-3.5 text-[13px] text-warn" data-credit-reconcile>Сверьте остаток с банком</p>
         <Field label="Платёж в месяц, ₸">
@@ -286,10 +307,18 @@ function give() {
         </template>
       </div>
 
-      <!-- Одна главная внизу (правило 12); досрочка — тихо под ней. Без ставки калькулятор врал бы «экономия 0» (B2C-19). -->
+      <!-- Одна главная внизу (правило 12). Внесённые досрочки — тихо под ней: в калькуляторе их снимают, и у долга,
+           закрытого досрочкой, другого пути туда нет. -->
       <Button class="w-full" @click="close">Готово</Button>
-      <Button v-if="!activeCredit.rateUnknown" variant="ghost" size="md" class="mt-2 w-full" data-credit-payoff @click="emit('payoff', activeCredit.id)">
-        Посчитать досрочно
+      <Button
+        v-if="prepayCount > 0 && !activeCredit.rateUnknown"
+        variant="ghost"
+        size="md"
+        class="mt-2 w-full"
+        data-credit-payoff
+        @click="emit('payoff', activeCredit.id)"
+      >
+        Досрочные взносы · {{ prepayCount }}
       </Button>
 
       <DangerZone
@@ -310,5 +339,10 @@ function give() {
     :amount="giveAmount"
     :first-time="markOpen === 'mark'"
     @close="markOpen = null"
+  />
+  <PrepaySheet
+    :credit-id="prepayOpen ? (activeCredit?.id ?? null) : null"
+    @close="prepayOpen = false"
+    @payoff="(id) => { prepayOpen = false; emit('payoff', id) }"
   />
 </template>

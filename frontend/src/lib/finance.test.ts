@@ -70,7 +70,6 @@ import {
   pausedGoals,
   allocationFor,
   cancelledSubscriptions,
-  closerWish,
   contributionStreak,
   movementMonth,
   monthsBetween,
@@ -2919,25 +2918,7 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
   })
 })
 
-describe('B2C-18: «это приближает» и месяц взноса по Алматы', () => {
-  const T = '2026-09-01T00:00:00.000Z'
-  const wish = (id: string, price: number, extra: Partial<WishItem> = {}): WishItem => ({ id, name: id, price, by: 'a', addedOn: T, bought: false, updatedAt: T, ...extra })
-
-  it('closerWish разово: купленные, удалённые и без цены не участвуют; самое дорогое из покрываемых, иначе самое дешёвое — частично', () => {
-    const wishes = [wish('bought', 20_000, { bought: true }), wish('free', 0), wish('kettle', 30_000), wish('robot', 120_000), wish('gone', 10_000, { deletedAt: T })]
-    expect(closerWish(wishes, 40_000, 'once')).toEqual({ wish: wishes[2], closer: 30_000, covers: true })
-    expect(closerWish(wishes, 150_000, 'once')).toEqual({ wish: wishes[3], closer: 120_000, covers: true })
-    expect(closerWish(wishes, 20_000, 'once')).toEqual({ wish: wishes[2], closer: 20_000, covers: false })
-    expect(closerWish(wishes, 0, 'once')).toBeNull()
-    expect(closerWish([wishes[0], wishes[1], wishes[4]], 50_000, 'once')).toBeNull()
-  })
-
-  it('closerWish ежемесячно: самое дешёвое и через сколько месяцев', () => {
-    const wishes = [wish('robot', 120_000), wish('kettle', 30_000)]
-    expect(closerWish(wishes, 25_000, 'monthly')).toEqual({ wish: wishes[1], closer: 25_000, covers: false, months: 2 })
-    expect(closerWish(wishes, 30_000, 'monthly')).toEqual({ wish: wishes[1], closer: 30_000, covers: true, months: 1 })
-  })
-
+describe('B2C-18: месяц взноса по Алматы', () => {
   it('movementMonth и серия — по Алматы: взнос 30 сентября 20:00 UTC — это уже 1 октября', () => {
     vi.useFakeTimers()
     try {

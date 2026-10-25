@@ -1,7 +1,8 @@
 # Бэклог «Фидбек-2» (F2)
 
-> **Статус:** 2026-10-25 — Блок 1 🏁 на проде: Production `dpl_7NCGRvR6jDdnaGJ6UTzmBdfgLaBH` (main `648007ec`, «да» владельца);
-> откат — promote `dpl_EHWbfssDkGsydkzVhNV1YZrX8XdT`. Следующее — `/worker Фидбек-2 2`.
+> **Статус:** 2026-10-25 — Блок 1 🏁 на проде (Production `dpl_7NCGRvR6jDdnaGJ6UTzmBdfgLaBH`, main `648007ec`). Блок 2 🔄:
+> исполнитель ✅ (F2-04, F2-05, ветка `f2-block-2-prepay`), критик ✅, `/ux` ✅, приёмка ✅ — ждёт «да» владельца на деплой (откат — promote
+> `dpl_GNDnaJphyJ8zjZLKXeJanHqbvZ2j`).
 > Прод перед стартом: Production `dpl_JCbkCXM1js2HyMuhZdQYjkWW7ABJ` (main `d4dd9753`, Блок 4 «Хвостов»; сверху — только доки).
 
 Источник: `Фидбек-2-brief.md` (резюме интервью подтверждено владельцем 2026-10-25, без правок).
@@ -66,8 +67,8 @@ Chrome 390 в обеих темах, смоук прода после каждо
 | 1. Клавиатура и «Оплатил» 🏁 *(S)* | F2-01 Закрыть бэклог «Хвосты» | `block-1-keyboard-paid/F2-01-close-tails.md` | — | ✅ |
 | | F2-02 «Готово» на клавиатуре чисел, лист над клавиатурой | `block-1-keyboard-paid/F2-02-keyboard-done.md` | — | ✅ |
 | | F2-03 «Оплатил» у строки кредита на «Долгах» | `block-1-keyboard-paid/F2-03-debts-paid.md` | — | ✅ |
-| 2. Досрочка ⬜ *(M с `/ux`)* | F2-04 «Внёс досрочно» в листе кредита | `block-2-prepay/F2-04-prepay-button.md` | Блок 1 🏁 | ⬜ |
-| | F2-05 «Было → стало» после досрочки | `block-2-prepay/F2-05-before-after.md` | F2-04 | ⬜ |
+| 2. Досрочка ✅ *(M с `/ux`)* | F2-04 «Внёс досрочно» в листе кредита | `block-2-prepay/F2-04-prepay-button.md` | Блок 1 🏁 | ✅ |
+| | F2-05 «Было → стало» после досрочки | `block-2-prepay/F2-05-before-after.md` | F2-04 | ✅ |
 | 3. Баланс для трат ⬜ *(M с `/ux`)* | F2-06 Счёт для трат и его хозяин | `block-3-spend-balance/F2-06-spend-account.md` | Блок 2 🏁 | ⬜ |
 | | F2-07 Траты тают баланс | `block-3-spend-balance/F2-07-spent-since.md` | F2-06 | ⬜ |
 | | F2-08 Баланс на «Счетах» и «Неделе» | `block-3-spend-balance/F2-08-balance-lines.md` | F2-07 | ⬜ |
@@ -167,3 +168,10 @@ Chrome 390 в обеих темах, смоук прода после каждо
 новым листам ничего делать не надо; мета viewport не тронута. «Долги»: «Отдал» / «Оплатил» — общий `give()` и
 `canGive(r)` (участник, `payment > 0`, не отмечено в этом месяце) в `money/DebtsWidget.vue`; ✓ — `data-debt-given` у любой
 строки. Ветка `fb-hf1-review-waits` удалена (локально и на `origin`).
+
+**После Блока 2** (критик, 2026-10-25). Досрочку вносят только листом `components/capital/PrepaySheet.vue` (`creditId`,
+`amount?`; `z` 60 поверх листа кредита или калькулятора; viewer — не открывается) → `applyPrepayment` без правок стора;
+итог — `prepayBeforeAfter(credits, record)` в `lib/finance.ts` (после `openDebt`). В `PayoffSheet` блока «Применить» нет,
+закрытие листа взноса с новой досрочкой сбрасывает сумму калькулятора. `lib/finance.ts` вырос на 10 строк после `:791`:
+номера в §6 ниже `:791` — +10 (`accountBalance` :1633, `debtsOverview` :2945). `closerWish` в UI не используется (судьба —
+`/ux`). Счета, операции и стор Блок 2 не трогал.

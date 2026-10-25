@@ -8,7 +8,6 @@ import { money, plain } from '@/lib/money'
 import Money from '@/views/Money.vue'
 import DebtFaster from '@/views/DebtFaster.vue'
 import {
-  closerWish,
   netWorth,
   prepayment,
   lumpSum,
@@ -454,7 +453,10 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(schedule).toContain(`>${out.months}</b>`)
     expect(schedule).toContain('Переплата до конца')
     expect(schedule).toContain(money(out.overpay))
-    expect(html).toMatch(/data-credit-payoff[^>]*>\s*Посчитать досрочно\s*</)
+    // F2-04: «Внёс досрочно» у остатка вместо «Посчитать досрочно»; досрочек нет — нет и строки «Досрочные взносы».
+    expect(html).toMatch(/data-credit-prepay[^>]*>\s*Внёс досрочно\s*</)
+    expect(html).not.toContain('Посчитать досрочно')
+    expect(html).not.toContain('data-credit-payoff')
     expect(html).toContain('Удалить кредит')
     expect(html).not.toContain('Симулятор досрочного погашения')
   })
@@ -541,14 +543,17 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(withSum).not.toContain('Infinity')
   })
 
-  it('Р-11: «Применить к кредиту» при платеже ≤ процентов — взнос вносится, «экономию не считаем», без Infinity/NaN', async () => {
+  it('F2-04: «Разово» с суммой — тихая «Внёс досрочно», блока «Применить к кредиту» нет; viewer — без кнопки; без Infinity/NaN (Р-11)', async () => {
     await family()
     const html = await render('/capital?payoff=card-debt', { payoffMode: 'once', payoffAmount: '100 000' })
-    expect(html).toContain('Применить к кредиту')
-    expect(html).toContain('При текущем платеже долг не закрывается — экономию не считаем')
-    expect(html).not.toContain('Не отдадим банку')
+    expect(html).toMatch(/data-payoff-prepay[^>]*>\s*Внёс досрочно\s*</)
+    expect(html).not.toContain('Применить к кредиту')
+    expect(html).not.toContain('Применить досрочку')
     expect(html).not.toContain('Infinity')
     expect(html).not.toContain('NaN')
+    expect(await render('/capital?payoff=card-debt', { payoffMode: 'monthly', payoffAmount: '100 000' })).not.toContain('data-payoff-prepay')
+    await family('viewer')
+    expect(await render('/capital?payoff=card-debt', { payoffMode: 'once', payoffAmount: '100 000' })).not.toContain('data-payoff-prepay')
   })
 
   // Снят в B2C-45: в строке «Платежей» ставки, срока и переплаты нет (ТЗ B2C-42 п. 3); срок и переплата — в листе кредита, тесты PV-10 выше.
@@ -624,7 +629,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     // В окне; строка «Кредитки» на экране под ним честно пишет «долг не закрывается».
     expect(html.slice(html.indexOf('role="dialog"'))).not.toContain('долг не закрывается')
     // Окно нужно закрытому долгу ради «Снять» у досрочки, закрывшей его.
-    expect(html).toContain('Применённые досрочки')
+    expect(html).toContain('Досрочные взносы')
   })
 
   // Снят в B2C-45: «Что гасить первым» — карточка «Самая дорогая ставка» квадрата «План», проверки — Money.test (B2C-43).
@@ -1217,41 +1222,6 @@ describe('PV-16: план и досрочка шага — квадрат «Пл
     expect(plan.lump).toBe(
       strategyInputs({ credits: store.credits, goals: store.goals, obligations: store.obligations, key: '2026-09', kept: ['cushion'], cushion: false, useSaved: true }).lump,
     )
-  })
-
-  it('досрочка применена — одна строка «Это приближает: «желание» …» от того, что не отдадим банку (closerWish, ТЗ B2C-18 п. 4)', async () => {
-    useAuthStore().setAuthData(authAs('member'))
-    const T = '2026-09-01T00:00:00.000Z'
-    const wish = (id: string, name: string, price: number, bought = false) =>
-      ({ id, name, price, by: 'a' as const, addedOn: T, bought, updatedAt: T })
-    const store = useFinanceStore()
-    store.setHouseholdDoc(
-      planFamilyDoc({ wishlist: [wish('buds', 'Наушники', 30_000), wish('sofa', 'Диван', 900_000), wish('old', 'Куплено', 10_000, true)] }),
-      1,
-    )
-    const apply = [
-      screenMixin({ payoffCreditId: 'loan' }),
-      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
-    ]
-    const html = (await renderScreen(Money, '/capital', undefined, apply)).replace(/\s+/g, ' ')
-    const rec = store.payments.find((p) => p.kind === 'prepay')!
-    expect(rec.saved).toBeGreaterThan(0)
-    const c = closerWish(store.wishlist, rec.saved!, 'once')!
-    expect(c.wish.id).not.toBe('old')
-    const line = `Это приближает: «${c.wish.name}» — ${c.covers ? 'хватит целиком' : `ближе на ${money(c.closer)}`}.`
-    expect(html).toContain(line)
-    expect(html.split('Это приближает').length - 1).toBe(1)
-
-    // Желаний с ценой нет — строки нет, итог досрочки прежний.
-    setActivePinia(createPinia())
-    useAuthStore().setAuthData(authAs('member'))
-    useFinanceStore().setHouseholdDoc(planFamilyDoc(), 1)
-    const bare = await renderScreen(Money, '/capital', undefined, [
-      screenMixin({ payoffCreditId: 'loan' }),
-      screenMixin({ payoffMode: 'once', payoffAmount: '50 000', applyAccount: 'card' }, (s) => (s.applyPrepay as () => void)()),
-    ])
-    expect(bare).toContain('Досрочка применена')
-    expect(bare).not.toContain('Это приближает')
   })
 })
 

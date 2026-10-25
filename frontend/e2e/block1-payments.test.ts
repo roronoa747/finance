@@ -164,7 +164,7 @@ describe('e2e / Блок 1 — отметки оплат на двух теле�
       // Сэкономленное досрочками — в «Подробнее» экрана «Закрыть быстрее» (Б17; прежде квадрат «План», Р-34, B2C-43).
       expect(text(await screen(p.pinia, DebtFaster, '/money/debts/faster'))).toContain(`Досрочками уже сэкономили ${money(plan.saved)}`)
       const payoff = await screen(p.pinia, Money, '/money?payoff=loan')
-      expect(payoff).toContain('Применённые досрочки')
+      expect(payoff).toContain('Досрочные взносы')
       expect(payoff).toContain('сократили срок')
     }
   })

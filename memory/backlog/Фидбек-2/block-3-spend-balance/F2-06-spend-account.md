@@ -11,7 +11,7 @@
   :179-190, `DangerZone`); правка — `financeStore.updateAccount(id, patch)` (stores/finance.ts:1372).
 - Участники — `financeStore.people` (`Person.id: PersonId` `'a'|'b'`, имя), свой слот — `authStore.slot`, viewer —
   `authStore.isViewer`. Семья из одного — партнёра в `people` нет.
-- Переключатель — `components/kit/Segmented.vue` (образец — режимы в `PayoffSheet.vue:217-224`).
+- Переключатель — `components/kit/Segmented.vue` (образец — режимы в `capital/PrepaySheet.vue:113-120`, Блок 2).
 
 ## Задача
 
