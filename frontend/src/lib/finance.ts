@@ -1,4 +1,4 @@
-import type { Account, AccountSpent, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
+import type { Account, AccountShift, AccountSpent, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { dayNumber, isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
@@ -1614,6 +1614,9 @@ export type BalanceCtx = {
 };
 
 export const liveExchanges = (list: FxExchange[] = []) => list.filter(alive);
+
+/** Живые сдвиги остатка рукой документа (FG-14): счета семьи — общий документ, личные — личный. */
+export const liveShifts = (doc: { accountShifts?: AccountShift[] }) => (doc.accountShifts ?? []).filter(alive);
 
 const isForeign = (a: Pick<Account, 'currency'>) => !!a.currency && a.currency !== 'KZT';
 

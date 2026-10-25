@@ -929,7 +929,7 @@ describe('B2C-05: личный документ с двух устройств �
     expect((merged.tags as { id: string }[]).map((t) => t.id).sort()).toEqual(['t1', 't2'])
     expect(merged.note).toBe('сервер')
     expect((merged.accounts as Account[]).map((a) => a.id)).toEqual(['card'])
-    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [], notes: [], answers: [] })
+    expect(mergePrivateDocs({}, {})).toEqual({ accounts: [], merchantRules: [], gifts: [], tripExcluded: [], opEdits: [], aiReviews: [], notes: [], answers: [], accountShifts: [] })
   })
 
   it('TL-08: ответы по операциям (answers) — по ключу, позднее побеждает («Потом» продлён с другого телефона), надгробие побеждает', () => {
@@ -1338,5 +1338,32 @@ describe('merge.ts — потрачено со счёта для трат (accou
       expect((merged.accountSpent ?? []).map((x) => [x.id, x.amount]).sort()).toEqual([['k1:a', 9_000], ['k1:b', 7_000]])
     }
     expect(defaultSyncDoc().accountSpent).toEqual([])
+  })
+})
+
+describe('merge.ts — сдвиги остатка рукой (accountShifts, FG-14)', () => {
+  const s = (id: string, updatedAt: string, deletedAt?: string) => ({
+    id, accountId: 'k1', amount: -50_000, date: '2026-10-26', by: 'a' as const, kind: 'goal-in' as const, goalId: 'g1', updatedAt, ...(deletedAt ? { deletedAt } : {}),
+  })
+
+  it('общий документ: записи двух телефонов — по id, надгробие побеждает более позднюю правку', () => {
+    const one = { ...createEmptyDoc(), accountShifts: [s('as_00000001', '2026-10-26T08:00:00.000Z', '2026-10-26T08:00:00.000Z'), s('as_00000002', '2026-10-26T08:00:00.000Z')] }
+    const two = { ...createEmptyDoc(), accountShifts: [s('as_00000001', '2026-10-26T09:00:00.000Z'), s('as_00000003', '2026-10-26T09:00:00.000Z')] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      const list = merged.accountShifts ?? []
+      expect(list.map((x) => x.id).sort()).toEqual(['as_00000001', 'as_00000002', 'as_00000003'])
+      expect(list.find((x) => x.id === 'as_00000001')?.deletedAt).toBe('2026-10-26T08:00:00.000Z')
+    }
+    expect(defaultSyncDoc().accountShifts).toEqual([])
+  })
+
+  it('личный документ: по id, надгробие побеждает', () => {
+    const phone = { accountShifts: [s('as_0000000a', '2026-10-26T08:00:00.000Z', '2026-10-26T08:00:00.000Z')] }
+    const laptop = { accountShifts: [s('as_0000000a', '2026-10-26T10:00:00.000Z'), s('as_0000000b', '2026-10-26T10:00:00.000Z')] }
+    for (const merged of [mergePrivateDocs(phone, laptop), mergePrivateDocs(laptop, phone)]) {
+      const list = merged.accountShifts as { id: string; deletedAt?: string }[]
+      expect(list.map((x) => x.id).sort()).toEqual(['as_0000000a', 'as_0000000b'])
+      expect(list.find((x) => x.id === 'as_0000000a')?.deletedAt).toBe('2026-10-26T08:00:00.000Z')
+    }
   })
 })

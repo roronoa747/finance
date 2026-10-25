@@ -1163,6 +1163,50 @@ describe('RP-06: отметки оплат в сторе', () => {
         push.mockRestore()
       }
     })
+
+    // FG-14: сдвиг рукой оставляет запись — по ней строка выписки не вычтется второй раз (FG-15).
+    it('с meta — запись в общем документе: фактическая дельта со знаком, день, цель; без meta — без записи', () => {
+      const { store, card, rent } = family()
+      store.markPaid('obligation', rent, 'a', { accountId: card })
+      at('2026-09-24T09:00:00Z')
+      store.shiftAccountAmount(card, -50_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      expect(store.householdDoc.accountShifts).toHaveLength(1)
+      const rec = store.householdDoc.accountShifts![0]
+      expect(rec).toMatchObject({ accountId: card, amount: -50_000, date: '2026-09-24', by: 'a', kind: 'goal-in', goalId: 'g1', updatedAt: '2026-09-24T09:00:00.000Z' })
+      expect(rec.id).toMatch(/^as_[0-9a-f]{8}$/)
+      expect(store.accountShifts.map((s) => s.id)).toEqual([rec.id])
+      // Остаток — как раньше.
+      expect(balance(store, card)).toBe(730_000)
+
+      store.shiftAccountAmount(card, 15_000)
+      expect(store.householdDoc.accountShifts).toHaveLength(1)
+      expect(balance(store, card)).toBe(745_000)
+      // Внеплановый доход без цели — запись без goalId; дата из meta.
+      store.shiftAccountAmount(card, 30_000, { by: 'b', kind: 'income', date: '2026-09-23' })
+      expect(store.householdDoc.accountShifts![1]).toMatchObject({ amount: 30_000, by: 'b', kind: 'income', date: '2026-09-23' })
+      expect(store.householdDoc.accountShifts![1]).not.toHaveProperty('goalId')
+    })
+
+    it('с meta: обрезка у нуля — запись на фактический сдвиг; сдвига нет — записи нет', () => {
+      const { store, card, rent } = family()
+      store.markPaid('obligation', rent, 'a', { accountId: card })
+      store.shiftAccountAmount(card, -2_000_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      expect(store.householdDoc.accountShifts!.map((s) => s.amount)).toEqual([-780_000])
+      store.shiftAccountAmount(card, -10_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      store.shiftAccountAmount(card, 0, { by: 'a', kind: 'income' })
+      store.shiftAccountAmount('нет-такого', 10_000, { by: 'a', kind: 'income' })
+      expect(store.householdDoc.accountShifts).toHaveLength(1)
+    })
+
+    it('личный счёт — запись в личном документе, общий не тронут', () => {
+      const { store } = family()
+      store.addAccount({ name: 'Моя карта', kind: 'card', amount: 300_000 }, true)
+      const mine = store.privateAccounts[0].id
+      store.shiftAccountAmount(mine, -50_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      expect(store.privateDoc.accountShifts).toEqual([expect.objectContaining({ accountId: mine, amount: -50_000, kind: 'goal-in' })])
+      expect(store.householdDoc.accountShifts ?? []).toEqual([])
+      expect(store.accountShifts.map((s) => s.accountId)).toEqual([mine])
+    })
   })
 
   describe('editPaid: правка отметки — новая запись с моментом исходной', () => {
@@ -2537,6 +2581,28 @@ describe('«Сбылось» (PN-13): markGoalDone / undoGoalDone — деньг
     expect(store.goals.find((g) => g.id === trip)!).toMatchObject({ doneAt: '2026-10-01T06:00:00.000Z' })
     expect(store.goals.find((g) => g.id === trip)!.pausedAt).toBeUndefined()
     expect(store.heroGoal?.id).not.toBe(trip)
+  })
+
+  // FG-14: покупка мечты со счёта — запись сдвига `done`; «Вернуть в мечты» — её надгробие.
+  it('цель на счёте: «Сбылось» пишет done −have днём покупки, «Вернуть» хоронит её; цель вне счёта — без записи', () => {
+    const { store, card, trip, pot } = family()
+    store.markGoalDone(trip)
+    expect(store.householdDoc.accountShifts ?? []).toEqual([])
+
+    store.markGoalDone(pot, '2026-10-09T06:00:00.000Z')
+    expect(store.accountShifts).toEqual([expect.objectContaining({ accountId: card, amount: -300_000, kind: 'done', goalId: pot, date: '2026-10-09' })])
+    store.undoGoalDone(pot)
+    expect(balance(store, card)).toBe(1_000_000)
+    expect(store.accountShifts).toEqual([])
+    expect(store.householdDoc.accountShifts).toEqual([expect.objectContaining({ kind: 'done', goalId: pot, deletedAt: '2026-10-10T08:00:00.000Z' })])
+  })
+
+  it('«Вернуть» без записи «Сбылось» (покупка до Блока 2) — обратный сдвиг своей записью +have', () => {
+    const { store, card, pot } = family()
+    store.updateGoal(pot, { doneAt: '2026-10-01T06:00:00.000Z' })
+    store.undoGoalDone(pot)
+    expect(balance(store, card)).toBe(1_300_000)
+    expect(store.accountShifts).toEqual([expect.objectContaining({ accountId: card, amount: 300_000, kind: 'done', goalId: pot, date: '2026-10-10' })])
   })
 })
 

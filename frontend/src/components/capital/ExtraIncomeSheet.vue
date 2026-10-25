@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
+import { useAuthStore } from '@/stores/auth'
 import { parseMoney } from '@/lib/money'
 import { openGoals, payableAccounts } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
@@ -18,6 +19,7 @@ defineProps<{ open: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const financeStore = useFinanceStore()
+const auth = useAuthStore()
 const people = computed(() => financeStore.people)
 const goals = computed(() => openGoals(financeStore.goals)) // Сбылось (PN-13): внеплановый доход — в активные цели
 // Куда ложится внеплановый доход (как и досрочка калькулятора): у валютного счёта тенге —
@@ -40,7 +42,8 @@ function applyExtraIncome() {
     financeStore.contribute(id, extraIncomeValue.value, extraIncomeBy.value, 'Внеплановый доход')
   } else {
     // Сдвиг остатка, а не сверка: отметки оплат до дохода продолжают считаться.
-    financeStore.shiftAccountAmount(id, extraIncomeValue.value)
+    // Запись сдвига (FG-14) — того, чей телефон: приход придёт его выпиской.
+    financeStore.shiftAccountAmount(id, extraIncomeValue.value, { by: (auth.slot ?? 'a') as PersonId, kind: 'income' })
   }
   extraIncomeAmount.value = ''
   extraIncomeTarget.value = ''

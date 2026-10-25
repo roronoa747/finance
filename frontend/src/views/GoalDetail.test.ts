@@ -846,6 +846,30 @@ describe('PV-23: окно пополнения и «История цели» (S
     expect(take).not.toMatch(/>\s*Внести\s*</)
   })
 
+  // FG-14: взнос и снятие со счёта оставляют запись сдвига — по ней выписка не вычтет тот же перевод второй раз.
+  it('«Внести» со счёта — запись goal-in −v с целью и телефоном; без счёта — нет; «Снять» на счёт — goal-out +v', async () => {
+    const store = useFinanceStore()
+    store.setHouseholdDoc(planFamilyDoc(), 1)
+    const deposit = (state: Record<string, unknown>) =>
+      renderScreen(GoalDetail, '/goals/trip', undefined, [
+        screenMixin({ openDepositModal: true, ...state }, (s) => (s.applyDeposit as () => void)()),
+      ])
+    const before = store.accounts.find((a) => a.id === 'card')!.amount
+
+    await deposit({ depositAmount: '50 000', depositAccountId: 'card' })
+    expect(store.accountShifts).toEqual([
+      expect.objectContaining({ accountId: 'card', amount: -50_000, kind: 'goal-in', goalId: 'trip', by: 'a', date: '2026-09-24' }),
+    ])
+    expect(store.accounts.find((a) => a.id === 'card')!.amount).toBe(before - 50_000)
+
+    await deposit({ depositAmount: '20 000', depositAccountId: '' })
+    expect(store.accountShifts).toHaveLength(1)
+
+    await deposit({ depositAmount: '10 000', depositAccountId: 'card', depositOperation: 'withdraw' })
+    expect(store.accountShifts[1]).toMatchObject({ accountId: 'card', amount: 10_000, kind: 'goal-out', goalId: 'trip' })
+    expect(store.accounts.find((a) => a.id === 'card')!.amount).toBe(before - 40_000)
+  })
+
   it('«История цели» — новые сверху и на слитом документе (новые первыми), и после взноса (дописан в конец)', async () => {
     const store = useFinanceStore()
     const old = { id: 'm-old', date: '2026-09-01T10:00:00.000Z', amount: 11_000, by: 'a' as const }

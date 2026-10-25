@@ -60,6 +60,7 @@ import {
   settlePlans,
   stepDue,
   shiftedBase,
+  liveShifts,
   spendAccountOf,
   type LumpMode,
   type MonthlyKind,
@@ -73,6 +74,7 @@ import {
   type MonthPlanState,
 } from '@/lib/finance'
 import type {
+  AccountShift,
   AiReview,
   TermSnap,
   PlanShift,
@@ -134,6 +136,8 @@ export function defaultSyncDoc(): SyncDoc {
     fxExchanges: [],
     // Потрачено со счёта для трат (F2-07): ключ и пустым — как у payments (RP-03).
     accountSpent: [],
+    // Сдвиги остатка рукой (FG-14): ключ и пустым — как у payments (RP-03).
+    accountShifts: [],
     // План месяца (B2C-85): суммы трат каждого — список; порядки и карточка долга — объекты (пусто — умолчания).
     spendPlans: [],
     goalOrder: null,
@@ -1409,8 +1413,15 @@ export const useFinanceStore = defineStore('finance', () => {
    * (finance.ts `shiftedBase`). С якорем «сейчас» отметки до этого момента перестали
    * бы двигать остаток: снятая по ошибке не вернула бы деньги, офлайн-отметка
    * партнёра после слияния не списалась бы.
+   *
+   * `meta` (FG-14) — сдвиг рукой оставляет запись `AccountShift` в том же документе, что и счёт (фактическая дельта
+   * базы со знаком): строка выписки с тем же переводом не вычтется второй раз (FG-15). Без `meta` — без записи.
    */
-  function shiftAccountAmount(id: string, delta: number) {
+  function shiftAccountAmount(
+    id: string,
+    delta: number,
+    meta?: { by: PersonId; kind: AccountShift['kind']; goalId?: string; date?: string },
+  ) {
     const t = new Date().toISOString()
     const shift = (x: Account) => ({
       amount: shiftedBase(x, payments.value, delta, balanceCtx()),
@@ -1419,15 +1430,40 @@ export const useFinanceStore = defineStore('finance', () => {
     })
     const priv = ((privateDoc.value.accounts as Account[]) || []).find((x) => x.id === id)
     const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
-    if (!raw || shiftedBase(raw, payments.value, delta, balanceCtx()) === raw.amount) return
+    const next = raw ? shiftedBase(raw, payments.value, delta, balanceCtx()) : 0
+    if (!raw || next === raw.amount) return
+    const hex = Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0')
+    const record: AccountShift | null = meta
+      ? { id: `as_${hex}`, accountId: id, amount: next - raw.amount, date: meta.date ?? todayIso(), by: meta.by, kind: meta.kind, ...(meta.goalId ? { goalId: meta.goalId } : {}), updatedAt: t }
+      : null
     if (priv) {
       mutatePrivateDoc((doc) => {
         doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
+        if (record) doc.accountShifts = [...((doc.accountShifts as AccountShift[] | undefined) ?? []), record]
       })
     } else {
       mutateHouseholdDoc((doc) => {
         const a = (doc.accounts || []).find((x) => x.id === id)
         if (a) Object.assign(a, shift(a))
+        if (record) doc.accountShifts = [...(doc.accountShifts ?? []), record]
+      })
+    }
+  }
+
+  /** Живые сдвиги остатка рукой обоих документов (FG-14): по ним сверка с выпиской (`shiftedOps`, FG-15). */
+  const accountShifts = computed(() => [...liveShifts(householdDoc.value), ...liveShifts(privateDoc.value as { accountShifts?: AccountShift[] })])
+
+  /** Снять запись сдвига надгробием (FG-14, «Вернуть в мечты») — в том документе, где она лежит. */
+  function dropAccountShift(id: string) {
+    const t = new Date().toISOString()
+    const bury = (list: AccountShift[] | undefined) => (list ?? []).map((x) => (x.id === id ? { ...x, deletedAt: t, updatedAt: t } : x))
+    if (((privateDoc.value.accountShifts as AccountShift[] | undefined) ?? []).some((x) => x.id === id)) {
+      mutatePrivateDoc((doc) => {
+        doc.accountShifts = bury(doc.accountShifts as AccountShift[] | undefined)
+      })
+    } else {
+      mutateHouseholdDoc((doc) => {
+        doc.accountShifts = bury(doc.accountShifts)
       })
     }
   }
@@ -2097,16 +2133,30 @@ export const useFinanceStore = defineStore('finance', () => {
   function markGoalDone(id: string, at?: string) {
     const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
     if (!cur || cur.doneAt) return
-    updateGoal(id, { doneAt: at ?? new Date().toISOString() })
-    if (cur.accountId && cur.have > 0) shiftAccountAmount(cur.accountId, -cur.have)
+    const doneAt = at ?? new Date().toISOString()
+    updateGoal(id, { doneAt })
+    if (cur.accountId && cur.have > 0) {
+      shiftAccountAmount(cur.accountId, -cur.have, { by: (useAuthStore().slot ?? 'a') as PersonId, kind: 'done', goalId: id, date: todayIso(new Date(doneAt)) })
+    }
   }
 
-  /** «Вернуть в мечты» (PN-13): снять `doneAt` (null — LWW очистка); цель на счёте — деньги назад на счёт. */
+  /**
+   * «Вернуть в мечты» (PN-13): снять `doneAt` (null — LWW очистка); цель на счёте — деньги назад на счёт. Запись
+   * сдвига «Сбылось» этой цели (FG-14) — надгробие; её нет (покупка до Блока 2 или с другого телефона без синка) —
+   * обратный сдвиг пишется своей записью.
+   */
   function undoGoalDone(id: string) {
     const cur = goals.value.find((g) => g.id === id && !g.deletedAt)
     if (!cur?.doneAt) return
     updateGoal(id, { doneAt: null })
-    if (cur.accountId && cur.have > 0) shiftAccountAmount(cur.accountId, cur.have)
+    if (!cur.accountId || cur.have <= 0) return
+    const done = accountShifts.value.filter((s) => s.kind === 'done' && s.goalId === id && s.accountId === cur.accountId).pop()
+    if (done) {
+      shiftAccountAmount(cur.accountId, cur.have)
+      dropAccountShift(done.id)
+    } else {
+      shiftAccountAmount(cur.accountId, cur.have, { by: (useAuthStore().slot ?? 'a') as PersonId, kind: 'done', goalId: id })
+    }
   }
 
   /**
@@ -2772,6 +2822,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateAccount,
     setAccountAmount,
     shiftAccountAmount,
+    accountShifts,
     setSpendAccount,
     setDeposit,
     removeAccount,

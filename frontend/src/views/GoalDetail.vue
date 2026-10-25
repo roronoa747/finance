@@ -298,17 +298,19 @@ function keepMonthly() {
 function applyDeposit() {
   const v = parseMoney(depositAmount.value)
   if (!v || !goal.value) return
+  const me = (authStore.slot ?? 'a') as PersonId
 
   if (depositOperation.value === 'deposit') {
     // Темп — до записи взноса (без плана он считается по движениям); нет темпа — тоста нет.
     const days = closerDays(v, goalPace(goal.value, monthKey()))
     financeStore.contribute(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
-    // Сдвиг остатка, а не сверка: отметки оплат до взноса продолжают считаться.
-    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, -v)
+    // Сдвиг остатка, а не сверка: отметки оплат до взноса продолжают считаться. Запись сдвига (FG-14) — того, чей
+    // телефон: его выписка принесёт этот перевод.
+    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, -v, { by: me, kind: 'goal-in', goalId: goal.value.id })
     if (days) flashCloser(`${goal.value.name} ближе на ${days} ${plural(days, 'день', 'дня', 'дней')}`)
   } else {
     financeStore.withdraw(goal.value.id, v, depositBy.value, depositNote.value.trim() || undefined)
-    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, v)
+    if (depositAccountId.value) financeStore.shiftAccountAmount(depositAccountId.value, v, { by: me, kind: 'goal-out', goalId: goal.value.id })
   }
 
   depositAmount.value = ''

@@ -223,6 +223,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     fxExchanges: mergeList(local.fxExchanges ?? [], remote.fxExchanges ?? [], (x) => x.id),
     // Потрачено со счёта для трат (F2-07): запись участника `счёт:участник` — каждый телефон пишет свою, LWW.
     accountSpent: mergeList(local.accountSpent ?? [], remote.accountSpent ?? [], (x) => x.id),
+    // Сдвиги остатка рукой (FG-14): записи по id, отмена — надгробие, сильнее правки.
+    accountShifts: mergeList(local.accountShifts ?? [], remote.accountShifts ?? [], (x) => x.id),
     // План месяца (B2C-85): суммы трат каждого — по id `участник:раздел` (LWW, надгробия); порядки очередей и
     // карточка долга — объекты целиком, поздний побеждает (Р-84, как `moneySettings`).
     spendPlans: mergeList(local.spendPlans ?? [], remote.spendPlans ?? [], (x) => x.id),
@@ -269,6 +271,7 @@ export function mergePrivateDocs(
   // aiReviews — свои разборы v4 (бэклог «Фидбек», Р-27): по id, надгробие обрезки побеждает.
   // notes — заметки себе с датой (бэклог «Фидбек», Р-33): по id, LWW, удаление — надгробие.
   // answers — «Нет, это другое» и «Потом» по операциям (бэклог «Хвосты», TL-08, Р-5): по ключу, LWW, надгробие побеждает.
+  // accountShifts — сдвиги остатка личного счёта рукой (FG-14): по id, надгробие побеждает.
   // aiConsent — согласие человека на ИИ (бэклог «ИИ», Р-9): позднее `at` побеждает.
   const consent = newerObject(
     local.aiConsent as AiConsent | undefined,
@@ -284,6 +287,7 @@ export function mergePrivateDocs(
     aiReviews: list('aiReviews'),
     notes: list('notes'),
     answers: list('answers'),
+    accountShifts: list('accountShifts'),
     ...(consent ? { aiConsent: consent } : {}),
   }
   return { ...mergeUnknownKeys(local, remote, { ...known, aiConsent: null }), ...known }
