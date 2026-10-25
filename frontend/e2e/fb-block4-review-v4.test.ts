@@ -261,8 +261,8 @@ describe('e2e / Фидбек Блок 4б — разбор v4 свой у каж
     expect(label(A)).toMatch(/кафе и рестораны выше плана$/)
     expect(label(B)).toMatch(/· траты выше плана$/)
     const dreams = await screen(B.pinia, Dreams, '/dreams')
-    expect(dreams).not.toContain('кафе и рестораны выше плана')
-    expect(dreams).toContain('траты выше плана')
+    // F2-Х4 (FG-12): на «Мечтах» — только срок, причины (своей или чужой) нет; причина — в карточке цели (`shiftLabel` выше).
+    expect(dreams).not.toContain('выше плана')
   })
 
   it('(е) viewer — отчёта v4 нет: ни карточек, ни запроса, ни пилюли без разбора в общем документе', async () => {

@@ -4485,7 +4485,8 @@ export function dreamShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: TermS
 /** Слова причин метки (Р-6; финал — `/ux`). `spend` и `due` — с именем раздела или платежа. */
 export const SHIFT_REASON_TEXT: Record<DreamShiftReason, (name?: string) => string> = {
   spend: (name) => `${name ? name.charAt(0).toLowerCase() + name.slice(1) : 'траты'} выше плана`,
-  due: (name) => (name ? `новый платёж «${name}»` : 'новый платёж'),
+  // Платёж мог быть и раньше — он начал ждать в этом месяце (F2-Х4, FG-12: без «новый»).
+  due: (name) => (name ? `платёж «${name}» с этого месяца` : 'платёж с этого месяца'),
   less: () => 'в мечту меньше',
   put: () => 'отложили больше',
   freed: () => 'платёж ушёл',
@@ -4640,13 +4641,17 @@ export function returnTermShift(state: MonthPlanState, ctx: MonthPlanCtx, snap: 
 
 /** Метка мечты: «+2 недели · кафе выше плана» / «на 3 недели ближе · отложили больше». */
 export function shiftLabel(shift: DreamShift): string {
-  const why = SHIFT_REASON_TEXT[shift.reason](shift.name)
-  if (shift.days > 0) {
-    const span = shiftSpan(shift.days)
-    // «+2 недели» — именительный: «неделю» → «неделя».
-    return `+${span.replace(/^1\sнеделю$/, '1 неделя')} · ${why}`
-  }
-  return `на ${shiftSpan(-shift.days)} ближе · ${why}`
+  return `${shiftShort(shift)} · ${SHIFT_REASON_TEXT[shift.reason](shift.name)}`
+}
+
+/**
+ * Метка мечты на «Мечтах» — только срок, без причины (F2-Х4, FG-12, вариант составителя; правило 12 «нет шумных подписей»):
+ * «+2 недели» / «на 3 недели ближе». Причина — в карточке цели (`GoalDetail`, полный `shiftLabel`).
+ */
+export function shiftShort(shift: DreamShift): string {
+  // «+2 недели» — именительный: «неделю» → «неделя».
+  if (shift.days > 0) return `+${shiftSpan(shift.days).replace(/^1\sнеделю$/, '1 неделя')}`
+  return `на ${shiftSpan(-shift.days)} ближе`
 }
 
 /**

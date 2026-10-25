@@ -102,8 +102,10 @@ async function settle() {
 describe('AU-06: метка на «Мечтах»', () => {
   it('у героя и у строки цели при сдвиге от недели', async () => {
     await open(Dreams, '/dreams')
-    expect(txt(q('[data-hero-note]'))).toBe('+4 недели · кафе и рестораны выше плана')
-    expect(txt(document.body)).toContain('+4 недели · кафе и рестораны выше плана') // строка «Отпуска»
+    // F2-Х4 (FG-12): на «Мечтах» — только срок, причина — в карточке цели.
+    expect(txt(q('[data-hero-note]'))).toBe('+4 недели')
+    expect(txt(document.body)).not.toContain('выше плана')
+    expect(txt(document.body)).not.toContain(' · платёж')
     const rows = [...document.querySelectorAll('[data-id]')].map((el) => txt(el))
     expect(rows.find((t) => t.includes('Отпуск'))).toContain('+4 недели')
     // `/ux`: в строке цели — та же точка тона, что у героя (дальше — `warn`).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dreamShift, monthPlan, shiftLabel, shiftSpan, termSnapOf, type MonthPlanCtx, type UploadPeriod } from './finance'
+import { SHIFT_REASON_TEXT, dreamShift, monthPlan, shiftLabel, shiftShort, shiftSpan, termSnapOf, type MonthPlanCtx, type UploadPeriod } from './finance'
 import type { SpendTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import type { PersonId, SpendPlan, SyncDoc, TermSnap } from '@/types/finance'
@@ -78,7 +78,11 @@ describe('dreamShift — сдвиг мечты к снимку', () => {
     const gym = { id: 'gym', name: 'Спортзал', note: '', day: 12, category: 'd4' as const, versions: [{ from: '2000-01', amount: 25_000 }], updatedAt: T0 }
     const shift = dreamShift(family({ obligations: [...doc.obligations, gym] }), ctxOf(), snap, 'car')
     expect(shift).toEqual({ days: 13, reason: 'due', name: 'Спортзал' })
-    expect(shiftLabel(shift!)).toBe('+2\u00a0недели · новый платёж «Спортзал»')
+    // F2-Х4 (FG-12): без «новый» — платёж мог быть и раньше; на «Мечтах» — только срок (`shiftShort`).
+    expect(shiftLabel(shift!)).toBe('+2 недели · платёж «Спортзал» с этого месяца')
+    expect(shiftShort(shift!)).toBe('+2 недели')
+    expect(shiftShort({ ...shift!, days: -21 })).toBe('на 3 недели ближе')
+    expect(SHIFT_REASON_TEXT.due()).toBe('платёж с этого месяца')
   })
   it('отложили сверх плана → ближе, причина «put»', () => {
     const doc = family()

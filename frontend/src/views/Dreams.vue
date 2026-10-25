@@ -8,7 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useAiStore } from '@/stores/ai'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthShort } from '@/lib/dates'
-import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftLabel, wishQueue } from '@/lib/finance'
+import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftShort, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -79,7 +79,7 @@ function shiftOf(g: Goal) {
   const { state, ctx } = financeStore.planInput(key.value)
   // Раздел причины — только свой (Х-8, Р-29); viewer — семейная причина, как было.
   const s = dreamShift(state, ctx, snap.value, g.id, authStore.isViewer ? undefined : authStore.slot ?? undefined)
-  return s ? { text: shiftLabel(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
+  return s ? { text: shiftShort(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
 }
 const heroShift = computed(() => (main.value ? shiftOf(main.value) : null))
 /**
