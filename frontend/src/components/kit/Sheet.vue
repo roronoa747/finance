@@ -200,9 +200,43 @@ const scrimStyle = computed(() => {
   return pull.value ? { opacity: Math.max(0, 1 - pull.value / h), transition: settling.value ? 'opacity var(--motion-fast) var(--ease-out)' : 'none' } : undefined
 })
 
+/*
+ * Лист над экранной клавиатурой (F2-02). Chrome Android по умолчанию и iOS Safari сжимают только визуальный viewport —
+ * `fixed inset-0` остаётся под клавиатурой, и нижняя кнопка листа за ней. Закрытую часть берём из `visualViewport`:
+ * обёртка встаёт над клавиатурой, карточка не выше видимого, поле в фокусе докручивается. Масштаб пальцами — не
+ * клавиатура. Без `visualViewport` — как раньше.
+ */
+const kb = ref(0)
+const seen = ref(0)
+
+function onViewport() {
+  const vv = window.visualViewport
+  if (!vv) return
+  const covered = Math.abs(vv.scale - 1) > 0.01 ? 0 : Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))
+  const grew = covered > kb.value
+  kb.value = covered
+  seen.value = covered ? Math.round(vv.height) : 0
+  const at = document.activeElement
+  if (grew && at instanceof HTMLElement && card.value?.contains(at)) void nextTick(() => at.scrollIntoView?.({ block: 'nearest' }))
+}
+
+function watchViewport(on: boolean) {
+  const vv = window.visualViewport
+  if (!vv) return
+  const fn = on ? vv.addEventListener.bind(vv) : vv.removeEventListener.bind(vv)
+  fn('resize', onViewport)
+  fn('scroll', onViewport)
+  if (on) onViewport()
+  else kb.value = seen.value = 0
+}
+
+const wrapStyle = computed(() => ({ zIndex: props.z, bottom: kb.value ? `${kb.value}px` : undefined }))
+const fitStyle = computed(() => (seen.value ? { maxHeight: `${Math.round(seen.value * 0.88)}px` } : undefined))
+
 /** Пока открыт хоть один лист (или отчёт разбора), экран за ним не прокручивается — `sheetStack`. */
 function show() {
   pushSheet(me)
+  watchViewport(true)
   releaseTips = holdTips()
   back = document.activeElement instanceof HTMLElement ? document.activeElement : null
   document.addEventListener('keydown', onKeydown)
@@ -216,6 +250,7 @@ function hide() {
   releaseTips?.()
   releaseTips = null
   document.removeEventListener('keydown', onKeydown)
+  watchViewport(false)
   if (settle) clearTimeout(settle)
   settle = null
   closing = false
@@ -247,7 +282,7 @@ onUnmounted(() => {
     <div
       v-if="open"
       class="fx-fade fixed inset-0 flex items-end justify-center overscroll-contain sm:items-center sm:p-4"
-      :style="{ zIndex: z }"
+      :style="wrapStyle"
       @pointerdown="onScrimDown"
       @click.self="onScrimClick"
       @touchmove.self.prevent
@@ -263,7 +298,7 @@ onUnmounted(() => {
         :aria-labelledby="titleId"
         tabindex="-1"
         class="fx-sheet relative max-h-[88dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-[28px] bg-surface px-5 pb-9 pt-5 text-left shadow-sheet outline-none sm:rounded-card sm:pb-5"
-        :style="cardStyle"
+        :style="[fitStyle, cardStyle]"
         @touchstart="onTouchStart"
         @touchmove="onTouchMove"
         @touchend="onTouchEnd"

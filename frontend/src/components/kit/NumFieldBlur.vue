@@ -43,10 +43,7 @@ function onBlur() {
   if (numChanged(text.value, props.initial, kindOf())) emit('commit', text.value)
 }
 
-// Enter только уводит фокус, коммит — в onBlur: иначе одно действие давало два.
-function onEnter(e: Event) {
-  ;(e.target as HTMLInputElement)?.blur()
-}
+// Enter уводит фокус сам `NumField` (F2-02), коммит — здесь, в onBlur: одно действие — одна запись.
 </script>
 
 <template>
@@ -60,6 +57,5 @@ function onEnter(e: Event) {
     :class="props.class"
     :class-name="props.className"
     @blur="onBlur"
-    @keydown.enter="onEnter"
   />
 </template>
