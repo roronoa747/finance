@@ -551,7 +551,7 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(q('[data-bang]')).toBeNull()
   })
 
-  it('FB-01: «Потом» у пачки помнится сутки на устройстве — экран закрыли и открыли, вопроса нет; через 25 часов — есть; новый продавец недели возвращает пачку', async () => {
+  it('FB-01: «Потом» у пачки помнится сутки (личный документ, TL-08) — экран закрыли и открыли, вопроса нет; через 25 часов — есть; новый продавец недели возвращает пачку', async () => {
     vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => ({ household_id: 'h1', user_id: 'u-a', rev: rev + 1, data, updated_at: '' }))
     const reopen = async (extra: Operation[] = []) => {
       app?.unmount()
@@ -565,7 +565,8 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(txt(q('[role="dialog"]'))).toContain('Без раздела · 1')
     await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
     expect(q('[role="dialog"]')).toBeNull()
-    expect(JSON.parse(localStorage.getItem('ff_decisions_deferred')!)).toHaveProperty(['unknownBatch:2026-W39'])
+    expect(useFinanceStore().privateDoc.answers).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'unknownBatch:2026-W39', kind: 'deferred' })]))
+    expect(localStorage.getItem('ff_decisions_deferred')).toBeNull()
 
     await reopen()
     expect(q('[data-bang]')).toBeNull()
@@ -753,7 +754,7 @@ describe('FB-21: «Это ваш доход?» на «Неделе» и точк
     await press(q('[data-bang]'))
     await press(all('[role="dialog"] button').find((b) => txt(b) === 'Потом'))
     expect(q('[data-bang]')).toBeNull()
-    expect(Object.keys(JSON.parse(localStorage.getItem('ff_decisions_deferred')!))).toEqual([expect.stringMatching(/^income:/)])
+    expect(useFinanceStore().privateDoc.answers).toEqual([expect.objectContaining({ id: expect.stringMatching(/^income:/), kind: 'deferred' })])
     vi.setSystemTime(new Date(Date.now() + 25 * 3_600_000))
     app?.unmount()
     document.body.innerHTML = ''

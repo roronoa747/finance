@@ -324,6 +324,18 @@ export type Note = Tracked & {
   doneAt?: string | null
 }
 
+/**
+ * Ответ на вопрос по операции (бэклог «Хвосты», TL-08, Р-5) — список `answers` личного документа: все телефоны человека
+ * помнят его, партнёр не видит. `declined` — «Нет, это другое», id — ключ отказа (`declineKey`); `deferred` — «Потом»,
+ * id — ключ решения «Недели», `until` — до какого момента (ISO). Протухший «Потом» выбрасывается из списка при следующей
+ * записи, без надгробия: ключ вопроса повторяется, надгробие съело бы следующее «Потом» (`finance.writeAnswers`).
+ */
+export type Answer = Tracked & {
+  id: string
+  kind: 'declined' | 'deferred'
+  until?: string | null
+}
+
 export type WishItem = Tracked & {
   id: string
   name: string

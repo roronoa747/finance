@@ -12,7 +12,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { SyncDoc } from '../src/types/finance'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, apiNoStatements } from './support/family'
 
 /**
  * Блок 2 «ИИ» (AI-07…AI-10): разбор месяца на двух телефонах против фейкового сервера документа и фейковой ручки
@@ -66,6 +66,7 @@ describe('e2e / ИИ Блок 2 — разбор месяца', () => {
     storage.clear()
     // Фоновый синк стора уходит в настоящий клиент — «нет сети»; телефоны синкаются явно своим клиентом.
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('офлайн'))))
+    apiNoStatements()
     vi.useFakeTimers({ toFake: ['Date'] })
     at('2026-10-12T07:00:00Z')
     server = fakeServer(familyDoc())

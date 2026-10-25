@@ -6,7 +6,8 @@ import { useAiStore } from './ai'
 import { useFinanceStore } from './finance'
 import { useOperationsStore } from './operations'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { leadFor, seedOwnMonth } from '@/test/reviewV4'
+import { leadFor, ownMonthOps, seedOwnMonth } from '@/test/reviewV4'
+import { spendTotals } from '@/lib/statements/model'
 import type { AiReview, ReviewPayloadV4, SyncDoc } from '@/types/finance'
 
 /**
@@ -19,13 +20,21 @@ const NOW = '2026-09-12T07:00:00Z'
 const KEY = '2026-09'
 const ATTEMPT = `v4:month:${KEY}`
 
+/** Запрос разбора идёт после загрузки своих операций и выписок (FB-HF1, TL-09) — несколько ожиданий, не одна микрозадача. */
+const tick = () => new Promise((r) => setTimeout(r, 0))
+
 function fakeClient(priv: Record<string, unknown> = {}) {
   const aiReview = vi.fn(async (body: unknown) => leadFor(body))
+  // Свои операции и выписки с сервера — пусто, но пришли (разбор ждёт их; свой месяц кладёт `seedOwnMonth`).
+  const listOperations = vi.fn(async () => ({ operations: [], next: null }))
+  const listStatementUploads = vi.fn(async () => ({ uploads: [] as unknown[] }))
   const client = {
     aiReview,
     getPrivateDoc: vi.fn(async () => ({ rev: 1, data: priv })),
+    listOperations,
+    listStatementUploads,
   } as unknown as ApiClient
-  return { client, aiReview }
+  return { client, aiReview, listOperations, listStatementUploads }
 }
 
 type FamilyOpts = { role?: 'member' | 'viewer'; doc?: SyncDoc; consent?: 'v2' | 'v1' | 'off' | 'none'; mine?: AiReview[]; own?: boolean }
@@ -470,5 +479,87 @@ describe('requestReview v4 — сохранение', () => {
     const { client, aiReview } = fakeClient()
     await ai.runReview(KEY, 'month', client)
     expect((aiReview.mock.calls[0][0] as ReviewPayloadV4).cards.map((c) => c.kind)).toEqual(['unknown', 'plan'])
+  })
+})
+
+// FB-HF1 → TL-09 (Х-1, Р-6): разбор сам уходил сразу после документа, а выписки (`GET /api/statements`) шли параллельно —
+// запрос успевал раньше: «7 находок из 0 операций», «обычных» месяцев нет, неполный разбор оплачен. Свой месяц — операции
+// на телефоне и итоги в документе, выписка (`uploads`) — только с сервера этого запуска.
+describe('разбор ждёт свои операции и выписки (FB-HF1, TL-09)', () => {
+  const usual = ['2026-06', '2026-07', '2026-08'].map((period) => ({
+    id: `a:month:${period}:sc_food`, by: 'a' as const, kind: 'month' as const, period, categoryId: 'sc_food', amount: 100_000, ops: 50, updatedAt: T0,
+  }))
+  const uploads = [{ id: 'u-a', slot: 'a', bank: 'kaspi', period_from: '2026-06-01', period_to: '2026-09-10', ops_count: 152, created_at: T0 }]
+  /** Свой месяц без выписки: операции и итоги сентября (2 операции) и трёх «обычных» месяцев (по 50). */
+  async function racing() {
+    const { ai } = await family({ own: false })
+    const list = ownMonthOps(KEY)
+    useOperationsStore().ops = Object.fromEntries(list.map((o) => [o.id, o]))
+    useFinanceStore().mutateHouseholdDoc((d) => {
+      d.spendTotals = [...spendTotals(list, 'a', 'month', KEY, T0, { marked: new Set(), categories: [] }), ...usual]
+    })
+    return ai
+  }
+
+  it('выписки пришли позже документа — запрос только после них; счётчик — операции месяца и трёх «обычных»', async () => {
+    const ai = await racing()
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    let arrive!: () => void
+    listStatementUploads.mockImplementation(() => new Promise((r) => (arrive = () => r({ uploads }))))
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(listStatementUploads).toHaveBeenCalled())
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    const r = await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(152)
+  })
+
+  it('свои операции ещё идут (первый pull) — ждёт и их', async () => {
+    const ai = await racing()
+    const { client, aiReview, listOperations, listStatementUploads } = fakeClient()
+    listStatementUploads.mockResolvedValue({ uploads })
+    let arrive!: () => void
+    listOperations.mockImplementation(() => new Promise((r) => (arrive = () => r({ operations: [], next: null }))))
+    const run = ai.autoReview(client)
+    await vi.waitFor(() => expect(listOperations).toHaveBeenCalled())
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('выписки не пришли (сеть) — запроса нет и попытка не записана; следующий круг — запрос', async () => {
+    const ai = await racing()
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    listStatementUploads.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue({ uploads })
+    expect(await ai.autoReview(client)).toBeNull()
+    expect(aiReview).not.toHaveBeenCalled()
+    expect(localStorage.getItem('ff_ai_auto')).toBeNull()
+    const r = await ai.autoReview(client)
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(152)
+  })
+
+  it('«Разобрать» во время загрузки — «Думаю…» ждёт выписки, потом один запрос; не пришли — «не вышло» без запроса', async () => {
+    const ai = await racing()
+    const { client, aiReview, listStatementUploads } = fakeClient()
+    listStatementUploads.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await ai.runReview(KEY, 'month', client)).toBeNull()
+    expect(ai.reviewState).toBe('failed')
+    expect(aiReview).not.toHaveBeenCalled()
+    let arrive!: () => void
+    listStatementUploads.mockImplementation(() => new Promise((r) => (arrive = () => r({ uploads }))))
+    const run = ai.runReview(KEY, 'month', client)
+    expect(ai.reviewState).toBe('thinking')
+    await vi.waitFor(() => expect(listStatementUploads).toHaveBeenCalledTimes(2))
+    await tick()
+    expect(aiReview).not.toHaveBeenCalled()
+    arrive()
+    const r = await run
+    expect(aiReview).toHaveBeenCalledTimes(1)
+    expect(r!.work!.ops).toBe(152)
   })
 })

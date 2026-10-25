@@ -440,26 +440,42 @@ export function withEdits(ops: Operation[], edits: OpEdit[]): Operation[] {
 /** Окно «Вернули переводом» (Р-12): приход ±14 дней от траты. */
 export const REFUND_WINDOW_DAYS = 14
 
+/** Кешбэк и бонусы банка (TL-07, Р-4) — не возврат траты; слова — пушей (`applepay/push.go`) без «акци / скидк»: они бывают в названии магазина. */
+const BONUS_WORDS = /к[еэ]шб[еэ]к|cashback|бонус/i
+
+/** Продавец возврата для сравнения с покупкой: Freedom пишет «Возврат. Отмена покупки YANDEX. GO» (TL-07). */
+const refundMerchant = (raw: string) => normalizeMerchant(raw).replace(/^возврат\s+/, '').replace(/^отмена(\s+покупки)?\s+/, '')
+
 /**
- * Приходы, которыми могли вернуть трату (Р-12): свои `transfer-in` / `income` с суммой не больше траты, ±14 дней, не
- * между своими, не отмеченные зарплатой (`linked` — id операций отметок), не взятые возвратом другой траты; ближайшие по
- * дате первыми. `ops` — копия с правками (`withEdits`).
+ * Приходы, которыми могли вернуть трату (Р-12): свои `transfer-in` / `income` и возврат того же продавца (`purchase` с
+ * «+», TL-07) с суммой не больше траты, ±14 дней, не между своими, не отмеченные зарплатой (`linked` — id операций
+ * отметок), не взятые возвратом другой траты; кешбэк и бонусы — нет. Возвраты продавца первыми, дальше — ближайшие по
+ * дате. `ops` — копия с правками (`withEdits`).
  */
 export function refundCandidates(op: Operation, ops: Operation[], linked: ReadonlySet<string> = new Set()): Operation[] {
   const taken = new Set(ops.filter((o) => o.id !== op.id && o.refund?.opId).map((o) => o.refund!.opId!))
   const day = dayNumber(op.date)
+  const merchant = normalizeMerchant(op.merchant)
+  const store = (o: Operation) => o.kind === 'purchase' && !!merchant && refundMerchant(o.merchant) === merchant
   return ops
     .filter(
       (o) =>
         o.amount > 0 &&
-        (o.kind === 'transfer-in' || o.kind === 'income') &&
+        (o.kind === 'transfer-in' || o.kind === 'income' || store(o)) &&
+        !BONUS_WORDS.test(`${o.merchant} ${o.note ?? ''}`) &&
         (!o.internal || o.id === op.refund?.opId) &&
         !linked.has(o.id) &&
         !taken.has(o.id) &&
         o.amount <= -op.amount &&
         Math.abs(dayNumber(o.date) - day) <= REFUND_WINDOW_DAYS,
     )
-    .sort((a, b) => Math.abs(dayNumber(a.date) - day) - Math.abs(dayNumber(b.date) - day) || b.date.localeCompare(a.date) || a.id.localeCompare(b.id))
+    .sort(
+      (a, b) =>
+        Number(store(b)) - Number(store(a)) ||
+        Math.abs(dayNumber(a.date) - day) - Math.abs(dayNumber(b.date) - day) ||
+        b.date.localeCompare(a.date) ||
+        a.id.localeCompare(b.id),
+    )
 }
 
 /**

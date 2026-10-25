@@ -53,7 +53,7 @@ import {
   type Decision,
   type MyWeekRow,
 } from '@/lib/finance'
-import { START_ANSWERED_KEY, readDeferred, readMonthEnd, readStorage, writeDeferred, writeMonthEnd, writeStorage } from '@/lib/storage'
+import { START_ANSWERED_KEY, readMonthEnd, readStorage, writeMonthEnd, writeStorage } from '@/lib/storage'
 import { detectIncome } from '@/lib/statements/firstRun'
 import { useIncomeAnswer } from '@/components/useIncomeAnswer'
 
@@ -281,11 +281,11 @@ const unknownList = computed(() => unknownGroups(store.all.filter((o) => weekKey
 
 /**
  * Очередь вопросов (`decisionQueue`): сопоставление → продавцы пачкой → подписка → «остались деньги?»; в листе —
- * первое неотложенное. «Потом» / «Позже» / «Подумать» — сутки на этом устройстве (FB-01, Р-15 а: раньше — до следующего
- * открытия экрана, и тот же вопрос вставал при каждом заходе). Пачка недели отложена вместе со своими продавцами: новый
- * продавец в ней возвращает пачку раньше суток.
+ * первое неотложенное. «Потом» / «Позже» / «Подумать» — сутки во всех телефонах человека (личный документ, TL-08, Р-5;
+ * FB-01, Р-15 а: раньше — до следующего открытия экрана, и тот же вопрос вставал при каждом заходе). Пачка недели отложена
+ * вместе со своими продавцами: новый продавец в ней возвращает пачку раньше суток.
  */
-const deferred = ref<Record<string, string>>(readDeferred())
+const deferred = computed(() => finance.deferredUntil())
 const groupKey = (g: { match: MerchantRule['match'] }) => `unknownGroup:${week.value}:${JSON.stringify(g.match)}`
 const isDeferred = (d: Decision) => d.key in deferred.value && (d.kind !== 'unknownBatch' || (d.groups ?? []).every((g) => groupKey(g) in deferred.value))
 
@@ -324,7 +324,7 @@ watch(
   { immediate: true },
 )
 const defer = (d: Decision) => {
-  deferred.value = writeDeferred([d.key, ...(d.groups ?? []).map(groupKey)])
+  finance.deferAnswers([d.key, ...(d.groups ?? []).map(groupKey)])
   cancelling.value = false
 }
 /** Вопросы кончились — лист закрывается сам. */

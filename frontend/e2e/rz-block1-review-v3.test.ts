@@ -10,7 +10,7 @@ import type { MeResponse } from '../src/types/api'
 import type { Goal, ReviewPayloadV4, SyncDoc } from '../src/types/finance'
 import type { ReviewFind } from '../src/lib/statements/types'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, noStatements } from './support/family'
 
 /**
  * Блок 1 «Разбор» (RZ-05) — после v4 (бэклог «Фидбек», Р-23, Р-26, Р-27): разбор месяца на двух телефонах против
@@ -72,7 +72,7 @@ describe('e2e / Разбор Блок 1 — разбор месяца (v4, св�
     if (own) await seedOwnMonth(K, slot)
     const ai = useAiStore()
     ai.sheetMounted = true
-    const aiClient = { ...priv, aiReview } as unknown as ApiClient
+    const aiClient = { ...priv, ...noStatements(), aiReview } as unknown as ApiClient
     return { ...p, ai, aiClient }
   }
   type Phone = Awaited<ReturnType<typeof as>>

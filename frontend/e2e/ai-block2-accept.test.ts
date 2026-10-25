@@ -12,7 +12,7 @@ import { screenMixin } from '../src/test/screenState'
 import type { MeResponse } from '../src/types/api'
 import type { AiReview, SyncDoc } from '../src/types/finance'
 import Month from '../src/views/Month.vue'
-import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer } from './support/family'
+import { at, fakePrivate, fakeServer, phone, privateFor, screen, type FakePrivate, type FakeServer, apiNoStatements } from './support/family'
 
 /**
  * Приёмка Блока 2 «ИИ» (2026-10-16): сценарии стенда приёмки, которых не было в наборе. (д) партнёр с ИИ и своим
@@ -68,6 +68,7 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     })
     storage.clear()
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('офлайн'))))
+    apiNoStatements()
     vi.useFakeTimers({ toFake: ['Date'] })
     at('2026-10-12T07:00:00Z')
     server = fakeServer(planFamilyDoc())

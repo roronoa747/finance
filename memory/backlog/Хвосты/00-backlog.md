@@ -64,9 +64,9 @@ Chrome 390, смоук на проде после каждого блока.
 | 2. Цифры сходятся 🏁 *(S)* | TL-04 Лист раздела платежей «Недели» без отмеченных | `block-2-figures/TL-04-week-section-marked.md` | Блок 1 🏁 | ✅ |
 | | TL-05 «Платежи без отметки» в «Месяц → Траты» | `block-2-figures/TL-05-unmarked-payments-row.md` | TL-04 | ✅ |
 | | TL-06 Лист «Наличные» и «Переводы людям» — только операции | `block-2-figures/TL-06-cash-people-sheet.md` | — | ✅ |
-| 3. Операции ⬜ *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ⬜ |
-| | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ⬜ |
-| | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ⬜ |
+| 3. Операции 🔄 *(M с `/ux`)* | TL-07 «Мне вернули» — возврат того же магазина | `block-3-operations/TL-07-store-refund.md` | Блок 2 🏁 | ✅ |
+| | TL-08 Ответы по операции — в личный документ | `block-3-operations/TL-08-answers-private-doc.md` | — | ✅ |
+| | TL-09 Разбор ИИ ждёт выписки | `block-3-operations/TL-09-review-waits-statements.md` | — | ✅ |
 | 4. Первый запуск ⬜ *(S)* | TL-10 Шаг трат без выбора из одного | `block-4-first-run/TL-10-spend-step-one-path.md` | Блок 3 🏁 | ⬜ |
 
 Порядок блоков = приоритет (бриф). Блок 2 после Блока 1: строка «Платежи без отметки» (TL-05) ведёт в те же действия
@@ -171,3 +171,17 @@ Chrome 390, смоук на проде после каждого блока.
 - `SectionOpsList` (листы «Месяца») — эмит `pay` и кнопка `data-cat-pay` у строки с `recurring`; «Платежи без отметки» —
   `MonthPlan.vue` `?unmarked=1`, `OpSheet` поверх (`sheetZ + 10`). Листы `SPEND_LAST` (`sc_cash`, `sc_people`) — только
   сумма и операции (`SpendCategorySheet` `opsOnly`).
+
+**После Блока 3** (критик, ветка `tl-block-3-operations`):
+- «Мне вернули» (`model.ts` `refundCandidates`): кандидат — ещё и `purchase` с «+» того же продавца (`refundMerchant` снимает
+  «возврат» / «отмена (покупки)»), такие — первыми; кешбэк и бонусы (`BONUS_WORDS` по `merchant` + `note`) — никогда.
+- Новый список личного документа **`answers`** (`types/finance.ts` `Answer {id, kind: declined|deferred, until?}`) в `known`
+  `mergePrivateDocs`: «Нет, это другое» (id — `declineKey`) и «Потом» «Недели» (id — ключ решения, `until` +24 ч). Стор
+  `finance`: `declinedKeys`, `deferredUntil(now)`, `declineAnswers`, `deferAnswers`; протухший «Потом» выбрасывается
+  следующей записью (не надгробие — ключ повторяется). `operations.declined` и `deferred` «Недели» — computed из документа.
+  Ключи устройства `ff_match_declined` / `ff_decisions_deferred` только читаются — переезд `moveDeviceAnswers` после
+  каждого удачного `pullPrivateDoc`, удаляются после отправки документа.
+- **`operations.loaded(client)`** — одна точка «свои операции (`pull`) и записи выписок (`loadUploads`) этого запуска
+  пришли»; `afterPull` (находки + автозапуск разбора), `autoReview`, `runReview` ждут её. В тестах и e2e фейк без
+  `listStatementUploads` / `GET /api/statements` = находок и разбора нет: помощники `noStatements` / `apiNoStatements`
+  (`e2e/support/family.ts`).

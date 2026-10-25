@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { apiClient, type ApiClient } from '@/api/client'
+import { apiClient, ApiError, type ApiClient } from '@/api/client'
 import { useAuthStore } from './auth'
 import { useFinanceStore } from './finance'
 import { useOperationsStore } from './operations'
@@ -162,11 +162,13 @@ describe('FB-01 — «Нет, это другое» помнит операци�
     expect(store.pendingMatches).toEqual([])
   })
 
-  it('старая запись без операции (`kind:target:period`) читается как раньше — отклонена пара этого месяца', async () => {
+  it('старая запись без операции (`kind:target:period`) после переезда (TL-08) читается как раньше — отклонена пара этого месяца', async () => {
+    privateServer()
     storage.set('ff_operations', JSON.stringify({ owner: 'h1:u-a', ops: {} }))
     storage.set('ff_match_declined', JSON.stringify(['obligation:o1:2026-10']))
     signIn()
     useFinanceStore().setHouseholdDoc(doc(), 1)
+    await useFinanceStore().pullPrivateDoc()
     const store = useOperationsStore()
     const { server, client } = fakeServer()
     server.feed = [push('p1', 'ТОО Получатель', -30_000, 'purchase')]
@@ -174,5 +176,124 @@ describe('FB-01 — «Нет, это другое» помнит операци�
     expect(store.pendingMatches).toEqual([])
     useFinanceStore().markPaid('obligation', 'o1', 'a', { period: '2026-10' })
     expect(store.pendingMatches.map((c) => c.targetId)).toEqual(['o2'])
+  })
+})
+
+/**
+ * Личный документ на сервере (как `sync.go` private): одна копия на человека, ревизия и 409. `down` — сети нет
+ * (`TypeError` — устройство досылает позже).
+ */
+function privateServer() {
+  const s = { rev: 0, data: {} as Record<string, unknown>, pushes: 0, down: false }
+  const snap = () => ({ household_id: 'h1', user_id: 'u-a', rev: s.rev, data: JSON.parse(JSON.stringify(s.data)), updated_at: '' })
+  vi.spyOn(apiClient, 'getPrivateDoc').mockImplementation(async () => {
+    if (s.down) throw new TypeError('Failed to fetch')
+    return snap()
+  })
+  vi.spyOn(apiClient, 'pushPrivateDoc').mockImplementation(async (rev, data) => {
+    if (s.down) throw new TypeError('Failed to fetch')
+    if (rev !== s.rev) throw new ApiError('conflict', 409, { error: 'conflict', server_doc: snap() })
+    s.rev += 1
+    s.data = JSON.parse(JSON.stringify(data))
+    s.pushes += 1
+    return snap()
+  })
+  return s
+}
+
+describe('TL-08 — ответы «Нет, это другое» и «Потом» в личном документе (Р-5)', () => {
+  const doc = () =>
+    planFamilyDoc({
+      obligations: [{ id: 'o1', name: 'Платёж 1', note: '', day: 14, category: 'd1', versions: [{ from: '2000-01', amount: 30_000 }], updatedAt: T0 }],
+    })
+  const answers = (s: { data: Record<string, unknown> }) => (s.data.answers as { id: string; kind: string; until?: string }[] | undefined) ?? []
+
+  it('переезд при первом синке: живые ответы с устройства — в документ, протухший «Потом» — нет; ключи удалены; повтор ничего не пишет', async () => {
+    const s = privateServer()
+    const until = '2026-10-17T07:00:00.000Z'
+    storage.set('ff_match_declined', JSON.stringify(['p1|obligation:o1:2026-10']))
+    storage.set('ff_decisions_deferred', JSON.stringify({ 'unknownBatch:2026-W42': until, 'unknownBatch:2026-W41': '2026-10-15T07:00:00.000Z' }))
+    signIn()
+    await useFinanceStore().pullPrivateDoc()
+    expect(answers(s)).toEqual([
+      { id: 'p1|obligation:o1:2026-10', kind: 'declined', updatedAt: expect.any(String) },
+      { id: 'unknownBatch:2026-W42', kind: 'deferred', until, updatedAt: expect.any(String) },
+    ])
+    expect(storage.has('ff_match_declined')).toBe(false)
+    expect(storage.has('ff_decisions_deferred')).toBe(false)
+    expect(useFinanceStore().deferredUntil()).toEqual({ 'unknownBatch:2026-W42': until })
+
+    // Ключи вернулись (старая вкладка дописала) — повтор по id: та же запись второй раз не уходит.
+    storage.set('ff_match_declined', JSON.stringify(['p1|obligation:o1:2026-10']))
+    const pushes = s.pushes
+    await useFinanceStore().pullPrivateDoc()
+    expect(s.pushes).toBe(pushes)
+    expect(answers(s)).toHaveLength(2)
+    expect(storage.has('ff_match_declined')).toBe(false)
+  })
+
+  it('сети нет — ключи устройства остаются (ответ не потерян); следующий пулл досылает и только тогда удаляет', async () => {
+    const s = privateServer()
+    storage.set('ff_match_declined', JSON.stringify(['p1|obligation:o1:2026-10']))
+    signIn()
+    const finance = useFinanceStore()
+    // Первый пулл прошёл, отправки — нет (фоновая из записи и та, что ждёт переезд).
+    const offline = new TypeError('Failed to fetch')
+    vi.mocked(apiClient.pushPrivateDoc).mockRejectedValueOnce(offline).mockRejectedValueOnce(offline)
+    await finance.pullPrivateDoc()
+    expect(storage.has('ff_match_declined')).toBe(true)
+    expect(finance.declinedKeys).toEqual(['p1|obligation:o1:2026-10'])
+    expect(answers(s)).toEqual([])
+    await finance.pullPrivateDoc()
+    expect(answers(s).map((a) => a.id)).toEqual(['p1|obligation:o1:2026-10'])
+    expect(storage.has('ff_match_declined')).toBe(false)
+  })
+
+  it('два телефона одного человека: «Нет, это другое» на первом — второй после синка вопрос не задаёт', async () => {
+    const s = privateServer()
+    // Телефон 1.
+    signIn()
+    useFinanceStore().setHouseholdDoc(doc(), 1)
+    const one = fakeServer()
+    one.server.feed = [push('p1', 'ТОО Получатель', -30_000, 'purchase')]
+    await useOperationsStore().pull(one.client)
+    useOperationsStore().declineMatch(useOperationsStore().pendingMatches.find((c) => c.opId === 'p1')!)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answers(s).map((a) => a.id)).toEqual([expect.stringMatching(/^p1\|obligation:o1:/)])
+
+    // Телефон 2: своё устройство, тот же человек.
+    storage.clear()
+    setActivePinia(createPinia())
+    signIn()
+    useFinanceStore().setHouseholdDoc(doc(), 1)
+    const two = fakeServer()
+    two.server.feed = [push('p1', 'ТОО Получатель', -30_000, 'purchase')]
+    await useOperationsStore().pull(two.client)
+    expect(useOperationsStore().pendingMatches.map((c) => c.opId)).toEqual(['p1'])
+    await useFinanceStore().pullPrivateDoc()
+    expect(useOperationsStore().pendingMatches).toEqual([])
+  })
+
+  it('«Потом» — сутки во всех телефонах; протухший выбрасывается следующей записью; выход стирает копию, не документ', async () => {
+    const s = privateServer()
+    signIn()
+    const finance = useFinanceStore()
+    finance.deferAnswers(['unknownBatch:2026-W42'])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answers(s)).toEqual([{ id: 'unknownBatch:2026-W42', kind: 'deferred', until: '2026-10-17T08:00:00.000Z', updatedAt: expect.any(String) }])
+    vi.setSystemTime(new Date('2026-10-17T09:00:00Z'))
+    expect(finance.deferredUntil()).toEqual({})
+    // Тот же вопрос снова «Потом» — новая запись того же ключа; другая запись выбрасывает протухшую.
+    finance.deferAnswers(['unknownBatch:2026-W43'])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answers(s).map((a) => a.id)).toEqual(['unknownBatch:2026-W43'])
+    finance.deferAnswers(['unknownBatch:2026-W43'])
+    expect(s.pushes).toBe(2)
+
+    // Выход: локальная копия стёрта, на сервере ответы остались.
+    useOperationsStore().clear()
+    finance.clearLocal()
+    expect(finance.deferredUntil()).toEqual({})
+    expect(answers(s).map((a) => a.id)).toEqual(['unknownBatch:2026-W43'])
   })
 })

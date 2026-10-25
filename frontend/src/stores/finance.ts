@@ -4,7 +4,7 @@ import { apiClient, type ApiClient, ApiError } from '@/api/client'
 import { mergeDocs, mergePrivateDocs, isEmptyDoc } from '@/lib/merge'
 import { monthKey, monthLastNoon, todayIso } from '@/lib/dates'
 import { clearPhotoDisk } from '@/lib/photos/store'
-import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, readStorage } from '@/lib/storage'
+import { AI_AUTO_KEY, AI_REVIEW_SEEN_KEY, AI_SELLERS_KEY, DEMO_PENDING_KEY, EVENTS_QUEUE_KEY, FX_BOOK_KEY, LINK_PHOTO_TRIED_KEY, MONTH_END_KEY, OPERATIONS_STORAGE_KEYS, START_ANSWERED_KEY, TIPS_SEEN_KEY, DEFER_MS, readDeferred, readStorage } from '@/lib/storage'
 import {
   accountBalance,
   liveSpendCategories,
@@ -98,6 +98,7 @@ import type {
   DebtCard,
   TripExcluded,
   Note,
+  Answer,
 } from '@/types/finance'
 import type { MerchantRule, OpEdit } from '@/lib/statements/types'
 import { useAuthStore } from '@/stores/auth'
@@ -721,6 +722,8 @@ export const useFinanceStore = defineStore('finance', () => {
         privateError.value = false
         saveLocalState()
       }
+      // Ответы, записанные до TL-08 на устройстве, — в документ (Р-5).
+      await moveDeviceAnswers(client)
       return res
     } catch (err) {
       if (s !== session) return null
@@ -2203,6 +2206,67 @@ export const useFinanceStore = defineStore('finance', () => {
     writeNote({ ...prev, deletedAt: t, updatedAt: t })
   }
 
+  /* ---------- ответы по операциям (бэклог «Хвосты», TL-08, Р-5): личный документ — все телефоны человека ---------- */
+  const answers = computed(() => ((privateDoc.value.answers as Answer[] | undefined) ?? []).filter((a) => !a.deletedAt))
+  /** Ключи «Нет, это другое» (`declineKey`; старые записи — пара на месяц). */
+  const declinedKeys = computed(() => answers.value.filter((a) => a.kind === 'declined').map((a) => a.id))
+  /** Живые «Потом»: ключ решения → до какого момента. */
+  function deferredUntil(now = Date.now()): Record<string, string> {
+    return Object.fromEntries(answers.value.filter((a) => a.kind === 'deferred' && a.until && Date.parse(a.until) > now).map((a) => [a.id, a.until!]))
+  }
+  /**
+   * Записать ответы по ключу (LWW). То же уже записано (или «Потом» дольше) — не пишется. Протухшие «Потом» этой же
+   * записью выбрасываются из списка, а не хоронятся: ключ вопроса повторяется, и надгробие (оно сильнее правки при
+   * слиянии) съело бы следующее «Потом» того же вопроса; протухший ответ — как не записан, другой телефон может вернуть
+   * его без вреда.
+   */
+  function writeAnswers(next: { id: string; kind: Answer['kind']; until?: string }[], now = Date.now()) {
+    const live = new Map(answers.value.map((a) => [a.id, a]))
+    const t = new Date(now).toISOString()
+    const writes = new Map<string, Answer>()
+    for (const a of next) {
+      const prev = live.get(a.id)
+      if (prev?.kind === a.kind && (a.kind === 'declined' || (prev.until ?? '') >= (a.until ?? ''))) continue
+      writes.set(a.id, { id: a.id, kind: a.kind, ...(a.until ? { until: a.until } : {}), updatedAt: t })
+    }
+    if (!writes.size) return
+    const stale = (a: Answer) => a.kind === 'deferred' && !writes.has(a.id) && (!a.until || Date.parse(a.until) <= now)
+    mutatePrivateDoc((doc) => {
+      const list = (doc.answers as Answer[] | undefined) ?? []
+      doc.answers = [...list.filter((a) => !writes.has(a.id) && !stale(a)), ...writes.values()]
+    })
+  }
+  /** «Нет, это другое» — навсегда. */
+  const declineAnswers = (keys: string[]) => writeAnswers(keys.map((id) => ({ id, kind: 'declined' as const })))
+  /** «Потом» — сутки от `now` (`DEFER_MS`). */
+  function deferAnswers(keys: string[], now = Date.now()) {
+    const until = new Date(now + DEFER_MS).toISOString()
+    writeAnswers(keys.map((id) => ({ id, kind: 'deferred' as const, until })), now)
+  }
+  /**
+   * Переезд ответов с устройства (Р-5): живые «Нет, это другое» (`ff_match_declined`) и «Потом» (`ff_decisions_deferred`)
+   * — в личный документ; ключи устройства удаляются, только когда документ с ними ушёл на сервер (иначе — следующим
+   * пуллом). Повтор безопасен: записанное по id второй раз не пишется.
+   */
+  async function moveDeviceAnswers(client: ApiClient) {
+    const { declined: KD, deferred: KF } = OPERATIONS_STORAGE_KEYS
+    const declined = readStorage<unknown>(KD, null)
+    if (declined === null && readStorage<unknown>(KF, null) === null) return
+    const keys = Array.isArray(declined) ? declined.filter((k): k is string => typeof k === 'string') : []
+    writeAnswers([
+      ...keys.map((id) => ({ id, kind: 'declined' as const })),
+      ...Object.entries(readDeferred()).map(([id, until]) => ({ id, kind: 'deferred' as const, until })),
+    ])
+    await syncPrivate(client)
+    if (privateUnsent.value) return
+    try {
+      localStorage.removeItem(KD)
+      localStorage.removeItem(KF)
+    } catch {
+      // Хранилище закрыто — ключи переедут ещё раз следующим пуллом, повтор ничего не пишет.
+    }
+  }
+
   /** Сумма трат участника по разделу на месяц (Р-81), целые тенге; одна запись на пару — LWW по id. */
   function setSpendPlan(by: PersonId, categoryId: string, amount: number) {
     const id = `${by}:${categoryId}`
@@ -2641,6 +2705,10 @@ export const useFinanceStore = defineStore('finance', () => {
     setNote,
     setNoteDone,
     removeNote,
+    declinedKeys,
+    deferredUntil,
+    declineAnswers,
+    deferAnswers,
     setSpendPlan,
     ensureFund,
     setFundMonths,

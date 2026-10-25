@@ -36,9 +36,9 @@ import type { Goal, PersonId, TripSpend } from '@/types/finance'
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
 // (Р-4): на сервер идут только записи загрузок и операции без ФИО и номеров (Р-23).
 // Сопоставление с отметками (Р-6, B2C-15): предложения — `matchCandidates`, «да» — запись
-// `payments` с источником «выписка» и правило «это платёж по …», «нет» — на месяц на устройстве.
+// `payments` с источником «выписка» и правило «это платёж по …», «нет» — в личном документе (`answers`, TL-08).
 
-const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS, declined: KEY_DECLINED } = OPERATIONS_STORAGE_KEYS
+const { ops: KEY_OPS, cursor: KEY_CURSOR, pending: KEY_PENDING, demoUploads: KEY_DEMO_UPLOADS } = OPERATIONS_STORAGE_KEYS
 const KEYS = Object.values(OPERATIONS_STORAGE_KEYS)
 
 /**
@@ -153,7 +153,8 @@ export const useOperationsStore = defineStore('operations', () => {
   const cursor = ref<string | null>(fresh ? readStorage<string | null>(KEY_CURSOR, null) : null)
   const pending = ref<PendingJob[]>(fresh ? readStorage<PendingJob[]>(KEY_PENDING, []) : [])
   const demoUploads = ref<StatementUploadResponse[]>(fresh ? readStorage<StatementUploadResponse[]>(KEY_DEMO_UPLOADS, []) : [])
-  const declined = ref<string[]>(fresh ? readStorage<string[]>(KEY_DECLINED, []) : [])
+  /** «Нет, это другое» — личный документ (TL-08, Р-5): все телефоны человека, партнёр не видит. */
+  const declined = computed(() => finance.declinedKeys)
   const serverUploads = ref<StatementUploadResponse[]>([])
   const status = ref<'idle' | 'sending' | 'offline' | 'error'>('idle')
   const lastError = ref<string | null>(null)
@@ -166,6 +167,9 @@ export const useOperationsStore = defineStore('operations', () => {
   let flushing: Promise<void> | null = null
   let pulling: Promise<unknown> = Promise.resolve()
   let lastPullAt = 0
+  /** В этом запуске пришли свои операции (удачный `pull`) и записи выписок (`loadUploads`) — вход разбора (FB-HF1). */
+  let pulledOk = false
+  let uploadsOk = false
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -179,7 +183,7 @@ export const useOperationsStore = defineStore('operations', () => {
   /* ---------- сопоставление с отметками (B2C-15) ---------- */
   // Обмены и книга — тенге валютной зарплаты (B2C-80, `salaryTenge`) и зачисления обменов.
   const matchState = () => ({ obligations: finance.obligations, credits: finance.credits, people: finance.people, payments: finance.payments, fxExchanges: finance.fxExchanges, book: useFxStore().book })
-  /** Все предложения по своим операциям этого и прошлого месяца, кроме отклонённых «нет» на этом устройстве. */
+  /** Все предложения по своим операциям этого и прошлого месяца, кроме отклонённых «нет» (личный документ). */
   const openMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
@@ -256,11 +260,12 @@ export const useOperationsStore = defineStore('operations', () => {
     await saving
   }
 
-  /** «Нет, это другое»: операция больше не предлагается ни одной цели — на устройстве (FB-01), правилом не становится. */
+  /**
+   * «Нет, это другое»: операция больше не предлагается ни одной цели (FB-01) — в личном документе, все телефоны человека
+   * (TL-08, Р-5); правилом не становится.
+   */
   function declineMatch(c: MatchCandidate) {
-    const k = declineKey(c)
-    if (!declined.value.includes(k)) declined.value = [...declined.value, k]
-    save()
+    finance.declineAnswers([declineKey(c)])
     // Строка не платёж — в раздел платежей она теперь трата (`markedOps`, хвосты 952/967).
     const op = ops.value[c.opId]
     if (op) writeTotals(periodsOf([op]))
@@ -285,7 +290,6 @@ export const useOperationsStore = defineStore('operations', () => {
     writeStorage(KEY_CURSOR, cursor.value)
     writeStorage(KEY_PENDING, pending.value)
     writeStorage(KEY_DEMO_UPLOADS, demoUploads.value)
-    writeStorage(KEY_DECLINED, declined.value)
   }
 
   function clear(key: string | null = null) {
@@ -294,8 +298,8 @@ export const useOperationsStore = defineStore('operations', () => {
     cursor.value = null
     pending.value = []
     demoUploads.value = []
-    declined.value = []
     serverUploads.value = []
+    pulledOk = uploadsOk = false
     dropHold()
     draft.value = null
     lastAutoMarked.value = 0
@@ -627,7 +631,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const to = pair ? pairs.get(opId) : null
       return to ? [`${to}|${pair}`] : []
     })
-    if (carried.length) declined.value = [...new Set([...declined.value, ...carried])]
+    if (carried.length) finance.declineAnswers(carried)
     // Правки операции с телефона (заметка, «Мне вернули») — тоже к её строке (личный документ, критик Блока 1).
     finance.carryOpEdits(pairs)
     for (const o of replaced) delete ops.value[o.id]
@@ -928,6 +932,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const stale = new Set(got.filter((id) => released.value.has(id)))
       if (stale.size) await settleReleased(stale, client)
       await settlePhone(phone, gone, client)
+      pulledOk = true
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
@@ -1003,9 +1008,26 @@ export const useOperationsStore = defineStore('operations', () => {
     if (demo.value) return
     try {
       serverUploads.value = (await client.listStatementUploads()).uploads
+      uploadsOk = true
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
+  }
+
+  /**
+   * Свои операции и записи выписок этого запуска пришли с сервера (FB-HF1): находки и разбор ИИ ждут их — иначе запрос
+   * к модели уходит раньше `GET /api/statements` («K находок из 0 операций», «обычных» месяцев нет — оплачен неполный
+   * разбор). Идущий `pull` дожидается, недостающее догружает; не вышло (сеть, очередь не ушла) — `false`, разбор не зовут
+   * (повтор — следующим кругом). Демо и viewer — `true`: операций с сервера у них нет.
+   */
+  async function loaded(client: ApiClient = apiClient): Promise<boolean> {
+    if (demo.value || !auth.isMember) return true
+    const ownOps = async () => {
+      await pulling
+      if (!pulledOk) await pull(client)
+    }
+    await Promise.all([pulledOk || ownOps(), uploadsOk || loadUploads(client)])
+    return pulledOk && uploadsOk
   }
 
   // Сразу при старте — и операции, отметку которых сняли до этой правки (или пока телефон спал).
@@ -1122,6 +1144,7 @@ export const useOperationsStore = defineStore('operations', () => {
     pull,
     pullOnReturn,
     loadUploads,
+    loaded,
     seedDemoUploads,
     seedDemoOperations,
     writeTripTotals,
