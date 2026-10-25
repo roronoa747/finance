@@ -4,12 +4,15 @@ import { money } from '@/lib/money'
 import type { PlanDue } from '@/lib/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
+import Button from '@/components/ui/Button.vue'
 
 /**
  * Строка платежа «Месяца» (Р-94; макет week-month.html «Платежи»): день, название, кружок плательщика, сумма — ✓ у
- * оплаченного. Одна на общий список и на раскрытые «Подписки · N». Нажатие строки — лист платежа («Оплатил»),
- * кружка — смена плательщика (Р-80); viewer — только смотрит. Кнопка строки — название, растянутое на строку; кружок —
- * отдельная кнопка поверх (кнопка в кнопке недопустима — ревью frontend Б15, Н-7).
+ * оплаченного. Одна на общий список и на раскрытые «Подписки · N». «Оплатил» («Отдал» — долг человеку) — небольшой
+ * кнопкой в самой строке, между названием и кружком (F2-Х2, Р-8 «Figma», как на «Долгах»); нажатие строки — лист платежа
+ * («Не оплачено», «Изменить платёж»), кружка — смена плательщика (Р-80); viewer — только смотрит. Кнопка строки —
+ * название, растянутое на строку; «Оплатил» и кружок — отдельные кнопки поверх (кнопка в кнопке недопустима — ревью
+ * frontend Б15, Н-7).
  */
 defineProps<{
   due: PlanDue
@@ -22,8 +25,12 @@ defineProps<{
   canEdit: boolean
   /** Номер совета ИИ про этот платёж (`ai.markFor`, бэклог «Разбор», RZ-10) — ✦ после названия; нет — ничего. */
   mark?: number | null
+  /** Кнопка «Оплатил» в строке (участник, платёж не оплачен, сумма есть) — решает родитель. */
+  canPay?: boolean
+  /** Долг человеку — «Отдал» вместо «Оплатил». */
+  given?: boolean
 }>()
-const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void }>()
+const emit = defineEmits<{ (e: 'open'): void; (e: 'payer'): void; (e: 'pay'): void }>()
 /** Кнопка строки — только название; подпись и сумму читалка слышит описанием (`aria-describedby`, `/ux` «Разбор» 3). */
 const uid = useId()
 </script>
@@ -56,6 +63,9 @@ const uid = useId()
       </span>
       <span v-if="note" :id="`${uid}-n`" class="text-[12.5px] text-ink-2">{{ note }}</span>
     </span>
+    <Button v-if="canPay" variant="soft" size="xs" class="relative z-10 ml-auto shrink-0" data-due-pay @click.stop="emit('pay')">
+      {{ given ? 'Отдал' : 'Оплатил' }}
+    </Button>
     <button
       v-if="canEdit && due.payer"
       type="button"

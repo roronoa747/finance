@@ -805,6 +805,9 @@ function addFund(kind: 'reserve' | 'cushion') {
                 :mark="ai.markFor(l.due.kind, l.due.targetId)"
                 @open="payFor = l.key"
                 @payer="askPayer(l.due)"
+                :can-pay="canEdit && !l.due.paid && l.due.amount > 0"
+                :given="givenDue(l.due)"
+                @pay="pay(l.due)"
               />
 
               <!-- Подписки · N — свёрнуто; ✓ у группы — когда списались все; ручные группы — подзаголовками -->
@@ -846,6 +849,9 @@ function addFund(kind: 'reserve' | 'cushion') {
                         :mark="ai.markFor(d.kind, d.targetId)"
                         @open="payFor = dueKey(d)"
                         @payer="askPayer(d)"
+                        :can-pay="canEdit && !d.paid && d.amount > 0"
+                        :given="givenDue(d)"
+                        @pay="pay(d)"
                       />
                     </template>
                   </template>

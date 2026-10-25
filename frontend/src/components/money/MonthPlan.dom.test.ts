@@ -383,6 +383,37 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(q('[role="dialog"] [data-paid]'))).toBe('✓ Отдал')
   })
 
+
+  it('F2-Х2 (FG-10): «Оплатил» в строке платежа — ✓ у суммы без листа, запись одна; первая оплата — лист счёта; подписки — ✓ группы', async () => {
+    const finance = await open()
+    await press(section('dues'))
+    const inRow = (id: string) => q(`[data-due-id="${id}"] [data-due-pay]`)
+    const rent = () => finance.payments.filter((p) => !p.deletedAt && p.kind === 'obligation' && p.targetId === 'rent' && p.period === KEY)
+    expect(txt(inRow('obligation:rent'))).toBe('Оплатил')
+    await press(inRow('obligation:rent'))
+    // Одно нажатие — со счёта прошлой оплаты; лист не открылся, ✓ у суммы, кнопки нет.
+    expect(q('[role="dialog"]')).toBeNull()
+    expect(rent()).toHaveLength(1)
+    expect(rent()[0]).toMatchObject({ amount: 220_000, accountId: 'card', by: 'a' })
+    expect(txt(q('[data-due-id="obligation:rent"]'))).toContain('✓')
+    expect(inRow('obligation:rent')).toBeNull()
+    // «Не оплачено» — листом строки, как было; кнопка возвращается.
+    await press(q('[data-due-id="obligation:rent"]'))
+    await press(dialogButton('Не оплачено'))
+    expect(rent()).toHaveLength(0)
+    expect(inRow('obligation:rent')).not.toBeNull()
+    // Кредит ещё не платили — тот же путь, что в листе: лист отметки со счётом, записи пока нет.
+    await press(inRow('credit:loan'))
+    expect(txt(q('[role="dialog"]'))).toContain('Спрашиваем один раз')
+    expect(finance.payments.some((p) => p.kind === 'credit' && p.targetId === 'loan')).toBe(false)
+    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
+    // Подписки в раскрытых «Подписки · N»: кнопка у каждой неоплаченной; оплатили все — ✓ группы.
+    await press(q('[data-subs] button'))
+    for (const id of ['obligation:spotify', 'obligation:icloud']) await press(inRow(id))
+    expect(txt(q('[data-subs-status]'))).toBe('все списались')
+    expect(q('[data-subs-done]')).not.toBeNull()
+    expect(q('[data-subs] [data-due-pay]')).toBeNull()
+  })
   it('«Отложил всё» — взносы тех, чья зарплата пришла, остатком до плана; запись kind plan; ✓ у строк, точки нет; план не меняется', async () => {
     const finance = await open()
     const plan = planOf(finance)
@@ -729,6 +760,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-section-call]')).toBeNull()
     await press(section('dues'))
     expect(all('button').some((b) => b.getAttribute('aria-label')?.startsWith('Платит'))).toBe(false)
+    expect(q('[data-due-pay]')).toBeNull() // FG-10: viewer видит ✓, кнопки «Оплатил» в строке нет
     await press(q('[data-due-id="obligation:rent"]'))
     expect(q('[role="dialog"]')).toBeNull()
     await press(section('queue'))
