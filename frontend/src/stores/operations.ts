@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, spendAccountOf, spentSince, tripOps, tripStatus, tripTotal } from '@/lib/finance'
 import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
@@ -30,7 +30,7 @@ import { replacementPairs } from '@/lib/statements/phone'
 import { findKeepFrom, reviewFinds, sameFind } from '@/lib/statements/finds'
 import type { HabitTotal, MerchantRule, Operation, ParsedStatement, ReviewFind, SpendTotal } from '@/lib/statements/types'
 import type { OperationWire, StatementUploadResponse } from '@/types/api'
-import type { Goal, PersonId, TripSpend } from '@/types/finance'
+import type { AccountSpent, Goal, PersonId, TripSpend } from '@/types/finance'
 
 // Операции выписок (B2C-07): личная копия своих операций, очередь неотправленного, записи
 // загрузок семьи и черновик разбора. Файл выписки разбирается на телефоне и никуда не уходит
@@ -454,6 +454,8 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
+    // Счёт для трат (F2-07) — тоже: новая трата, отметка или правка меняют потраченное после сверки.
+    writeAccountSpent(marks.marked)
     const months = periods.filter((p) => p.kind === 'month').map((p) => p.period)
     writeHabitTotals(months)
     writeReviewFinds(months)
@@ -462,6 +464,36 @@ export const useOperationsStore = defineStore('operations', () => {
       const merged = new Map((doc.spendTotals ?? []).map((t) => [t.id, t]))
       for (const t of writes) merged.set(t.id, t)
       doc.spendTotals = [...merged.values()]
+    })
+  }
+
+  /**
+   * Потрачено со счёта для трат (F2-07, Р-8): телефон хозяина пишет свою запись `<счёт>:<я>` — нетто своих операций
+   * после нынешней сверки (`spentSince`); партнёр видит итог, не операции. Перестал быть хозяином — своя запись
+   * прежнего счёта обнуляется (надгробие закрыло бы id навсегда). Тот же итог второй раз не пишется, ноль новой
+   * записью — тоже. Viewer не пишет; демо без своих операций — нечего.
+   */
+  function writeAccountSpent(marked: ReadonlySet<string>) {
+    if (auth.isViewer) return
+    const by = me()
+    const acc = spendAccountOf(finance.householdDoc.accounts || [], by)
+    const list = finance.householdDoc.accountSpent ?? []
+    const at = new Date().toISOString()
+    const writes: AccountSpent[] = []
+    for (const s of list) if (s.by === by && s.accountId !== acc?.id && !s.deletedAt && s.amount !== 0) writes.push({ ...s, amount: 0, updatedAt: at })
+    if (acc) {
+      const id = `${acc.id}:${by}`
+      const since = acc.amountSetAt ?? null
+      const amount = spentSince(all.value, marked, since)
+      const prev = list.find((s) => s.id === id)
+      const same = prev ? prev.deletedAt || (prev.amount === amount && (prev.since ?? null) === since) : amount === 0
+      if (!same) writes.push({ id, accountId: acc.id, by, since, amount, updatedAt: at })
+    }
+    if (!writes.length) return
+    finance.mutateHouseholdDoc((doc) => {
+      const merged = new Map((doc.accountSpent ?? []).map((s) => [s.id, s]))
+      for (const s of writes) merged.set(s.id, s)
+      doc.accountSpent = [...merged.values()]
     })
   }
 
@@ -815,11 +847,14 @@ export const useOperationsStore = defineStore('operations', () => {
    * даты — и старого) в общий документ, на сервер — тем же батчем, что строки выписки. Партнёр видит только итог
    * раздела (`writeTotals` → `SpendTotal`). Разделов в документе ещё нет (выписок не было) — засеваются, как при
    * первой загрузке. Строку выписки или с телефона этим не поправить. «Разовая» формы (FB-08) — правка операции в личном
-   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней.
+   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней. Новая получает момент внесения (`at`), правка
+   * держит прежний: сверка остатка того же дня отделяет траты до неё от трат после (F2-07, `spentSince`).
    */
-  async function saveHand(op: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
-    const prev = ops.value[op.id]
-    if (!isHand(op) || (prev && !isHand(prev))) return
+  async function saveHand(input: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
+    const prev = ops.value[input.id]
+    if (!isHand(input) || (prev && !isHand(prev))) return
+    const at = prev ? prev.at : new Date().toISOString()
+    const op: Operation = at ? { ...input, at } : input
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
     if ('oneOff' in edit) finance.setOpEdit(op.id, { oneOff: edit.oneOff || null })
     remember([op])
@@ -919,7 +954,10 @@ export const useOperationsStore = defineStore('operations', () => {
             delete ops.value[w.id]
             continue
           }
-          ops.value[w.id] = fromWire(w)
+          // Момент внесения ручной траты — только на этом телефоне (`saveHand`): серверная копия его не стирает.
+          const op = fromWire(w)
+          const local = ops.value[w.id]?.at
+          ops.value[w.id] = !op.at && local && isHand(op) ? { ...op, at: local } : op
           if (w.source === 'tap' || w.source === 'push') phone.add(w.id)
         }
         if (page.next) since = from = page.next
@@ -1095,6 +1133,22 @@ export const useOperationsStore = defineStore('operations', () => {
       ...finance.tripExcluded.map((x) => `${x.goalId}:${x.id}`),
     ].sort().join(' '),
     () => writeTripTotals(),
+    { immediate: true },
+  )
+
+  /*
+   * Счёт для трат (F2-07): сверка остатка (новый якорь), смена хозяина или счёта — у себя или синком партнёра — своя
+   * запись пересчитывается от нового якоря. Пустая копия (ещё не загружена) не пишет: ноль затёр бы запись второго
+   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`.
+   */
+  watch(
+    () => {
+      const a = spendAccountOf(finance.householdDoc.accounts || [], me())
+      return a ? `${a.id}:${a.amountSetAt ?? ''}` : ''
+    },
+    () => {
+      if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+    },
     { immediate: true },
   )
 

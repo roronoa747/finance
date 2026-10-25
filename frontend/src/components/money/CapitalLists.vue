@@ -22,6 +22,7 @@ import {
   liveGroups,
   liveObligations,
   monthlyAmount,
+  spendOwners,
   subscriptionGroup,
   subscriptionsByWho,
 } from '@/lib/finance'
@@ -78,10 +79,19 @@ const goalHue = (id: string) => {
 }
 const KIND_LABEL: Record<Account['kind'], string> = { card: 'карта', cash: 'наличные', envelope: 'конверт', deposit: 'вклад' }
 
+/** Чей счёт для трат (F2-08): «траты · оба» / «траты · <имя>» вместо «общий»; не счёт для трат — пусто. */
+function spendMeta(a: Account): string {
+  if (privateIds.value.has(a.id)) return ''
+  const ids = financeStore.people.map((p) => p.id)
+  const owners = spendOwners(a, financeStore.householdAccounts).filter((p) => ids.includes(p))
+  if (!owners.length) return ''
+  return `траты · ${owners.length >= 2 ? 'оба' : financeStore.people.find((p) => p.id === owners[0])!.name}`
+}
+
 function accountMeta(a: Account): string {
   const what = a.deposit ? `${rateField(a.deposit.annualRate)} %` : KIND_LABEL[a.kind]
   const fx = a.currency ? moneyIn(a.foreignAmount ?? 0, a.currency) : ''
-  return [what, fx, privateIds.value.has(a.id) ? 'личный' : 'общий'].filter(Boolean).join(' · ')
+  return [what, fx, spendMeta(a) || (privateIds.value.has(a.id) ? 'личный' : 'общий')].filter(Boolean).join(' · ')
 }
 
 /* ------------------ Кредиты ------------------ */

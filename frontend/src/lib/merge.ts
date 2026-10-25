@@ -221,6 +221,8 @@ export function mergeDocs(local: SyncDoc, remote: SyncDoc): SyncDoc {
     moneySettings: newerObject(local.moneySettings, remote.moneySettings),
     // Обмены валютной зарплаты (B2C-79): записи по id, отмена — надгробие; остатки выводит finance.ts.
     fxExchanges: mergeList(local.fxExchanges ?? [], remote.fxExchanges ?? [], (x) => x.id),
+    // Потрачено со счёта для трат (F2-07): запись участника `счёт:участник` — каждый телефон пишет свою, LWW.
+    accountSpent: mergeList(local.accountSpent ?? [], remote.accountSpent ?? [], (x) => x.id),
     // План месяца (B2C-85): суммы трат каждого — по id `участник:раздел` (LWW, надгробия); порядки очередей и
     // карточка долга — объекты целиком, поздний побеждает (Р-84, как `moneySettings`).
     spendPlans: mergeList(local.spendPlans ?? [], remote.spendPlans ?? [], (x) => x.id),

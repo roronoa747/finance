@@ -416,7 +416,8 @@ describe('views/Money.vue — финансовые показатели (рас�
         // итог не у заголовка, а в подсказке у капитала («Счета и цели — …», Р-116): та же сумма из finance.ts.
         expect(amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total).toBe(4_629_260)
         expect(html).not.toContain(money(4_629_260))
-        expect(html).toContain(`Kaspi Gold карта · общий ${plain(2_000_000)}`)
+        // Единственная тенговая карта — счёт для трат «оба» (F2-08): подпись «траты · оба» вместо «общий».
+        expect(html).toContain(`Kaspi Gold карта · траты · оба ${plain(2_000_000)}`)
         expect(html).toContain(`Доллары наличные · ${moneyIn(1_000, 'USD')} · общий ${plain(479_260)}`)
         expect(html).toContain(`Депозит Kaspi 14 % · общий ${plain(1_200_000)}`)
         expect(html).toContain(`Заначка наличные · личный ${plain(300_000)}`)

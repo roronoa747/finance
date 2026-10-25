@@ -354,7 +354,9 @@ export function startDemo(): boolean {
       { id: 'w-boots', name: 'Сапоги', photoId: DEMO_PHOTO + 'boots', price: 65_000, by: 'b', list: 'b', bought: false, addedOn: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ]
     doc.accounts = [
-      { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, updatedAt: new Date().toISOString() },
+      // Единственная тенговая карта — счёт для трат «оба» (F2-06); сверена на входе в демо: операции примера уже в
+      // остатке, новая трата демо его уменьшает (F2-07).
+      { id: 'acc-kaspi', name: 'Kaspi Gold', note: '', kind: 'card', amount: 480_000, amountSetAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       // Евро-счёт под зарплату участника a (B2C-79): остаток в евро выводится из прихода и обменов.
       { id: 'acc-eur', name: 'Евро-счёт', note: '', kind: 'card', amount: 0, currency: 'EUR', foreignAmount: 0, rate: 506, rateAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
       {

@@ -60,6 +60,7 @@ import {
   settlePlans,
   stepDue,
   shiftedBase,
+  spendAccountOf,
   type LumpMode,
   type MonthlyKind,
   type PlanState,
@@ -131,6 +132,8 @@ export function defaultSyncDoc(): SyncDoc {
     moneySettings: null,
     // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
     fxExchanges: [],
+    // Потрачено со счёта для трат (F2-07): ключ и пустым — как у payments (RP-03).
+    accountSpent: [],
     // План месяца (B2C-85): суммы трат каждого — список; порядки и карточка долга — объекты (пусто — умолчания).
     spendPlans: [],
     goalOrder: null,
@@ -284,7 +287,14 @@ export const useFinanceStore = defineStore('finance', () => {
   // Обмены валютной зарплаты (B2C-79): тенговый счёт получает тенге обмена, валютный теряет валюту;
   // валютный счёт — в тенге по курсу Нацбанка сегодня из книги (Р-73). Книга — из стора курсов.
   const fxExchanges = computed(() => householdDoc.value.fxExchanges ?? [])
-  const balanceCtx = (): BalanceCtx => ({ exchanges: fxExchanges.value, book: useFxStore().book, day: todayIso() })
+  // Траты счёта для трат (F2-07): записи участников и общие счета — по ним ищутся хозяева (`spendOwners`).
+  const balanceCtx = (): BalanceCtx => ({
+    exchanges: fxExchanges.value,
+    book: useFxStore().book,
+    day: todayIso(),
+    spent: householdDoc.value.accountSpent ?? [],
+    accounts: householdDoc.value.accounts || [],
+  })
   const withBalance = (a: Account): Account => {
     const ctx = balanceCtx()
     return { ...a, amount: accountBalance(a, payments.value, ctx), ...(a.currency && a.currency !== 'KZT' ? { foreignAmount: accountForeign(a, payments.value, ctx.exchanges) } : {}) }
@@ -1421,6 +1431,36 @@ export const useFinanceStore = defineStore('finance', () => {
         if (a) Object.assign(a, shift(a))
       })
     }
+  }
+
+  /**
+   * Счёт для трат (F2-06, Р-5): `owner` — участник, «оба» или `null` (снять отметку). Кто стал хозяином
+   * здесь, тот снимается с прежнего счёта (там «оба» → остаётся партнёр, свой → `null`) — одной правкой
+   * документа. Только общие счета; якорь сверки не трогается.
+   */
+  function setSpendAccount(accountId: string, owner: PersonId | 'both' | null) {
+    const list = householdDoc.value.accounts || []
+    const target = list.find((x) => x.id === accountId)
+    if (!target || target.spendBy === owner) return
+    const ids = people.value.map((p) => p.id)
+    const moved = owner === 'both' ? ids : owner ? [owner] : []
+    const t = new Date().toISOString()
+    // Прежние счета тех, кто переезжает: до правки — с учётом «единственной карты».
+    const before = new Map(ids.map((p) => [p, spendAccountOf(list, p)?.id]))
+    mutateHouseholdDoc((doc) => {
+      for (const a of doc.accounts || []) {
+        if (a.id === accountId) {
+          Object.assign(a, { spendBy: owner, updatedAt: t })
+          continue
+        }
+        const owners = ids.filter((p) => before.get(p) === a.id)
+        if (!owners.length) continue
+        const left = owners.filter((p) => !moved.includes(p))
+        if (left.length === owners.length && a.spendBy !== undefined) continue
+        const spendBy = left.length >= 2 ? 'both' : (left[0] ?? null)
+        Object.assign(a, { spendBy, updatedAt: t })
+      }
+    })
   }
 
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
@@ -2733,6 +2773,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateAccount,
     setAccountAmount,
     shiftAccountAmount,
+    setSpendAccount,
     setDeposit,
     removeAccount,
     setCategoryAmount,

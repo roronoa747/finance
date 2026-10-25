@@ -5,8 +5,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { todayIso } from '@/lib/dates'
 import { money, plain, parseMoney, rateField, ratePct } from '@/lib/money'
-import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, openGoals, rateOn, realRate } from '@/lib/finance'
-import type { Account } from '@/types/finance'
+import { INFLATION, deposit as calcDeposit, fxToTenge, liveAccounts, openGoals, rateOn, realRate, spendOwners } from '@/lib/finance'
+import type { Account, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import { CURRENCY_SIGN } from '@/lib/fx'
 
@@ -16,6 +16,7 @@ import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
+import Toggle from '@/components/kit/Toggle.vue'
 import DangerZone from '@/components/kit/DangerZone.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import Button from '@/components/ui/Button.vue'
@@ -86,8 +87,39 @@ function onDepositRate(text: string) {
   if (Number.isFinite(v)) setDeposit({ annualRate: v / 100 })
 }
 
-/* ------------------ Удаление ------------------ */
+/* ------------------ Траты отсюда (F2-06, Р-5) ------------------ */
 const isPrivate = computed(() => liveAccounts(financeStore.privateAccounts).some((a) => a.id === props.accountId))
+/** Карта или наличные в тенге, общий счёт — может быть счётом для трат. */
+const canSpend = computed(() => {
+  const a = activeAccount.value
+  return !!a && !isPrivate.value && (a.kind === 'card' || a.kind === 'cash') && (!a.currency || a.currency === 'KZT')
+})
+const me = computed<PersonId>(() => (authStore.slot as PersonId | undefined) ?? 'a')
+const partner = computed(() => financeStore.people.find((p) => p.id !== me.value) ?? null)
+/** Кто тратит с открытого счёта — из тех, кто есть в семье. */
+const owners = computed(() => {
+  const ids = financeStore.people.map((p) => p.id)
+  return activeAccount.value ? spendOwners(activeAccount.value, financeStore.householdAccounts).filter((p) => ids.includes(p)) : []
+})
+const isSpend = computed(() => owners.value.length > 0)
+const ownerValue = computed<string>(() => (owners.value.length >= 2 ? 'both' : (owners.value[0] ?? 'both')))
+const ownerOptions = computed(() =>
+  partner.value
+    ? [
+        { value: me.value, label: 'Я' },
+        { value: partner.value.id, label: partner.value.name },
+        { value: 'both', label: 'Оба' },
+      ]
+    : [],
+)
+const ownerLabel = computed(() =>
+  owners.value.length >= 2 ? 'оба' : (financeStore.people.find((p) => p.id === owners.value[0])?.name ?? ''),
+)
+function setSpend(owner: string | null) {
+  if (activeAccount.value) financeStore.setSpendAccount(activeAccount.value.id, owner as PersonId | 'both' | null)
+}
+
+/* ------------------ Удаление ------------------ */
 /** Цели, чьи накопления лежат на открытом счёте: при удалении они отвяжутся. */
 const accountGoals = computed(() => openGoals(financeStore.goals).filter((g) => g.accountId === props.accountId)) // Сбылось (PN-13): деньги сбывшейся со счёта ушли — она не «на счёте»
 const accountRemoveWarning = computed(() => {
@@ -117,6 +149,10 @@ const accountRemoveWarning = computed(() => {
         <div class="flex justify-between">
           <span class="text-ink-2">В капитале</span>
           <b class="num text-ink">{{ money(activeAccount.amount) }}</b>
+        </div>
+        <div v-if="canSpend && isSpend" class="flex justify-between" data-spend-viewer>
+          <span class="text-ink-2">Траты отсюда</span>
+          <b class="text-ink">{{ ownerLabel }}</b>
         </div>
         <template v-if="depositData">
           <div class="flex justify-between">
@@ -173,6 +209,31 @@ const accountRemoveWarning = computed(() => {
         <Field label="Примечание">
           <Input :default-value="activeAccount.note" @blur="onAccountNoteBlur" />
         </Field>
+
+        <!-- Траты отсюда (F2-06): переключатель; двое в семье — чей счёт -->
+        <template v-if="canSpend">
+          <div class="mb-3 flex items-center justify-between gap-3" data-spend-row>
+            <span class="flex items-center gap-1.5 text-[14px] text-ink">
+              Траты отсюда
+              <Hint>Траты и переводы с этого счёта сами уменьшают его остаток.</Hint>
+            </span>
+            <Toggle
+              :model-value="isSpend"
+              label="Траты отсюда"
+              tone="ok"
+              data-spend-toggle
+              @update:model-value="(on: boolean) => setSpend(on ? 'both' : null)"
+            />
+          </div>
+          <Segmented
+            v-if="isSpend && ownerOptions.length"
+            :model-value="ownerValue"
+            :options="ownerOptions"
+            class="mb-3"
+            data-spend-owner
+            @update:model-value="setSpend"
+          />
+        </template>
 
         <!-- Вклад: условия полями (бывший экран вклада) -->
         <template v-if="depositData">
