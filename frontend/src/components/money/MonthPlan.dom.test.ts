@@ -414,6 +414,23 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-subs-done]')).not.toBeNull()
     expect(q('[data-subs] [data-due-pay]')).toBeNull()
   })
+
+  it('F2-Х2 (FG-10, критик): «Оплатил» в строке у суммы-оценки — тот же лист отметки (сумму уточнить), а не отметка вслепую', async () => {
+    const doc = familyDoc()
+    const finance = await open('member', {
+      ...doc,
+      obligations: [...doc.obligations, sub('util', 'Коммуналка', 12, 35_000, { category: 'd1', estimate: true })],
+      payments: [...(doc.payments ?? []), paid('obligation', 'util', '2026-08', 33_000)],
+    })
+    // Счёт прошлой оплаты есть — но оценку одним нажатием не ставим: лист с суммой и тем же счётом.
+    expect(lastAccountFor(finance.payments, 'util', finance.accounts)).toBe('card')
+    await press(section('dues'))
+    await press(q('[data-due-id="obligation:util"] [data-due-pay]'))
+    const sheet = q('[role="dialog"]')!
+    expect(txt(sheet.querySelector('h3'))).toBe('Коммуналка')
+    expect(txt(sheet)).not.toContain('Спрашиваем один раз')
+    expect(finance.payments.some((p) => !p.deletedAt && p.targetId === 'util' && p.period === KEY)).toBe(false)
+  })
   it('«Отложил всё» — взносы тех, чья зарплата пришла, остатком до плана; запись kind plan; ✓ у строк, точки нет; план не меняется', async () => {
     const finance = await open()
     const plan = planOf(finance)
