@@ -1,8 +1,7 @@
 # Бэклог «Фидбек-2» (F2)
 
-> **Статус:** 2026-10-25 — Блок 1 🏁 на проде (Production `dpl_7NCGRvR6jDdnaGJ6UTzmBdfgLaBH`, main `648007ec`). Блок 2 🔄:
-> исполнитель ✅ (F2-04, F2-05, ветка `f2-block-2-prepay`), критик ✅, `/ux` ✅, приёмка ✅ — ждёт «да» владельца на деплой (откат — promote
-> `dpl_GNDnaJphyJ8zjZLKXeJanHqbvZ2j`).
+> **Статус:** 2026-10-25 — Блоки 1 и 2 🏁 на проде (Блок 2 — Production `dpl_D6VGZQdKaG3cTh4SkhWDnR8E6USe`, main
+> `bd60008b`; откат — promote `dpl_GNDnaJphyJ8zjZLKXeJanHqbvZ2j`). Следующее — `/worker Фидбек-2 3`.
 > Прод перед стартом: Production `dpl_JCbkCXM1js2HyMuhZdQYjkWW7ABJ` (main `d4dd9753`, Блок 4 «Хвостов»; сверху — только доки).
 
 Источник: `Фидбек-2-brief.md` (резюме интервью подтверждено владельцем 2026-10-25, без правок).
@@ -67,7 +66,7 @@ Chrome 390 в обеих темах, смоук прода после каждо
 | 1. Клавиатура и «Оплатил» 🏁 *(S)* | F2-01 Закрыть бэклог «Хвосты» | `block-1-keyboard-paid/F2-01-close-tails.md` | — | ✅ |
 | | F2-02 «Готово» на клавиатуре чисел, лист над клавиатурой | `block-1-keyboard-paid/F2-02-keyboard-done.md` | — | ✅ |
 | | F2-03 «Оплатил» у строки кредита на «Долгах» | `block-1-keyboard-paid/F2-03-debts-paid.md` | — | ✅ |
-| 2. Досрочка ✅ *(M с `/ux`)* | F2-04 «Внёс досрочно» в листе кредита | `block-2-prepay/F2-04-prepay-button.md` | Блок 1 🏁 | ✅ |
+| 2. Досрочка 🏁 *(M с `/ux`)* | F2-04 «Внёс досрочно» в листе кредита | `block-2-prepay/F2-04-prepay-button.md` | Блок 1 🏁 | ✅ |
 | | F2-05 «Было → стало» после досрочки | `block-2-prepay/F2-05-before-after.md` | F2-04 | ✅ |
 | 3. Баланс для трат ⬜ *(M с `/ux`)* | F2-06 Счёт для трат и его хозяин | `block-3-spend-balance/F2-06-spend-account.md` | Блок 2 🏁 | ⬜ |
 | | F2-07 Траты тают баланс | `block-3-spend-balance/F2-07-spent-since.md` | F2-06 | ⬜ |
