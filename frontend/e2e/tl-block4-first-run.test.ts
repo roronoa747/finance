@@ -122,6 +122,7 @@ describe('e2e / «Хвосты» Блок 4 — шаг трат первого �
     expect($('[data-start-dream]')!.textContent).toContain('Машина')
     // Статус Apple Pay пришёл (ярлык есть), но телефон не iPhone — путь всё равно один.
     expect(wallet).toHaveBeenCalled()
+    expect(useApplePayStore().available).toBe(true)
     expectOnePath()
 
     const ops = useOperationsStore()

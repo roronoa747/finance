@@ -186,3 +186,8 @@ Chrome 390, смоук на проде после каждого блока.
   пришли»; `afterPull` (находки + автозапуск разбора), `autoReview`, `runReview` ждут её. В тестах и e2e фейк без
   `listStatementUploads` / `GET /api/statements` = находок и разбора нет: помощники `noStatements` / `apiNoStatements`
   (`e2e/support/family.ts`).
+
+**После Блока 4** (критик, ветка `tl-block-4-first-run`):
+- Шаг трат `views/Start.vue`: плитки `data-start-path` — только при `applePayShown` (`ap.available && ap.isIPhone`, до
+  ответа `ap.load()` ложно); путь вне плиток — `chosen` (без плиток всегда `statement`). Плитка Apple Pay на стенде —
+  только с `APPLEPAY_SHORTCUT_URL` вида `https://www.icloud.com/shortcuts/…` у Go-моков.
