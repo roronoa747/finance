@@ -87,6 +87,13 @@ describe('F2-07: spentSince', () => {
     expect(spentSince(ops, none, ANCHOR)).toBe(6_000)
   })
 
+  it('возврат после сверки за трату до сверки или отмеченную платежом — обычный приход (минусом)', () => {
+    const before = [op('buy', -10_000, { date: '2026-10-05', refund: { amount: 4_000, opId: 'back' } }), op('back', 4_000, { internal: true })]
+    expect(spentSince(before, none, ANCHOR)).toBe(-4_000)
+    const paid = [op('buy', -10_000, { refund: { amount: 4_000, opId: 'back' } }), op('back', 4_000, { internal: true })]
+    expect(spentSince(paid, new Set(['buy']), ANCHOR)).toBe(-4_000)
+  })
+
   it('приход — минусом; перевод себе на счёт — минусом, со счёта — плюсом', () => {
     expect(spentSince([op('in', 50_000)], none, ANCHOR)).toBe(-50_000)
     expect(spentSince([op('self-in', 20_000, { internal: true, kind: 'transfer-in' })], none, ANCHOR)).toBe(-20_000)

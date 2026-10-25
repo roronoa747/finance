@@ -1327,3 +1327,16 @@ describe('merge.ts — итоги находок (reviewFinds)', () => {
     expect(defaultSyncDoc().reviewFinds).toEqual([])
   })
 })
+
+describe('merge.ts — потрачено со счёта для трат (accountSpent, F2-07)', () => {
+  const s = (by: 'a' | 'b', amount: number, updatedAt = '2026-10-21T08:00:00.000Z') => ({ id: `k1:${by}`, accountId: 'k1', by, since: null, amount, updatedAt })
+
+  it('запись каждого телефона — по id: поздняя своя побеждает, запись партнёра не затирается', () => {
+    const one = { ...createEmptyDoc(), accountSpent: [s('a', 5_000), s('b', 7_000)] }
+    const two = { ...createEmptyDoc(), accountSpent: [s('a', 9_000, '2026-10-22T08:00:00.000Z')] }
+    for (const merged of [mergeDocs(one, two), mergeDocs(two, one)]) {
+      expect((merged.accountSpent ?? []).map((x) => [x.id, x.amount]).sort()).toEqual([['k1:a', 9_000], ['k1:b', 7_000]])
+    }
+    expect(defaultSyncDoc().accountSpent).toEqual([])
+  })
+})

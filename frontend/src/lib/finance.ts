@@ -1643,18 +1643,20 @@ export const spendOwners = (account: Pick<Account, 'id'>, accounts: Account[]): 
  * Нетто своих операций после сверки (F2-07, Р-6) — сколько ушло со счёта для трат: траты (`spendOf`, возврат
  * уменьшает) и переводы себе со счёта — плюсом, приходы (и переводы себе на счёт) — минусом. Строки из `marked`
  * не считаются: отмеченный платёж уже списан отметкой, зарплата — «Пришла»; приход, которым вернули трату
- * (`refund.opId`), — уже в `spendOf`. «После сверки»: есть время (`at`) — позже якоря; только дата — день
+ * (`refund.opId`), — уже в `spendOf`, если сама трата считается (трата до сверки или отмеченная платежом — возврат
+ * обычным приходом). «После сверки»: есть время (`at`) — позже якоря; только дата — день
  * позже дня сверки (тот же день уже в сверенной сумме), ручная трата — и в день сверки (её нет в банке, а
  * времени у неё нет). Без якоря — все. Целые тенге, может быть < 0.
  */
 export function spentSince(ops: Operation[], marked: ReadonlySet<string>, anchor?: string | null): number {
   const t = anchor ? Date.parse(anchor) : NaN;
   const day = anchor ? todayIso(new Date(anchor)) : '';
-  const refunds = new Set(ops.map((o) => o.refund?.opId).filter(Boolean));
   const after = (o: Operation) =>
     !anchor || (o.at ? Date.parse(o.at) > t : isHand(o) ? o.date >= day : o.date > day);
-  return ops.reduce((sum, o) => {
-    if (marked.has(o.id) || refunds.has(o.id) || !after(o)) return sum;
+  const counted = ops.filter((o) => !marked.has(o.id) && after(o));
+  const refunds = new Set(counted.map((o) => o.refund?.opId).filter(Boolean));
+  return counted.reduce((sum, o) => {
+    if (refunds.has(o.id)) return sum;
     if (o.amount < 0) return sum + (o.internal ? -o.amount : spendOf(o));
     return sum - o.amount;
   }, 0);

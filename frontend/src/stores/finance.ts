@@ -1450,7 +1450,7 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc((doc) => {
       for (const a of doc.accounts || []) {
         if (a.id === accountId) {
-          Object.assign(a, { spendBy: owner }, amountAnchor(a, {}, t), { updatedAt: t })
+          Object.assign(a, { spendBy: owner, updatedAt: t })
           continue
         }
         const owners = ids.filter((p) => before.get(p) === a.id)
@@ -1458,7 +1458,7 @@ export const useFinanceStore = defineStore('finance', () => {
         const left = owners.filter((p) => !moved.includes(p))
         if (left.length === owners.length && a.spendBy !== undefined) continue
         const spendBy = left.length >= 2 ? 'both' : (left[0] ?? null)
-        Object.assign(a, { spendBy }, amountAnchor(a, {}, t), { updatedAt: t })
+        Object.assign(a, { spendBy, updatedAt: t })
       }
     })
   }
