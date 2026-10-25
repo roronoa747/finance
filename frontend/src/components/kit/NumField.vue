@@ -61,6 +61,13 @@ function onInput(e: Event) {
   })
 }
 
+// «Готово» на клавиатуре (F2-02) — это Enter: уводит фокус, клавиатура прячется, `NumFieldBlur` пишет по blur.
+// Форму не отправляет — запись у полей по уходу, а не по submit.
+function onEnter(e: KeyboardEvent) {
+  e.preventDefault()
+  ;(e.target as HTMLInputElement).blur()
+}
+
 // Поле внутри `kit/Field` с ошибкой — неверное (рамка `--destructive`, строка под полем).
 const invalid = useFieldInvalid()
 </script>
@@ -71,6 +78,7 @@ const invalid = useFieldInvalid()
     type="text"
     :value="modelValue"
     :inputmode="numKind === 'rate' || numKind === 'fx' ? 'decimal' : 'numeric'"
+    enterkeyhint="done"
     :placeholder="placeholder"
     :disabled="disabled"
     v-bind="{ ...$attrs, ...invalid }"
@@ -83,6 +91,7 @@ const invalid = useFieldInvalid()
       )
     "
     @input="onInput"
+    @keydown.enter="onEnter"
     @blur="emit('blur')"
   />
   <span v-if="rounding" class="mt-1 block text-[12.5px] text-ink-2 num">{{ rounding }}</span>

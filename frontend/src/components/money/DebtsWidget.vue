@@ -34,6 +34,7 @@ import { useQuerySheet } from '@/components/useQuerySheet'
  * Мелочи Р-6 (макет people-debts.html): долг человеку — строкой рядом с кредитами, без ставки; «Отдал» — маленькой
  * кнопкой в его строке (платёж месяца, правится в листе), отдано в этом месяце — ✓ у суммы. Платежи людям — свёрнутой
  * строкой «Людям · N · <в месяц>» (`peopleGroup`), в сумму долгов не входят; раскрыта — платежи и тихое «+ Людям».
+ * У кредита та же кнопка — «Оплатил» (F2-03): платёж месяца, отметка одна с «Месяцем».
  */
 const financeStore = useFinanceStore()
 const authStore = useAuthStore()
@@ -62,9 +63,12 @@ const creditId = ref<string | null>(null)
 const payoffId = ref<string | null>(null)
 const addOpen = ref(false)
 
-/* ---------- долг человеку: «Отдал» у строки (одна отметка на месяц) ---------- */
+/* ---------- «Отдал» у долга человеку, «Оплатил» у кредита (F2-03, Р-2) — у строки, одна отметка на месяц ---------- */
+// Та же запись, что «Оплатил» в «Месяце» и листе кредита (`paidFor`): отмечено там — здесь ✓ и кнопки нет.
 const given = (r: DebtRow) => paidFor(financeStore.payments, 'credit', r.creditId, key.value)
-/** Счёт — тот, с которого отдавали в прошлый раз (Р-5); не с чего взять — лист отметки спросит один раз. */
+// Платёж не заполнен (0) — «Месяц» такой долг не ждёт (`nextCreditDue`), кнопка записала бы нулевую отметку.
+const canGive = (r: DebtRow) => !authStore.isViewer && r.payment > 0 && !given(r)
+/** Счёт — тот, с которого платили в прошлый раз (Р-5); не с чего взять — лист отметки спросит один раз. */
 const giveFor = ref<DebtRow | null>(null)
 function give(r: DebtRow) {
   const last = lastAccountFor(financeStore.payments, r.creditId, financeStore.accounts)
@@ -118,26 +122,35 @@ const { open: tryOpen, close: closeTry } = useQuerySheet('try')
             <AdviceMark :n="ai.markFor('credit', r.creditId)" />
           </span>
           <span :id="`${uid}-a-${r.creditId}`" class="flex shrink-0 items-center gap-1.5">
-            <PhCheck v-if="r.person && given(r)" :size="15" weight="bold" class="text-ok" aria-label="отдал в этом месяце" data-debt-given />
+            <PhCheck
+              v-if="given(r)"
+              :size="15"
+              weight="bold"
+              class="text-ok"
+              :aria-label="r.person ? 'отдал в этом месяце' : 'оплачено в этом месяце'"
+              data-debt-given
+            />
             <span class="text-[15px] font-semibold num text-ink">{{ money(r.left) }}</span>
           </span>
         </span>
-        <span :id="`${uid}-m-${r.creditId}`" class="type-meta num">{{ rowMeta(r) }}</span>
+        <!-- Подпись не уходит под кнопку строки: у кредита она длиннее («ставку уточните · не закрывается»). -->
+        <span :id="`${uid}-m-${r.creditId}`" class="type-meta num" :class="canGive(r) && 'pr-[88px]'">{{ rowMeta(r) }}</span>
         <!-- У долга человеку полоса есть и до первой отдачи (пустая) — строка ровная с кредитом, кнопка не жмётся (макет). -->
         <span v-if="r.paidShare !== null || r.person" class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-track" data-debt-bar>
           <span class="block h-full rounded-full bg-ok" :style="{ width: `${Math.round((r.paidShare ?? 0) * 100)}%` }" />
         </span>
       </div>
-      <!-- «Отдал» — у своего предмета, в строке (правило 12); отдано — ✓ у суммы, кнопки нет. -->
+      <!-- «Отдал» / «Оплатил» — у своего предмета, в строке (правило 12); отмечено — ✓ у суммы, кнопки нет. -->
       <Button
-        v-if="r.person && !authStore.isViewer && !given(r)"
+        v-if="canGive(r)"
         variant="soft"
         size="sm"
         class="absolute right-4 top-[30px]"
-        data-debt-give
+        :data-debt-give="r.person || undefined"
+        :data-debt-pay="!r.person || undefined"
         @click="give(r)"
       >
-        Отдал
+        {{ r.person ? 'Отдал' : 'Оплатил' }}
       </Button>
     </div>
   </Card>

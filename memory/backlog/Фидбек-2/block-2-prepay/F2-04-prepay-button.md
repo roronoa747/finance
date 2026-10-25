@@ -13,9 +13,9 @@
   `applyPrepayment` считает экономию по ставке (`lumpPlan`), без ставки она врёт (B2C-19).
 - Счёт по умолчанию — прошлой оплаты кредита (`lastAccountFor`, PayoffSheet.vue:105); счета списания —
   `payableAccounts(accounts)` (тенговые); `AccountChoice` — `undefined` не выбран / `null` «только отметить» / id.
-- Подключение листов — `DebtsWidget.vue:194-195`, `CapitalLists.vue` (см. §6 бэклога); `CreditSheet` эмитит `payoff`,
+- Подключение листов — `DebtsWidget.vue:207-208`, `CapitalLists.vue` (см. §6 бэклога); `CreditSheet` эмитит `payoff`,
   родитель открывает `PayoffSheet`.
-- Паттерн «небольшая кнопка у предмета» — «Отдал» у долга человеку (`DebtsWidget.vue:132-141`, `variant="soft" size="sm"`).
+- Паттерн «небольшая кнопка у предмета» — «Отдал» у долга человеку (`DebtsWidget.vue:144-155`, `variant="soft" size="sm"`; с F2-03 — и «Оплатил» у кредита, `data-debt-pay`).
 
 ## Задача
 
