@@ -17,8 +17,26 @@
 
 Блок-специфика:
 
-- `git fetch --all`; ветка **`fg-block-2-goal-statement`**: от `origin/main`, если Блок 1 уже влит; иначе — от
-  `fg-block-1-pack-1` (критик Блока 1 уточняет здесь, от чего брать). Worktree `C:\Users\ASUS\Documents\finance\fg2`
+- `git fetch --all`; ветка **`fg-block-2-goal-statement`**: от `origin/main`, если Блок 1 уже влит; иначе — **от
+  `fg-block-1-pack-1`** (его голова после приёмки: `git worktree add ..\fg2 -b fg-block-2-goal-statement
+  origin/fg-block-1-pack-1`). *Решение критика Блока 1 (2026-10-26):* конфликтов с `main` нет ни при какой базе — Блок 1
+  правит в файлах Блока 2 только `stores/finance.ts` (импорт `:7`, `LOCAL_KEYS` `:199-203`) и `lib/finance.ts`
+  (`shiftLabel`/`shiftShort` `:4485-4655`, сортировка `myWeek` `:5373`), а `GoalDetail.vue`, `ExtraIncomeSheet.vue`,
+  `stores/operations.ts`, `lib/statements/matching.ts`, `lib/merge.ts`, `types/finance.ts` не трогает; база
+  `fg-block-1-pack-1` выбрана ради полного e2e-набора (Блок 1 переписал ожидания ~25 тестов: «₸», «История», «Оплатил» в
+  строке) и того состояния, что уйдёт на прод вторым (Р-5). Владелец утром отклонил Блок 1 — `git rebase --onto origin/main
+  fg-block-1-pack-1 fg-block-2-goal-statement` (коммиты Блока 2 от кода Блока 1 не зависят).
+- **Строки ТЗ на базе `fg-block-1-pack-1`** (в `stores/finance.ts` после `:203` — на 1 выше, чем в ТЗ): `shiftAccountAmount`
+  `:1413`, `markGoalDone` `:2097` (сдвиг `:2101`), `undoGoalDone` `:2105` (`:2109`), `contribute` `:2368`; остальные ссылки
+  FG-14/FG-15 (`lib/finance.ts` `:1651-1810`, `stores/operations.ts` `:458/:476/:637/:1150`, `GoalDetail.vue` `:298/:705`,
+  `ExtraIncomeSheet.vue` `:37`, `types/finance.ts` `:214/:589/:786`, `merge.ts` `:225/:260`, `matching.ts` `:37/:45/:180`)
+  верны. «`lib/finance.ts:1799` — проверить» в FG-14 — на деле **`stores/finance.ts` `applyPrepayment`** (`:1798`): досрочка
+  из целей двигает личный счёт `shiftAccountAmount(record.accountId, took)`, а счёт семьи меняет **напрямую** (`acc.amount +
+  took`, `:1795-1796`, мимо `shiftAccountAmount`) — по ТЗ без `meta` (вне скоупа), но назвать в Handoff и записать хвостом,
+  если пара с выпиской для этого пути нужна.
+- **«На карте» и суммы — с «₸»** (Р-12, FG-06): в e2e FG-15 ожидания строить через `money(450_000)` («450 000 ₸»), не голым
+  числом; `data-week-balance` — «На карте 450 000 ₸».
+- Worktree `C:\Users\ASUS\Documents\finance\fg2`
   (`frontend/node_modules` — junction на основное дерево, `npm ci` не запускать, новых npm-зависимостей не вводить); пуш ветки
   ради CI; `main`, прод, `STATE.md` не трогать. Ночной прогон (Р-15): деплоя нет.
 - Задачи **FG-14 → FG-15**; коммиты `FG-NN: …`. Решения — Р-7, Р-10 (данные в документах семьи/личном, миграций БД нет).

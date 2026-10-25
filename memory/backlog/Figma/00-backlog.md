@@ -114,6 +114,7 @@ Google Play; подсказки по человеку в личном докум
 | Хвост | Откуда | Судьба |
 |---|---|---|
 | FG-Х1: `viewport-fit=cover` + `safe-area-inset-*` в `AppShell` (шапка, нижняя панель) — без них учёт выреза у «Пропустить» (FG-09) на iPhone не включается | Блок 1, FG-09 (исполнитель, 2026-10-25) | ждёт владельца |
+| FG-Х2: лента Блока 0 (`46:2`) снята со стенда `main` до Пачки 1 — после мёржа Блока 1 макеты ленты, кроме пяти правленых в FG-13, показывают старый вид: суммы без «₸» (в `19:2` — «Платежи» и формула капитала), «Траты недели · N», «8 недель», «Поставить план», раскрытые «Платежи» без «Оплатил» в строке, точка-призыв текстом. Предложение: после мёржа — один проход скриптом `use_figma` по затронутым макетам ленты или пересъёмка их с прода (≈ 10–15 вызовов MCP) | Блок 1, критик (2026-10-26) | ждёт владельца |
 
 ## 5. Протокол
 
@@ -206,3 +207,27 @@ Google Play; подсказки по человеку в личном докум
   продавцов, людей и сумм семьи.
 - Грабли среды — память проекта (`stand-e2e-gotchas`): настоящее касание ≠ JS `click()`, поля чисел — `pressSequentially`,
   fake Date глушит клик под `@click.capture`, happy-dom + SSR — лист монтировать в DOM, мутанты откатывать копией файла.
+
+**После Блока 1** (критик, 2026-10-26; ветка `fg-block-1-pack-1`).
+- Суммы (Р-12): на экранах и в листах — `money`; `plain` — только в составной строке перед «/ M ₸» («осталось 9 233 / 35 233
+  ₸», «98 000 / 110 000 ₸», «N потрачено» в подписи «Трат»), в полях ввода и плейсхолдерах, у тренда «26к». Гарды: `Week.dom`
+  (`[data-row] [data-amount]`, одна «₸» у `data-week-rest`), `MonthPlan.dom` (`[data-section] > span.font-num`).
+- `kit/SegmentGroup.vue` — сегмент-переход для `PlanSwitch` и `MoneySquares` (пропсы `items {key, label, dot?, attrs?}`,
+  `active`, `label`; эмит `pick`); ползунок `data-segment-slider` (`translateX(i·100%)`, `--motion-base`), память
+  «откуда» — модульная `lastPick` по `label`, ≤ 1,5 с после нажатия. `kit/Segmented` (капсула на месте) — другое, не трогали.
+- `style.css`: `@keyframes fx-pulse` + `@utility fx-pulse` (кольцо `--brand`, 1,6 с, бесконечно); в `prefers-reduced-motion`
+  — `animation-iteration-count: 1`. `MonthPlan`: `callOf(s)` → точка раздела `.fx-pulse` с `data-section-call` и `title`
+  (дело или «есть совет ИИ»); подпись `data-section-meta` всегда `--ink-2` («платежей нет» при «нашли в выписке»; при
+  `planFact` подписи нет); `data-plan-fact` «Установить план», в листе `data-plan-fact-more` «ещё N ▾», `data-plan-fact-save`
+  «Установить».
+- `DueRow`: пропсы `canPay`, `given`, эмит `pay`, кнопка `data-due-pay` (`soft xs`, «Оплатил» / «Отдал») между названием и
+  кружком; `MonthPlan` — `:can-pay="canEdit && !paid && amount > 0"` → тот же `pay(d)` (первая оплата или оценка — `MarkSheet`).
+- «Неделя»: свайп `swipeStart`/`swipeEnd` по `data-week-head` (`SWIPE_MIN = 48`, |dx| > 2·|dy|); значок заметки `PhNote`
+  (`data-note-icon="note"`); `myWeek` — `UNKNOWN_CATEGORY` всегда последней; `WeekFeedSheet` — заголовок «История»,
+  `data-feed-meta` «N операций»; раскрывашка тренда «Статистика».
+- `lib/finance.ts`: `shiftShort(shift)` (срок без причины, «Мечты»); `shiftLabel = shiftShort · причина` (`GoalDetail`, ИИ);
+  `SHIFT_REASON_TEXT.due` — «платёж «X» с этого месяца».
+- Подсказки (Р-13): `ff_tips_seen` вне `LOCAL_KEYS`; `kit/tips.ts` — `TIP_SEEN_MS = 4000`, `useTip().seen()` (запись «видел»
+  + `keep`: пузырь стоит, пока экран открыт), `done()` — «Понятно» / нажатие предмета.
+- `stores/finance.ts` после `LOCAL_KEYS` (:203) — строки на 1 выше, чем в `main` (`shiftAccountAmount` :1413, `markGoalDone`
+  :2097, `undoGoalDone` :2105, `contribute` :2368); `lib/finance.ts` до :4485 не сдвинулся.
