@@ -116,8 +116,8 @@ describe('FR-06: подсказки на главных вкладках', () =>
   it('«Неделя»: нажатие раздела открывает его лист и закрывает пузырь с отметкой; лист закрыт — пузырь не вернулся', async () => {
     await open(Week, '/week', 'member', withOwnWeek(planFamilyDoc()))
     expect(bubbles().map((b) => b.dataset.tip)).toEqual(['tab-week'])
-    // Между шапкой и разделами — под полосой плана недели (FB-19).
-    expect(bubbles()[0].parentElement!.previousElementSibling?.matches('[data-week-plan], [data-week-head]')).toBe(true)
+    // Между шапкой и разделами — под полосой плана недели (FB-19) или тихой строкой «На карте» (F2-08).
+    expect(bubbles()[0].parentElement!.previousElementSibling?.matches('[data-week-plan], [data-week-head], [data-week-balance]')).toBe(true)
     vi.setSystemTime(new Date('2026-09-12T07:00:01Z'))
     document.querySelector<HTMLButtonElement>('[data-week-list] .row-open')!.click()
     await nextTick()

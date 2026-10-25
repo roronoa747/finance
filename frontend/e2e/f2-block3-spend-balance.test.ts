@@ -6,7 +6,10 @@ import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
 import { handOperation } from '../src/lib/statements/model'
 import { planFamilyDoc } from '../src/test/planFamily'
-import { at, backend, fakeServer, fakeStatements, serverTap, statementsFor, type FakeServer, type FakeStatements } from './support/family'
+import { plain } from '../src/lib/money'
+import Money from '../src/views/Money.vue'
+import Week from '../src/views/Week.vue'
+import { at, backend, fakeServer, fakeStatements, screen, serverTap, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
 /**
  * Блок 3 «Фидбек-2» (F2-07, F2-08): единственная карта семьи — счёт для трат «оба» сама; траты обоих телефонов (Apple Pay
@@ -45,6 +48,8 @@ const ops = (p: Phone) => {
   setActivePinia(p.pinia)
   return useOperationsStore()
 }
+const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ')
+const num = (n: number) => plain(n).replace(/\s/g, ' ')
 const hand = (id: string, amount: number) => handOperation({ id, amount, categoryId: 'sc_food', date: '2026-10-15', note: '' }, 'Продукты')
 
 describe('e2e / Фидбек-2 Блок 3 — траты тают баланс карты', () => {
@@ -130,5 +135,17 @@ describe('e2e / Фидбек-2 Блок 3 — траты тают баланс �
     await sync(b)
     expect(card(a)).toBe(1_895_500)
     expect(card(b)).toBe(1_895_500)
+  })
+
+  it('F2-08: ручная трата → «На карте» на «Неделе» меньше на её сумму; у партнёра то же число на «Счетах»', async () => {
+    const a = await phone(server, st, 'a')
+    const b = await phone(server, st, 'b')
+    const onCard = async (p: Phone) => text(await screen(p.pinia, Week, '/week')).match(/На карте ([\d ]+)/)?.[1]?.trim()
+    expect(await onCard(a)).toBe(num(2_000_000))
+    await ops(a).saveHand(hand('aa000000000000a1', 3_000), {}, a.client)
+    expect(await onCard(a)).toBe(num(1_997_000))
+    await sync(a)
+    await sync(b)
+    expect(text(await screen(b.pinia, Money, '/money'))).toContain(`Kaspi Gold карта · траты · оба ${num(1_997_000)}`)
   })
 })

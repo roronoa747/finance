@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { PhCaretLeft, PhCaretRight, PhCheck, PhClock, PhPlus } from '@phosphor-icons/vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { PhCaretLeft, PhCaretRight, PhCheck, PhClock, PhCoins, PhCreditCard, PhPlus } from '@phosphor-icons/vue'
 import Avatar from '@/components/kit/Avatar.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Card from '@/components/kit/Card.vue'
@@ -46,6 +46,7 @@ import {
   prevWeekKey,
   decisionQueue,
   salaryOf,
+  spendAccountOf,
   startWeek,
   weekTrend,
   weekFeed,
@@ -85,6 +86,9 @@ const me = computed<PersonId>(() => auth.slot ?? 'a')
 const reading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadButton = ref<HTMLElement | null>(null)
+
+/** «На карте N» (F2-08, Р-7): мой счёт для трат с тающим остатком; у viewer своего нет. */
+const spendAccount = computed(() => (auth.isViewer ? null : spendAccountOf(finance.householdAccounts, me.value)))
 
 const people = computed(() => finance.people.filter((p) => !p.deletedAt))
 /** Месяц, где «Месяц» ждёт действия, — точка на сегменте (Р-97); не этот месяц — сегмент откроет его. */
@@ -518,6 +522,17 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </Card>
+    <!-- «На карте N» (F2-08, Р-7): тихая строка под шапкой — остаток моего счёта для трат; нажатие — лист счёта (сверить). -->
+    <RouterLink
+      v-if="spendAccount"
+      :to="`/money?account=${spendAccount.id}`"
+      class="-my-2 flex items-center gap-1.5 self-start py-2 text-[13.5px] text-ink-2 underline-offset-4 hover:underline"
+      data-week-balance
+    >
+      <PhCoins v-if="spendAccount.kind === 'cash'" :size="16" /><PhCreditCard v-else :size="16" />
+      {{ spendAccount.kind === 'cash' ? 'Наличные' : 'На карте' }}
+      <b class="font-semibold text-ink num">{{ plain(spendAccount.amount) }}</b>
+    </RouterLink>
     <!-- Apple Pay (AP-06, Р-6): тихая строка под шапкой — iPhone, пока не подключено. -->
     <ApplePayWeekLine />
 
