@@ -204,8 +204,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(top.querySelector('[data-sections]')).not.toBeNull()
     expect(q('[data-section-dot]')).toBeNull()
     for (const s of all('[data-section]')) expect(s.querySelectorAll('.rounded-full').length).toBe(1)
-    // Призыв у «Целей» (взносы ждут «Отложил») — подписью брендом.
-    expect(q('[data-section="queue"] [data-section-call]')!.className).toContain('text-brand')
+    // Зов у «Целей» (взносы ждут «Отложил») — пульсом точки (К-12, FG-08); брендового текста под названием нет.
+    expect(q('[data-section="queue"] [data-section-call]')!.className).toContain('fx-pulse')
+    expect(q('[data-section-meta].text-brand')).toBeNull()
     expect(q('[data-section="dues"] [data-section-call]')).toBeNull()
     // Карточка зарплат — после карточки с разделами; пришла — строка с `data-came` и `bg-ok-soft`, без ✓ и «N из M пришли»; ждущая — тихая сумма.
     expect(top.compareDocumentPosition(q('[data-salary="a"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -213,7 +214,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-salary="b"]')!.className).not.toContain('bg-ok-soft')
     expect(txt(q('[data-salary="a"]'))).not.toContain('✓')
     expect(q('[data-came-count]')).toBeNull()
-    expect(q('[data-salary="b"] b')!.className).toContain('text-ink-2')
+    // К-8 (FG-08): сумма зарплаты — чёрная и когда ещё не пришла.
+    expect(q('[data-salary="b"] b')!.className).not.toContain('text-ink-2')
+    expect(q('[data-salary="b"] b')!.className).toContain('text-ink')
   })
 
   it('раздел раскрывается строкой и цветом круга, один за раз; цели — строки без фото и «Желаний»', async () => {
@@ -1174,10 +1177,9 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(q('[data-spend-person] button')).toBeNull()
     expect(q('[data-spend-person]')!.tagName).toBe('DIV')
     expect(txt(q('[data-spend-mine]'))).toBe('Мои разделы')
-    // Заголовок — общее «потрачено» семьи, как было.
-    // Заголовок — призыв подписью (FB-19, Р-32): кафе выше обычного → «больше обычного» вместо «потрачено»; само «потрачено» — у строки участника.
-    expect(txt(q('[data-section="spend"] [data-section-call]'))).toBe('больше обычного')
-    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('больше обычного')
+    // Заголовок — зов точкой (К-12): кафе выше обычного → точка пульсирует; подпись — «N потрачено» (К-7), брендового текста нет.
+    expect(q('[data-section="spend"] [data-section-call]')!.getAttribute('data-section-call')).toBe('больше обычного')
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toMatch(/ потрачено$/)
   })
 
   it('FB-12: партнёр — своя строка первой, свои разделы; разделов Ильяса нет; лист — «План» только свой', async () => {
@@ -1265,18 +1267,19 @@ describe('RZ-16: одна метка у заголовка раздела', () =
     // «Цели и фонды»: зарплата Ильяса пришла, взносы не отложены — точка; совет про «Отпуск» — ✦ у заголовка нет.
     expect(q('[data-section="queue"] [data-section-call]')).not.toBeNull()
     expect(q('[data-section="queue"] [data-section-mark]')).toBeNull()
-    expect(txt(q('[data-section="queue"] [data-section-call]'))).toContain('отложено')
+    expect(q('[data-section="queue"] [data-section-call]')!.getAttribute('data-section-call')).toContain('отложено')
     expect(txt(section('queue'))).not.toContain('есть совет ИИ')
-    // «Траты»: выше обычного нет — точки нет, совет про «Такси» — ✦ у заголовка.
-    expect(q('[data-section="spend"] [data-section-call]')).toBeNull()
+    // «Траты»: выше обычного нет — дела нет, совет про «Такси» — ✦ у заголовка и пульс точки (К-12: зовёт и совет ИИ).
+    expect(q('[data-section="spend"] [data-section-call]')!.getAttribute('data-section-call')).toBe('есть совет ИИ')
+    expect(q('[data-section="spend"] [data-section-call]')!.className).toContain('fx-pulse')
     expect(q('[data-section="spend"] [data-section-mark]')).not.toBeNull()
     expect(txt(section('spend'))).toContain('есть совет ИИ')
     // Раскрыл — ✦ у строки «Отпуск», как раньше.
     await press(section('queue'))
     expect(q('[data-queue="trip"] [data-advice-mark]')).not.toBeNull()
-    // «Отложил всё» — точка ушла, у заголовка — ✦.
+    // «Отложил всё» — дело ушло, у заголовка — ✦, точка зовёт уже советом.
     await press(q('[data-put-all]'))
-    expect(q('[data-section="queue"] [data-section-call]')).toBeNull()
+    expect(q('[data-section="queue"] [data-section-call]')!.getAttribute('data-section-call')).toBe('есть совет ИИ')
     expect(q('[data-section="queue"] [data-section-mark]')).not.toBeNull()
   })
 })
@@ -1432,7 +1435,7 @@ describe('TL-05: «Платежи без отметки» на «Месяце» 
     const finance = await openMonth()
     expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${money(29_990)}`))
     expect(spentRows()).toBe(32_490)
-    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(32_490)}`))
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`${plain(32_490)} потрачено`))
     // Тихая, как «Не разобрано»: не брендовая.
     expect(q('[data-spend-unmarked]')!.className).not.toContain('bg-brand')
 
@@ -1454,7 +1457,7 @@ describe('TL-05: «Платежи без отметки» на «Месяце» 
     expect(all('[role="dialog"] [data-cat-op]').map((el) => el.dataset.catOp)).toEqual(['ut9'])
     expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${money(25_000)}`))
     expect(spentRows()).toBe(27_500)
-    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(27_500)}`))
+    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`${plain(27_500)} потрачено`))
   })
 
   it('строка коммуналки → лист операции поверх; все отмечены — строки нет', async () => {
@@ -1567,7 +1570,10 @@ describe('FB-21: «нашли в выписке», «Поставить план
     const finance = await open('member', familyDoc({ obligations: [], credits: [], payments: [] }))
     seedFound()
     await flush()
-    expect(txt(q('[data-section="dues"] [data-section-meta]'))).toBe('нашли 1 в выписке')
+    expect(txt(q('[data-section="dues"] [data-section-meta]'))).toBe('платежей нет')
+    // К-12: «нашли в выписке» — зов пульсом точки, число найденных — в раскрытом разделе.
+    expect(q('[data-section="dues"] [data-section-call]')!.getAttribute('data-section-call')).toBe('нашли 1 в выписке')
+    expect(q('[data-section="dues"] [data-section-call]')!.className).toContain('fx-pulse')
     expect(q('[data-section="dues"] [data-section-found]')!.getAttribute('data-section-found')).toBe('1')
     await press(section('dues'))
     expect(txt(q('[data-found-list]'))).toContain('Нашли в выписке')
@@ -1653,7 +1659,9 @@ describe('FB-21: «нашли в выписке», «Поставить план
     const p = planByFact(state, ctx, 'a', '2026-09-12')!
     expect(p.rows.map((r) => [r.categoryId, r.amount])).toEqual([['sc_food', 109_000], ['sc_cafe', 26_000], ['sc_fun', 13_000], ['sc_transport', 9_000], ['sc_home', 7_000]])
     expect(p.total).toBe(164_000)
-    expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('обычно в месяц')
+    // К-14: при «Установить план» подписи под «Траты» нет.
+    expect(q('[data-section="spend"] [data-section-meta]')).toBeNull()
+    expect(txt(q('[data-plan-fact]'))).toBe('Установить план')
     expect(txt(section('spend'))).toContain(norm(plain(164_000)))
     const btn = q('[data-plan-fact]')!
     expect(btn.className).toContain('bg-brand')
@@ -1663,7 +1671,11 @@ describe('FB-21: «нашли в выписке», «Поставить план
     expect(expanded('spend')).toBe('false')
     const sheet = q('[data-plan-fact-sheet]')!
     expect(all('[data-plan-fact-row]').map((el) => el.dataset.planFactRow)).toEqual(['sc_food', 'sc_cafe', 'sc_fun'])
-    expect(txt(q('[data-plan-fact-more]'))).toContain('ещё 2 раздела')
+    // К-15: «ещё 2» брендом со стрелкой вниз, без слова «раздела».
+    expect(txt(q('[data-plan-fact-more]'))).toContain('ещё 2')
+    expect(txt(q('[data-plan-fact-more]'))).not.toContain('раздел')
+    expect(q('[data-plan-fact-more] .text-brand svg')).not.toBeNull()
+    expect(txt(q('[data-plan-fact-save]'))).toBe('Установить')
     expect(txt(q('[data-plan-fact-more]'))).toContain(norm(plain(16_000)))
     expect(txt(sheet)).toContain(norm(plain(164_000)))
     await press(q('[data-plan-fact-more]'))

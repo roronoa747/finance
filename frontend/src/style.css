@@ -391,6 +391,15 @@
     opacity: 0.6;
   }
 }
+/* Точка-зов раздела «Месяца» (К-12, FG-08): кольцо бренда расходится от точки — «есть что сделать» без текста. */
+@keyframes fx-pulse {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 9px transparent;
+  }
+}
 /* Нажатие: сжатие 0.97 (макет `.press`); цвет фона и текста — тем же переходом. */
 @utility press {
   transition-property: transform, color, background-color, border-color, opacity;
@@ -457,6 +466,9 @@
 @utility fx-sheet {
   animation: fx-sheet var(--motion-base) var(--ease-out) backwards;
 }
+@utility fx-pulse {
+  animation: fx-pulse 1.6s var(--ease-out) infinite;
+}
 
 /* «Уменьшить движение» выключает всё, включая задержки по очереди; JS-бег цифр и полос
    слушает то же правило сам (`lib/motion.ts`). */
@@ -467,6 +479,8 @@
     animation-duration: 0.01ms !important;
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+    /* Бесконечные (пульс точки-зова, FG-08) — один мгновенный круг: точка стоит. */
+    animation-iteration-count: 1 !important;
     transition-delay: 0s !important;
   }
 }

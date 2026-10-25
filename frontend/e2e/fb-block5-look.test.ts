@@ -230,9 +230,8 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(between(html, 'data-month-top', 'data-salary=')).toContain('data-sections')
     expect(html).not.toContain('data-section-dot')
     expect(count(between(html, 'data-section="queue"', 'data-salary='), 'rounded-full')).toBe(1)
-    // Зарплата Ильяса пришла, взносы ждут «Отложил» — призыв у «Целей»: «0 из N отложено».
-    expect(html).toContain('data-section-call')
-    expect(text(between(html, 'data-section-call', '</span>'))).toMatch(/0 из \d+ отложено/)
+    // Зарплата Ильяса пришла, взносы ждут «Отложил» — зов у «Целей» пульсом точки (К-12, FG-08): «0 из N отложено».
+    expect(html).toMatch(/class="[^"]*fx-pulse[^"]*"[^>]*data-section-call="0 из \d+ отложено"/)
     // Зарплаты — ниже разделов: Ильяс — `data-came` и подсветка, ✓ и «N из M пришли» нет; Аруна — тихая сумма.
     expect(html.indexOf('data-sections')).toBeLessThan(html.indexOf('data-salary="a"'))
     const rowA = between(html, 'data-salary="a"', 'data-salary="b"')
@@ -347,7 +346,9 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(text(noIncome)).not.toContain('Не хватает')
     expect(noIncome).toContain('data-add-salary')
     // Повторы продавцов за 3 месяца: Apple Music (словарь); кофейня и такси каждую неделю — мимо (TL-01, Р-1: не одно списание в месяц).
-    expect(text(between(noIncome, 'data-section="dues"', 'data-section="spend"'))).toContain('нашли 1 в выписке')
+    // К-12 (FG-08): зов — пульсом точки, подпись нейтральная «платежей нет».
+    expect(between(noIncome, 'data-section="dues"', 'data-section="spend"')).toContain('data-section-call="нашли 1 в выписке"')
+    expect(text(between(noIncome, 'data-section-meta', '</span>'))).toContain('платежей нет')
     expect(noIncome).toContain('data-plan-fact')
 
     // «Неделя»: «Это ваш доход?» первым → «Да» — оклад 300 000, 12-го; точка на сегменте — ждёт «Поставить план».
@@ -388,7 +389,7 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(p.rows.map((r) => [r.categoryId, r.amount])).toEqual([['sc_food', 109_000], ['sc_cafe', 26_000], ['sc_transport', 13_000]])
     expect(p.total).toBe(148_000)
     const call = await month(A)
-    expect(text(between(call, 'data-section="spend"', 'data-section="queue"'))).toContain('обычно в месяц')
+    expect(text(between(call, 'data-section="spend"', 'data-section="queue"'))).toContain('Установить план') // К-14: подписи нет, кнопка
     expect(text(between(call, 'data-section="spend"', 'data-section="queue"'))).toContain(sp(plain(148_000)))
     await month(A, { planFactOpen: true }).then((sheet) => {
       expect(sheet).toContain('data-plan-fact-sheet')

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
+import { PhCaretDown, PhCaretRight, PhSparkle } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
@@ -191,9 +191,11 @@ const lines = computed(() => {
   return list.length > 1 || !canEdit.value ? list : []
 })
 /**
- * Строки разделов: `dot` — есть что сделать, тогда подпись — призыв `call` брендом (Р-32: вместо второй точки):
- * «Платежи» — освободившийся платёж; «Траты» — раздел выше обычного; «Цели и фонды» — закрытый долг или взносы, что
- * ждут «Отложил» (подпись «K из M отложено» и есть призыв).
+ * Строки разделов: `dot` — есть что сделать; тогда точка цвета раздела пульсирует (К-12, FG-08, вариант составителя:
+ * индикатор вместо текста-призыва), а текст зова `call` слышит читалка и видит `title` точки. Подпись — всегда
+ * нейтральная: «K из N оплачено · N потрачено · K из M отложено» (Р-14 «Figma»). Зовы: «Платежи» — освободившийся
+ * платёж или повторы в выписке (их список — в раскрытом разделе); «Траты» — раздел выше обычного; «Цели и фонды» —
+ * закрытый долг или взносы, что ждут «Отложил». Предмет каждого зова — внутри раскрытого раздела.
  */
 const queueMeta = computed(() => (puts.value.length ? `${puts.value.filter((p) => p.done).length} из ${puts.value.length} отложено` : 'взносов нет'))
 const sections = computed(() => [
@@ -202,18 +204,19 @@ const sections = computed(() => [
     name: 'Платежи',
     color: '--s1',
     total: plan.value.duesTotal,
-    // Платежей месяца нет, а повторы в выписке есть (Р-35) — «нашли N в выписке».
-    meta: foundMeta.value ? `нашли ${found.value.length} в выписке` : `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
-    dot: !!extras.value.freed,
-    call: 'освободился платёж',
+    // Платежей месяца нет, а повторы в выписке есть (Р-35) — подпись «платежей нет», зов — точкой (К-12): список найденных
+    // — в раскрытом разделе.
+    meta: foundMeta.value ? 'платежей нет' : `${plan.value.dues.filter((d) => d.paid).length} из ${plan.value.dues.length} оплачено`,
+    dot: !!extras.value.freed || foundMeta.value,
+    call: extras.value.freed ? 'освободился платёж' : `нашли ${found.value.length} в выписке`,
   },
   {
     key: 'spend' as const,
     name: 'Траты',
     color: '--s8',
-    // «Поставить план» (Р-36): подпись «обычно в месяц», сумма — итог расчёта.
+    // «Установить план» (Р-36, К-14): подписи нет — понятно по кнопке; сумма — итог расчёта. Факт — «N потрачено» (К-7).
     total: planFact.value ? planFact.value.total : plan.value.spendTotal,
-    meta: planFact.value ? 'обычно в месяц' : spentFact.value !== null ? `потрачено ${plain(spentFact.value)}` : 'по плану',
+    meta: planFact.value ? '' : spentFact.value !== null ? `${plain(spentFact.value)} потрачено` : 'по плану',
     dot: !planFact.value && compare.value.rows.some((r) => r.over),
     call: 'больше обычного',
   },
@@ -746,9 +749,9 @@ function addFund(kind: 'reserve' | 'cushion') {
         </div>
 
         <!--
-          Три раздела под чертой: одна точка — цвет раздела; призыв («освободился платёж», «больше обычного», ждут
-          «Отложил») — подписью брендом (Р-32: вторая точка справа сбивала), ✦ совета ИИ — после имени; раскрытие — под
-          строкой, один за раз.
+          Три раздела под чертой: одна точка — цвет раздела; зов («освободился платёж», «нашли в выписке», «больше
+          обычного», ждут «Отложил», совет ИИ) — пульсом точки (К-12, FG-08; было — подписью брендом, Р-32), ✦ совета ИИ —
+          после имени; раскрытие — под строкой, один за раз.
         -->
         <Tip id="tab-month" :text="tipText" above>
         <div class="border-t border-line py-0.5" data-sections>
@@ -762,19 +765,26 @@ function addFund(kind: 'reserve' | 'cushion') {
             :data-section="s.key"
             @click="toggleSection(s.key)"
           >
-            <span class="size-3 shrink-0 rounded-full" :style="{ background: `var(${s.color})` }" aria-hidden="true" />
+            <!-- Зов (К-12): точка пульсирует — есть что сделать или совет ИИ; текст зова — `title` и читалке. -->
+            <span
+              class="size-3 shrink-0 rounded-full"
+              :class="(s.dot || sectionMarked[s.key]) && 'fx-pulse'"
+              :style="{ background: `var(${s.color})` }"
+              :title="s.dot ? s.call : sectionMarked[s.key] ? 'есть совет ИИ' : undefined"
+              :data-section-call="s.dot || sectionMarked[s.key] ? (s.dot ? s.call : 'есть совет ИИ') : undefined"
+              aria-hidden="true"
+            />
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
               <button type="button" class="row-open text-left text-[16.5px] font-bold text-ink" :aria-expanded="opened === s.key" data-row-open>
                 {{ s.name
                 }}<template v-if="s.dot"><span class="sr-only">, {{ s.call }}</span></template
                 ><template v-else-if="sectionMarked[s.key]"><PhSparkle :size="12" weight="fill" class="ml-1.5 inline-block align-middle text-brand" aria-hidden="true" data-section-mark /><span class="sr-only">, есть совет ИИ</span></template>
               </button>
-              <span v-if="s.dot" class="text-[12.5px] font-semibold text-brand num" data-section-meta data-section-call>{{ s.call }}</span>
-              <span v-else class="text-[12.5px] text-ink-2 num" data-section-meta :data-section-found="s.key === 'dues' && foundMeta ? found.length : undefined">{{ s.meta }}</span>
+              <span v-if="s.meta" class="text-[12.5px] text-ink-2 num" data-section-meta :data-section-found="s.key === 'dues' && foundMeta ? found.length : undefined">{{ s.meta }}</span>
             </span>
-            <!-- «Поставить план» (Р-36): маленькая брендовая у своего предмета — строки «Траты», пока своего плана нет. -->
+            <!-- «Установить план» (Р-36, К-14): маленькая брендовая у своего предмета — строки «Траты», пока своего плана нет. -->
             <span v-if="s.key === 'spend' && planFact" class="relative z-10 shrink-0" @click.stop>
-              <Button size="xs" data-plan-fact @click="planFactOpen = true">Поставить план</Button>
+              <Button size="xs" data-plan-fact @click="planFactOpen = true">Установить план</Button>
             </span>
             <span class="font-num text-[16px] font-bold num text-ink">{{ money(s.total) }}</span>
             <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
@@ -1059,7 +1069,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!--
       Зарплаты — ниже разделов (Figma `18:167`): строка нажимается — лист зарплаты (дата, «хватает ли», приходы по ритму
       «N из M пришли», обмены — там, Р-116); пришла (месячный ритм — `came`; по ритму — все приходы) — строка подсвечена
-      `--ok-soft` (владелец 2026-10-23: без ✓ и «0 из 2 пришли»); ждущая — сумма тихая («≈» у плавающей). «Обменял» — у
+      `--ok-soft` (владелец 2026-10-23: без ✓ и «0 из 2 пришли»); ждущая — сумма тоже чёрная (К-8, FG-08; «≈» у плавающей). «Обменял» — у
       своей пришедшей валютной, в строке; «Пришла» — у своей открытой, в строке (PN-02, правило 12: действие у предмета;
       та же отметка, что в листе — `useSalaryTap`).
     -->
@@ -1091,7 +1101,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <SalaryRow button small :person-id="s.person" :period="monthKey" />
           </span>
           <div class="flex flex-col items-end">
-            <b class="font-num text-[16px] num whitespace-nowrap" :class="s.came ? 'text-ink' : 'text-ink-2'">{{ s.floating && !s.came ? '≈ ' : '' }}{{ money(s.amount) }}</b>
+            <b class="font-num text-[16px] num whitespace-nowrap text-ink">{{ s.floating && !s.came ? '≈ ' : '' }}{{ money(s.amount) }}</b>
             <span v-if="s.fx" class="text-[12.5px] font-semibold text-ink-2 num whitespace-nowrap" data-salary-fx>{{ moneyIn(s.fx.amount, s.fx.currency) }}</span>
           </div>
         </div>
@@ -1264,8 +1274,8 @@ function addFund(kind: 'reserve' | 'cushion') {
     <SalaryDialog v-if="canEdit" :id="salaryEdit" @close="salaryEdit = null" />
 
     <!--
-      «План трат» (Р-36, Figma `19:178`): разделы из «обычно по неделям» — первые 3 и тихая «ещё N разделов · Σ»,
-      внизу одна брендовая «Поставить» (подтверждение в листе — правило 12) → план мне по каждой строке, тост.
+      «План трат» (Р-36, Figma `19:178`): разделы из «обычно по неделям» — первые 3 и «ещё N ▾» брендом (К-15: видно, что раскрывается) · Σ,
+      внизу одна брендовая «Установить» (Р-14 «Figma») (подтверждение в листе — правило 12) → план мне по каждой строке, тост.
     -->
     <Sheet :open="planFactOpen && !!planFact" title="План трат" @close="planFactOpen = false">
       <template v-if="planFact">
@@ -1282,7 +1292,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             data-plan-fact-more
             @click="planFactAll = true"
           >
-            <span>ещё {{ planFact.rows.length - PLAN_FACT_TOP }} {{ plural(planFact.rows.length - PLAN_FACT_TOP, 'раздел', 'раздела', 'разделов') }}</span>
+            <span class="flex items-center gap-1 font-semibold text-brand">ещё {{ planFact.rows.length - PLAN_FACT_TOP }}<PhCaretDown :size="14" aria-hidden="true" /></span>
             <span>{{ money(planFact.rows.slice(PLAN_FACT_TOP).reduce((s, r) => s + r.amount, 0)) }}</span>
           </button>
           <div class="flex items-center justify-between gap-2 border-t border-line pt-3 text-[13px] text-ink-2 num">
@@ -1290,7 +1300,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <b class="font-num text-[16px] font-bold text-ink">{{ money(planFact.total) }}</b>
           </div>
         </div>
-        <Button size="lg" class="mt-4 w-full" data-plan-fact-save @click="savePlanFact">Поставить</Button>
+        <Button size="lg" class="mt-4 w-full" data-plan-fact-save @click="savePlanFact">Установить</Button>
       </template>
     </Sheet>
 

@@ -151,7 +151,7 @@ describe('e2e / Фидбек Блок 3 — партнёр: план · факт
     // Продукты — свои 30 000, не семейные 50 000.
     expect(amountOf(html, 'sc_food')).toBe(sp(money(30_000)))
     expect(text(between(html, 'data-spend-oneoff', '</button>'))).toContain(sp(plain(120_000)))
-    expect(text(between(html, 'data-section="spend"', 'data-section="queue"'))).toContain(sp(`потрачено ${plain(189_500)}`))
+    expect(text(between(html, 'data-section="spend"', 'data-section="queue"'))).toContain(sp(`${plain(189_500)} потрачено`))
   })
 
   it('Аруна: своя строка первой, свои разделы; разделов, разовых и операций Ильяса нет — ни в списке, ни в листе, ни по адресу', async () => {

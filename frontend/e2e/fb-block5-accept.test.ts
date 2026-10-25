@@ -190,7 +190,9 @@ describe('e2e / приёмка Фидбек Блок 5 — нажатиями в
     expect(txt(q('[data-month-top]'))).not.toContain('Не хватает')
     expect(all('[data-month-ring] circle[data-part]').map((c) => c.getAttribute('data-part'))).toEqual(['spend'])
     expect(txt(q('[data-section="spend"]'))).toContain(sp(plain(148_000)))
-    expect(txt(q('[data-section="spend"]'))).toContain('обычно в месяц')
+    // К-14 (FG-08): при «Установить план» подписи под «Траты» нет — понятно по кнопке.
+    expect(txt(q('[data-section="spend"]'))).not.toContain('обычно в месяц')
+    expect(txt(q('[data-plan-fact]'))).toBe('Установить план')
 
     // «Поставить план» — маленькая брендовая в строке «Траты» → лист: три строки из «обычно по неделям».
     const { state, ctx } = A.store.planInput(K)

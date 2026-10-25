@@ -99,7 +99,8 @@ const press = async (el: HTMLElement | null) => {
 /** «Потрачено» заголовка «Месяц → Траты» (SSR на сторе телефона). */
 async function spent(p: Phone) {
   const html = await screen(p.pinia, Month, '/month', undefined, [screenMixin({ opened: 'spend' })])
-  return Number((html.match(/data-section-meta[^>]*>\s*потрачено ([^<]*)</)?.[1] ?? '').replace(/[^\d]/g, ''))
+  // Подпись «Трат» — «N потрачено» (К-7, FG-08).
+  return Number((html.match(/data-section-meta[^>]*>\s*([^<]*?) потрачено\s*</)?.[1] ?? '').replace(/[^\d]/g, ''))
 }
 
 /**

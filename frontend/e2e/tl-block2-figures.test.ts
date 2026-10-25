@@ -165,7 +165,7 @@ describe('e2e / Хвосты Блок 2 — «Платежи без отметк
       const m = html.match(new RegExp(`${attr}[^>]*>[\s\S]*?<span[^>]*>[^<]*</span>\s*<span[^>]*>([^<]*)</span>`))
       return m ? num(m[1]!) : 0
     }
-    const spent = num(html.match(/data-section-meta[^>]*>\s*потрачено ([^<]*)</)?.[1] ?? '')
+    const spent = num(html.match(/data-section-meta[^>]*>\s*([^<]*?) потрачено\s*</)?.[1] ?? '') // «N потрачено» (К-7)
     return { html, rows: rows.reduce((s, x) => s + x, 0), unknown: quiet('data-spend-unknown'), oneOff: quiet('data-spend-oneoff'), unmarked: quiet('data-spend-unmarked'), spent }
   }
 

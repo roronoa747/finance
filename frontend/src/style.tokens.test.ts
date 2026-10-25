@@ -101,13 +101,13 @@ describe('style.css — пары токенов light/dark', () => {
     // Круг месяца (Блок 14): дуги меняются не дольше секунды.
     expect(ms('--motion-ring')).toBeLessThanOrEqual(1000)
     expect(sizes.get('--ease-out')).toMatch(/^cubic-bezier\(/)
-    for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet']) expect(css).toContain(`@utility ${u} {`)
+    for (const u of ['press', 'fx-in', 'fx-fade', 'fx-sheet', 'fx-pulse']) expect(css).toContain(`@utility ${u} {`)
     // Заполнение после анимации не держит transform — иначе `fixed` окна `Hint` внутри карточки уезжает (критик Б10).
     const fx = [...css.matchAll(/^\s*animation: fx-[\w-]+ .*$/gm)].map((m) => m[0])
-    expect(fx).toHaveLength(3)
+    expect(fx).toHaveLength(4) // + fx-pulse (FG-08): точка-зов «Месяца»
     for (const a of fx) expect(a).not.toMatch(/\b(both|forwards)\b/)
     const reduce = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
-    for (const rule of ['animation-duration', 'animation-delay', 'transition-duration', 'transition-delay']) {
+    for (const rule of ['animation-duration', 'animation-delay', 'animation-iteration-count', 'transition-duration', 'transition-delay']) {
       expect(reduce).toContain(`${rule}:`)
     }
   })
