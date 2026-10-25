@@ -416,6 +416,9 @@ const sectionMarked = computed(() => ({
   spend: compare.value.rows.some((r) => ai.markFor('cat', r.categoryId) !== null),
   queue: plan.value.queue.some((q) => queueMark(q) !== null),
 }))
+/** Зов раздела (К-12): дело (`call`) или совет ИИ — точка пульсирует, текст — `title` и читалке; нет зова — `undefined`. */
+const callOf = (s: { key: keyof typeof sectionMarked.value; dot: boolean; call: string }) =>
+  s.dot ? s.call : sectionMarked.value[s.key] ? 'есть совет ИИ' : undefined
 /** Кнопка строки раздела и очереди — только название; сумму и подпись читалка слышит описанием (`/ux` «Разбор» 3). */
 const uid = useId()
 // «Освободится» — подсказкой у своего платежа: в общем списке или у группы подписок, где он лежит.
@@ -768,10 +771,10 @@ function addFund(kind: 'reserve' | 'cushion') {
             <!-- Зов (К-12): точка пульсирует — есть что сделать или совет ИИ; текст зова — `title` и читалке. -->
             <span
               class="size-3 shrink-0 rounded-full"
-              :class="(s.dot || sectionMarked[s.key]) && 'fx-pulse'"
+              :class="callOf(s) && 'fx-pulse'"
               :style="{ background: `var(${s.color})` }"
-              :title="s.dot ? s.call : sectionMarked[s.key] ? 'есть совет ИИ' : undefined"
-              :data-section-call="s.dot || sectionMarked[s.key] ? (s.dot ? s.call : 'есть совет ИИ') : undefined"
+              :title="callOf(s)"
+              :data-section-call="callOf(s)"
               aria-hidden="true"
             />
             <span class="flex min-w-0 flex-1 flex-col leading-[1.2]">
