@@ -847,11 +847,14 @@ export const useOperationsStore = defineStore('operations', () => {
    * даты — и старого) в общий документ, на сервер — тем же батчем, что строки выписки. Партнёр видит только итог
    * раздела (`writeTotals` → `SpendTotal`). Разделов в документе ещё нет (выписок не было) — засеваются, как при
    * первой загрузке. Строку выписки или с телефона этим не поправить. «Разовая» формы (FB-08) — правка операции в личном
-   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней.
+   * документе (`opEdits`), до пересчёта итогов: итог периода сразу с ней. Новая получает момент внесения (`at`), правка
+   * держит прежний: сверка остатка того же дня отделяет траты до неё от трат после (F2-07, `spentSince`).
    */
-  async function saveHand(op: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
-    const prev = ops.value[op.id]
-    if (!isHand(op) || (prev && !isHand(prev))) return
+  async function saveHand(input: Operation, edit: { oneOff?: boolean | null } = {}, client: ApiClient = apiClient) {
+    const prev = ops.value[input.id]
+    if (!isHand(input) || (prev && !isHand(prev))) return
+    const at = prev ? prev.at : new Date().toISOString()
+    const op: Operation = at ? { ...input, at } : input
     if (!finance.householdDoc.spendCategories?.length) finance.mutateHouseholdDoc((doc) => void seedSpendCategories(doc))
     if ('oneOff' in edit) finance.setOpEdit(op.id, { oneOff: edit.oneOff || null })
     remember([op])
@@ -951,7 +954,10 @@ export const useOperationsStore = defineStore('operations', () => {
             delete ops.value[w.id]
             continue
           }
-          ops.value[w.id] = fromWire(w)
+          // Момент внесения ручной траты — только на этом телефоне (`saveHand`): серверная копия его не стирает.
+          const op = fromWire(w)
+          const local = ops.value[w.id]?.at
+          ops.value[w.id] = !op.at && local && isHand(op) ? { ...op, at: local } : op
           if (w.source === 'tap' || w.source === 'push') phone.add(w.id)
         }
         if (page.next) since = from = page.next

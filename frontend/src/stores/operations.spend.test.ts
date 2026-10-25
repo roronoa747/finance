@@ -90,11 +90,35 @@ describe('F2-07: запись «потрачено» счёта для трат'
     finance.setAccountAmount('k1', 200_000)
     expect(finance.accounts[0].amount).toBe(200_000)
     await nextTick()
-    // Ручная трата того же дня входит и после сверки (времени у неё нет — Handoff F2-07).
-    expect(spent()[0]).toMatchObject({ since: '2026-10-20T08:00:00.000Z', amount: 2_500 })
-    expect(finance.accounts[0].amount).toBe(197_500)
+    // Ручная трата, внесённая до сверки того же дня, уже во введённой сумме (момент внесения — `at`, возврат приёмки).
+    expect(spent()[0]).toMatchObject({ since: '2026-10-20T08:00:00.000Z', amount: 0 })
+    expect(finance.accounts[0].amount).toBe(200_000)
+    vi.setSystemTime(new Date('2026-10-20T09:00:00Z'))
     await store.saveHand(hand('11aa11bb22cc33dd', 1_000), {}, client)
-    expect(finance.accounts[0].amount).toBe(196_500)
+    expect(finance.accounts[0].amount).toBe(199_000)
+  })
+
+  it('момент внесения ручной траты: правка держит прежний, серверная копия (без времени) его не стирает', async () => {
+    const finance = signIn()
+    const store = useOperationsStore()
+    const first = hand('00aa11bb22cc33dd', 2_500)
+    await store.saveHand(first, {}, client)
+    expect(store.all[0].at).toBe('2026-10-20T07:00:00.000Z')
+    vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
+    finance.setAccountAmount('k1', 200_000)
+    await nextTick()
+    // Правка после сверки (сумма 3 000) — трата всё равно до сверки: остаток = введённой сумме.
+    vi.setSystemTime(new Date('2026-10-20T09:00:00Z'))
+    await store.saveHand({ ...first, amount: -3_000 }, {}, client)
+    expect(store.all[0].at).toBe('2026-10-20T07:00:00.000Z')
+    expect(finance.accounts[0].amount).toBe(200_000)
+    vi.mocked(client.listOperations).mockResolvedValueOnce({
+      operations: [{ id: first.id, bank: 'hand', date: first.date, amount: -3_000, kind: 'purchase', merchant: first.merchant, category_id: 'sc_food', internal: false, updated_at: '2026-10-20T09:00:01Z' }],
+      next: null,
+    })
+    await store.pull(client)
+    expect(store.all[0].at).toBe('2026-10-20T07:00:00.000Z')
+    expect(finance.accounts[0].amount).toBe(200_000)
   })
 
   it('перестал быть хозяином — своя запись обнуляется, не удаляется', async () => {

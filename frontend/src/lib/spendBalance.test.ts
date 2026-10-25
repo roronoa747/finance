@@ -105,14 +105,17 @@ describe('F2-07: spentSince', () => {
     expect(spentSince(ops, new Set(['rent', 'ask', 'salary']), ANCHOR)).toBe(0)
   })
 
-  it('граница сверки: at до/после; дата в день сверки — нет, на следующий — да; ручная в день сверки — да', () => {
+  it('граница сверки: at до/после; дата в день сверки — нет, на следующий — да; ручная — по моменту внесения', () => {
     expect(spentSince([op('t1', -100, { at: '2026-10-10T05:59:00Z', date: '2026-10-10' })], none, ANCHOR)).toBe(0)
     expect(spentSince([op('t2', -100, { at: '2026-10-10T06:01:00Z', date: '2026-10-10' })], none, ANCHOR)).toBe(100)
     expect(spentSince([op('d0', -100, { date: '2026-10-10' })], none, ANCHOR)).toBe(0)
     expect(spentSince([op('d1', -100, { date: '2026-10-11' })], none, ANCHOR)).toBe(100)
     expect(spentSince([op('d-1', -100, { date: '2026-10-09' })], none, ANCHOR)).toBe(0)
-    expect(spentSince([op('h0', -100, { bank: 'hand', date: '2026-10-10' })], none, ANCHOR)).toBe(100)
-    expect(spentSince([op('h-1', -100, { bank: 'hand', date: '2026-10-09' })], none, ANCHOR)).toBe(0)
+    expect(spentSince([op('h-before', -100, { bank: 'hand', date: '2026-10-10', at: '2026-10-10T05:00:00Z' })], none, ANCHOR)).toBe(0)
+    expect(spentSince([op('h-after', -100, { bank: 'hand', date: '2026-10-10', at: '2026-10-10T07:00:00Z' })], none, ANCHOR)).toBe(100)
+    // Ручная без момента внесения (старая, с другого телефона) — по дате, как выписка.
+    expect(spentSince([op('h0', -100, { bank: 'hand', date: '2026-10-10' })], none, ANCHOR)).toBe(0)
+    expect(spentSince([op('h1', -100, { bank: 'hand', date: '2026-10-11' })], none, ANCHOR)).toBe(100)
   })
 
   it('без якоря — все операции', () => {
