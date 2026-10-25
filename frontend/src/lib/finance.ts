@@ -1,4 +1,4 @@
-import type { Account, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
+import type { Account, AccountSpent, Category, Credit, DebtPlan, Goal, Obligation, Payment, PayRhythm, Person, PersonId, PlanForecast, WishItem, Allocation, AllocationPart, ArticleKey, MoneyArticle, MoneySettings, Currency, RateBook, FxExchange, ObligationVersion, QueueOrder, SpendPlan, DebtCard, TripSpend, TermSnap, PlanShift, ImageMove, AiReview } from '@/types/finance'
 import type { MatchCandidate } from '@/lib/statements/matching'
 import type { UnknownGroup } from '@/lib/statements/model'
 import { dayNumber, isHand, isSpend, normalizeCounterparty, normalizeMerchant, shortMerchant, spendOf } from '@/lib/statements/model'
@@ -1604,7 +1604,14 @@ export function paidFor(
 export const afterAnchor = (p: Pick<Payment, 'at'>, anchor?: string | null) => !anchor || p.at >= anchor
 
 /** Обмены и курсы для остатков (B2C-79): `day` — сегодня (`YYYY-MM-DD`), курс валютного счёта — на него. */
-export type BalanceCtx = { exchanges?: FxExchange[]; book?: RateBook | null; day?: string };
+export type BalanceCtx = {
+  exchanges?: FxExchange[];
+  book?: RateBook | null;
+  day?: string;
+  /** Потрачено со счёта для трат (F2-07) и общие счета, по которым ищутся его хозяева (`spendOwners`). */
+  spent?: AccountSpent[];
+  accounts?: Account[];
+};
 
 export const liveExchanges = (list: FxExchange[] = []) => list.filter(alive);
 
@@ -1633,6 +1640,37 @@ export const spendOwners = (account: Pick<Account, 'id'>, accounts: Account[]): 
   SPEND_PEOPLE.filter((p) => spendAccountOf(accounts, p)?.id === account.id);
 
 /**
+ * Нетто своих операций после сверки (F2-07, Р-6) — сколько ушло со счёта для трат: траты (`spendOf`, возврат
+ * уменьшает) и переводы себе со счёта — плюсом, приходы (и переводы себе на счёт) — минусом. Строки из `marked`
+ * не считаются: отмеченный платёж уже списан отметкой, зарплата — «Пришла»; приход, которым вернули трату
+ * (`refund.opId`), — уже в `spendOf`. «После сверки»: есть время (`at`) — позже якоря; только дата — день
+ * позже дня сверки (тот же день уже в сверенной сумме), ручная трата — и в день сверки (её нет в банке, а
+ * времени у неё нет). Без якоря — все. Целые тенге, может быть < 0.
+ */
+export function spentSince(ops: Operation[], marked: ReadonlySet<string>, anchor?: string | null): number {
+  const t = anchor ? Date.parse(anchor) : NaN;
+  const day = anchor ? todayIso(new Date(anchor)) : '';
+  const refunds = new Set(ops.map((o) => o.refund?.opId).filter(Boolean));
+  const after = (o: Operation) =>
+    !anchor || (o.at ? Date.parse(o.at) > t : isHand(o) ? o.date >= day : o.date > day);
+  return ops.reduce((sum, o) => {
+    if (marked.has(o.id) || refunds.has(o.id) || !after(o)) return sum;
+    if (o.amount < 0) return sum + (o.internal ? -o.amount : spendOf(o));
+    return sum - o.amount;
+  }, 0);
+}
+
+/** Вклад трат в остаток счёта (F2-07): записи его хозяев, посчитанные от нынешней сверки; устаревшие не действуют. */
+function spentOn(a: Account, ctx: BalanceCtx): number {
+  if (!ctx.spent?.length) return 0;
+  const owners = spendOwners(a, ctx.accounts ?? []);
+  const since = a.amountSetAt ?? null;
+  return ctx.spent
+    .filter((s) => !s.deletedAt && s.accountId === a.id && (s.since ?? null) === since && owners.includes(s.by))
+    .reduce((sum, s) => sum + s.amount, 0);
+}
+
+/**
  * Остаток валютного счёта в валюте (Р-73): база ручной сверки (`foreignAmount`) + пришедшие
  * зарплаты в валюте − обмены, всё — после сверки (`amountSetAt`): сверка после обмена его не удваивает.
  */
@@ -1651,6 +1689,7 @@ export function accountForeign(a: Account, payments: Payment[] = [], exchanges: 
  * Зарплата (RP-10) — зачисление; знак записи — только здесь: `shiftedBase` и стор
  * берут остаток отсюда. Тенговый счёт получает тенге обменов (B2C-79). Валютный (Р-73) —
  * остаток в валюте по курсу Нацбанка на `ctx.day` из книги; нет курса — ручной `rate` счёта.
+ * Счёт для трат тает тратами хозяев после сверки (`ctx.spent`, F2-07).
  */
 export function accountBalance(a: Account, payments: Payment[] = [], ctx: BalanceCtx = {}): number {
   if (isForeign(a)) {
@@ -1662,7 +1701,7 @@ export function accountBalance(a: Account, payments: Payment[] = [], ctx: Balanc
     .reduce((s, x) => s + x.tenge, 0);
   return countedPayments(payments)
     .filter((p) => p.accountId === a.id && afterAnchor(p, a.amountSetAt))
-    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount + bought)
+    .reduce((left, p) => (p.kind === 'salary' ? left + p.amount : left - p.amount), a.amount + bought - spentOn(a, ctx))
 }
 
 /** Живые обмены зарплаты участника за месяц `period`, по времени записи (лист обменов, B2C-79-а). */

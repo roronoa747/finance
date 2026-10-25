@@ -132,6 +132,8 @@ export function defaultSyncDoc(): SyncDoc {
     moneySettings: null,
     // Обмены валютной зарплаты (B2C-79): ключ и пустым — как у payments (RP-03).
     fxExchanges: [],
+    // Потрачено со счёта для трат (F2-07): ключ и пустым — как у payments (RP-03).
+    accountSpent: [],
     // План месяца (B2C-85): суммы трат каждого — список; порядки и карточка долга — объекты (пусто — умолчания).
     spendPlans: [],
     goalOrder: null,
@@ -285,7 +287,14 @@ export const useFinanceStore = defineStore('finance', () => {
   // Обмены валютной зарплаты (B2C-79): тенговый счёт получает тенге обмена, валютный теряет валюту;
   // валютный счёт — в тенге по курсу Нацбанка сегодня из книги (Р-73). Книга — из стора курсов.
   const fxExchanges = computed(() => householdDoc.value.fxExchanges ?? [])
-  const balanceCtx = (): BalanceCtx => ({ exchanges: fxExchanges.value, book: useFxStore().book, day: todayIso() })
+  // Траты счёта для трат (F2-07): записи участников и общие счета — по ним ищутся хозяева (`spendOwners`).
+  const balanceCtx = (): BalanceCtx => ({
+    exchanges: fxExchanges.value,
+    book: useFxStore().book,
+    day: todayIso(),
+    spent: householdDoc.value.accountSpent ?? [],
+    accounts: householdDoc.value.accounts || [],
+  })
   const withBalance = (a: Account): Account => {
     const ctx = balanceCtx()
     return { ...a, amount: accountBalance(a, payments.value, ctx), ...(a.currency && a.currency !== 'KZT' ? { foreignAmount: accountForeign(a, payments.value, ctx.exchanges) } : {}) }
