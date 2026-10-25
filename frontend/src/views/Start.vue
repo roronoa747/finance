@@ -198,9 +198,11 @@ const sub = computed(() => titles[step.value].sub)
   <div class="mx-auto flex min-h-dvh w-full max-w-[440px] flex-col gap-4 px-5 pb-6 pt-5 text-left">
     <!--
       Шапка шага: «n из k» (у вступления — точки экранов) и тихое «Пропустить» справа на необязательных шагах (Р-4).
-      Липкая — «Пропустить» видно и над сеткой 18 плиток мечты без прокрутки (FR-03).
+      Липкая — «Пропустить» видно и над сеткой 18 плиток мечты без прокрутки (FR-03). Дальше от угла (К-10, FG-09): коробка
+      кнопки — по краю контента (20 px от края экрана), сверху ≥ 24 px; с вырезом — под строкой статуса
+      (`env(safe-area-inset-top)`; без `viewport-fit=cover` он 0).
     -->
-    <div class="sticky top-0 z-10 -mx-5 -mt-5 bg-canvas px-5 pb-2 pt-5" data-start-head>
+    <div class="sticky top-0 z-10 -mx-5 -mt-5 bg-canvas px-5 pb-2 pt-[max(24px,calc(env(safe-area-inset-top)_+_8px))]" data-start-head>
       <!-- Высота строки — по кнопке (32): без «Пропустить» полоса не прыгает вверх. -->
       <div class="flex min-h-8 items-center gap-3">
         <div v-if="step === 'intro'" class="flex flex-1 items-center gap-1.5" aria-hidden="true" data-intro-dots>
@@ -209,7 +211,7 @@ const sub = computed(() => titles[step.value].sub)
         <!-- Один шаг (партнёр по коду) — без полосы: «1 из 1» ничего не говорит (`/ux` Блока 1). -->
         <Stepper v-else-if="counted.length > 1" :n="stepIndex" :k="counted.length" class="flex-1" />
         <span v-else class="flex-1" />
-        <Button v-if="skippable" variant="ghost" size="sm" class="-mr-2 shrink-0" data-skip @click="skipStep">Пропустить</Button>
+        <Button v-if="skippable" variant="ghost" size="sm" class="shrink-0" data-skip @click="skipStep">Пропустить</Button>
       </div>
     </div>
 

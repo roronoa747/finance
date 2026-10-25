@@ -290,6 +290,9 @@ describe('FR-03: «Пропустить» — в шапке необязател
       await mountStart(path)
       expect(skipInHead(), path).toBe(true)
       expect(skips(), path).toHaveLength(1)
+      // К-10 (FG-09): «Пропустить» — без отрицательного отступа к углу; верх шапки — с учётом выреза.
+      expect(head().querySelector('[data-skip]')!.className).not.toContain('-mr-2')
+      expect(head().className).toContain('safe-area-inset-top')
       expect(head().className).toContain('sticky')
       app?.unmount()
       document.body.innerHTML = ''
