@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { liveSpendCategories, monthPlan, monthPlanPast, rkShare, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
 import { plannedElsewhere } from '@/lib/statements/dictionary'
 import type { PersonId } from '@/types/finance'
@@ -98,7 +98,7 @@ function openCatHand(id: string) {
     <Card v-if="past.goals.length" flush class="px-3.5 py-0.5">
       <div v-for="g in past.goals" :key="g.goalId" class="flex items-center gap-2.5 border-t border-line py-2.5 first:border-t-0">
         <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ g.name }}</span>
-        <span class="font-num text-[15px] font-bold num text-ink">{{ plain(g.amount) }}</span>
+        <span class="font-num text-[15px] font-bold num text-ink">{{ money(g.amount) }}</span>
       </div>
     </Card>
 

@@ -170,7 +170,7 @@ describe('строка-образ в листе раздела', () => {
     const move = { id: 'm1', categoryId: 'sc_cafe', goalId: 'trip', amount: 20_000, by: 'a' as const, at: T0, updatedAt: T0 }
     await open('member', { ...familyDoc(), imageMoves: [move] })
     await openCategory('sc_cafe')
-    expect(txt(q('[data-image-moved]'))).toBe(norm('✓ 20 000 в мечту'))
+    expect(txt(q('[data-image-moved]'))).toBe(norm('✓ 20 000 ₸ в мечту'))
     expect(q('[data-image-act]')).toBeNull()
   })
 

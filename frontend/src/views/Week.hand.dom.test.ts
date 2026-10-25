@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { useOperationsStore } from '@/stores/operations'
 import { periodsOf, spendTotals } from '@/lib/statements/model'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import type { Operation } from '@/lib/statements/types'
 import Week from './Week.vue'
 
@@ -118,7 +118,7 @@ describe('MAN-01: «Трата» руками', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.query.spend).toBeUndefined())
     // 4 000 из выписки + 2 500 руками.
     expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 6_500, ops: 2 })
-    expect(amountOf('sc_food')).toBe(norm(plain(6_500)))
+    expect(amountOf('sc_food')).toBe(norm(money(6_500)))
   })
 })
 
@@ -158,7 +158,7 @@ describe('MAN-01: дата ручной траты', () => {
     await press(q('[data-hand-save]'))
     expect(txt(q('[data-week-label]'))).toBe('12–18 октября')
     expect(total(finance, 'a:week:2026-W42:sc_transport')).toMatchObject({ amount: 1_200, ops: 1 })
-    expect(amountOf('sc_transport')).toBe(norm(plain(1_200)))
+    expect(amountOf('sc_transport')).toBe(norm(money(1_200)))
   })
 })
 
@@ -265,7 +265,7 @@ describe('FB-08: «Разовая» в форме «Трата» и метка �
     expect(finance.opEdits.find((e) => e.id === own.id)?.oneOff).toBe(true)
     // «Неделя» — с разовой (Р-16): 4 000 + 250 000; в итоге месяца — отдельно.
     expect(total(finance, 'a:week:2026-W43:sc_food')).toMatchObject({ amount: 254_000, oneOff: 250_000 })
-    expect(amountOf('sc_food')).toBe(norm(plain(254_000)))
+    expect(amountOf('sc_food')).toBe(norm(money(254_000)))
 
     await press(q('[data-week-feed]'))
     expect(txt(q(`[data-feed-op="${own.id}"] [data-oneoff]`))).toBe('разовая')

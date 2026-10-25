@@ -202,7 +202,7 @@ const column = (title: string, savings: number, debt: number, interest: number, 
 
     const bad = await form('10 000')
     for (const t of ['Без них', 'Знаю ставку', 'Знаю срок', 'Сколько платежей осталось', 'День платежа']) expect(bad).toContain(t)
-    expect(bad).toContain(`12 платежей по ${plain(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸.`)
+    expect(bad).toContain(`12 платежей по ${money(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸.`)
     expect(bad).toContain(`Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`)
     expect(bad).toContain('Записать всё равно можно: сохраним как рассрочку без процентов')
     expect(bad).not.toContain('Ставка получается')

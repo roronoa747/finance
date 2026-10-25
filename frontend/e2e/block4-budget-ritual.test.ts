@@ -12,7 +12,7 @@ import {
   goalMonths,
 } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
-import { money, plain } from '../src/lib/money'
+import { money } from '../src/lib/money'
 import Money from '../src/views/Money.vue'
 import Month from '../src/views/Month.vue'
 import { screenMixin } from '../src/test/screenState'
@@ -191,7 +191,7 @@ describe('e2e / block-4 — Сквозной сценарий бюджета («
     const htmlRitualActive = await renderToString(appRitualActive)
     // Подсказка у платежа: +50 000 в месяц первой цели очереди, одна кнопка (Р-86).
     expect(htmlRitualActive).toContain('data-freed')
-    expect(htmlRitualActive).toContain(`+${plain(50_000)} в месяц`)
+    expect(htmlRitualActive).toContain(`+${money(50_000)} в месяц`)
     expect(htmlRitualActive).toMatch(/>\s*К «[^»]+»\s*</)
 
     // В) Распределение высвобожденных денег: 30 000 в цель, 20 000 на качество жизни

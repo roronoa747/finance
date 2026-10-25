@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
-import { plain } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import { useAuthStore } from '../src/stores/auth'
@@ -144,12 +144,12 @@ describe('e2e / Фидбек Блок 3 — партнёр: план · факт
     const { A } = await family()
     const html = await month(A)
     expect(people(html)).toEqual(['a', 'b'])
-    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${plain(190_000)}`))
-    expect(line(html, 'b')).toBe(sp(`Аруна ${plain(26_000)} / ${plain(125_000)}`))
+    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${money(190_000)}`))
+    expect(line(html, 'b')).toBe(sp(`Аруна ${plain(26_000)} / ${money(125_000)}`))
     expect(html).toContain('data-spend-mine')
     expect(rows(html)).toEqual(['sc_food', 'sc_cafe'])
     // Продукты — свои 30 000, не семейные 50 000.
-    expect(amountOf(html, 'sc_food')).toBe(sp(plain(30_000)))
+    expect(amountOf(html, 'sc_food')).toBe(sp(money(30_000)))
     expect(text(between(html, 'data-spend-oneoff', '</button>'))).toContain(sp(plain(120_000)))
     expect(text(between(html, 'data-section="spend"', 'data-section="queue"'))).toContain(sp(`потрачено ${plain(189_500)}`))
   })
@@ -158,9 +158,9 @@ describe('e2e / Фидбек Блок 3 — партнёр: план · факт
     const { B } = await family()
     const html = await month(B)
     expect(people(html)).toEqual(['b', 'a'])
-    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${plain(190_000)}`))
+    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${money(190_000)}`))
     expect(rows(html)).toEqual(['sc_food', 'sc_transport'])
-    expect(amountOf(html, 'sc_food')).toBe(sp(plain(20_000)))
+    expect(amountOf(html, 'sc_food')).toBe(sp(money(20_000)))
     expect(html).not.toContain('data-spend-oneoff')
     // Числа Ильяса по разделам — нигде в «Тратах» (его «факт / план» — только в его строке).
     const spends = text(between(html, 'data-spend-mine', 'data-section="queue"'))
@@ -195,7 +195,7 @@ describe('e2e / Фидбек Блок 3 — партнёр: план · факт
     const V = await phone(server, st, 'a', 'viewer')
     const html = await month(V)
     expect(people(html)).toEqual(['a', 'b'])
-    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${plain(190_000)}`))
+    expect(line(html, 'a')).toBe(sp(`Ильяс ${plain(163_500)} / ${money(190_000)}`))
     expect(rows(html)).toEqual([])
     for (const attr of ['data-spend-mine', 'data-spend-oneoff', 'data-spend-unknown', 'data-spend-add']) expect(html).not.toContain(attr)
     expect(await month(V, '/month?cat=sc_food')).not.toContain('data-cat-amount')

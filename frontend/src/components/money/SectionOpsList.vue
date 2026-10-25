@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { PhCaretRight, PhPencilSimple } from '@phosphor-icons/vue'
 import type { SectionMonth } from '@/lib/finance'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { dayWeekdayLabel } from '@/lib/dates'
 import Button from '@/components/ui/Button.vue'
 
@@ -37,8 +37,8 @@ const emit = defineEmits<{
           @click="o.hand ? emit('hand', o.id) : emit('open', o.id)"
         >
           <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
-          <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
-          <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+          <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ money(o.refund) }}</span>
+          <b class="font-num font-semibold num">{{ money(o.amount) }}</b>
           <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
           <PhCaretRight v-else-if="!o.recurring" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
         </button>

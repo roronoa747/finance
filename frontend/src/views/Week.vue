@@ -204,7 +204,7 @@ const weekNotes = computed(() =>
 )
 const noteMeta = (n: { date: string; amount?: number | null }) => {
   const day = dayLabel(Number(n.date.slice(8, 10)), n.date.slice(0, 7))
-  return n.amount ? `${day} · ${plain(n.amount)}` : day
+  return n.amount ? `${day} · ${money(n.amount)}` : day
 }
 function closeNoteSheet() {
   noteEdit.value = null
@@ -531,7 +531,7 @@ onBeforeUnmount(() => {
     >
       <PhCoins v-if="spendAccount.kind === 'cash'" :size="16" /><PhCreditCard v-else :size="16" />
       {{ spendAccount.kind === 'cash' ? 'Наличные' : 'На карте' }}
-      <b class="font-semibold text-ink num">{{ plain(spendAccount.amount) }}</b>
+      <b class="font-semibold text-ink num">{{ money(spendAccount.amount) }}</b>
     </RouterLink>
     <!-- Apple Pay (AP-06, Р-6): тихая строка под шапкой — iPhone, пока не подключено. -->
     <ApplePayWeekLine />
@@ -545,8 +545,8 @@ onBeforeUnmount(() => {
         <i class="block h-full rounded-pill" :class="mine.rest < 0 ? 'bg-warn' : 'bg-brand'" :style="{ width: `${planShare}%` }" />
       </span>
       <span class="self-end text-[12.5px] num" :class="mine.rest < 0 ? 'text-warn' : 'text-ink-2'" data-week-rest>
-        <template v-if="mine.rest >= 0">осталось <b class="font-semibold text-ink">{{ plain(mine.rest) }}</b> / {{ plain(mine.plan) }}</template>
-        <template v-else>сверх плана <b class="font-semibold">{{ plain(-mine.rest) }}</b> / {{ plain(mine.plan) }}</template>
+        <template v-if="mine.rest >= 0">осталось <b class="font-semibold text-ink">{{ plain(mine.rest) }}</b> / {{ money(mine.plan) }}</template>
+        <template v-else>сверх плана <b class="font-semibold">{{ plain(-mine.rest) }}</b> / {{ money(mine.plan) }}</template>
       </span>
     </div>
 
@@ -601,14 +601,14 @@ onBeforeUnmount(() => {
               <span class="block truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
               <span class="block type-meta num">{{ queue.length }} {{ plural(queue.length, 'вопрос', 'вопроса', 'вопросов') }}</span>
             </span>
-            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ money(r.amount) }}</span>
           </button>
           <div v-else class="relative flex w-full items-center gap-2.5 border-t border-line py-3 text-left first:border-t-0" :data-row="r.categoryId">
             <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: r.color }" aria-hidden="true">{{ letter(r) }}</span>
             <span class="min-w-0 flex-1">
               <button type="button" class="row-open block w-full truncate text-left text-[15.5px] font-semibold text-ink" @click="sectionFor = r.categoryId">{{ r.name }}</button>
             </span>
-            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ plain(r.amount) }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink" data-amount>{{ money(r.amount) }}</span>
           </div>
         </template>
       </Card>

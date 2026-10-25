@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { SPEND_LAST, earlierLabel, type HabitImage, type ImageAction, type SectionMonth, type SpendCompareRow } from '@/lib/finance'
 import { RK_SPEND_GROUPS } from '@/lib/statements/dictionary'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import type { PersonId } from '@/types/finance'
 import Hint from '@/components/kit/Hint.vue'
@@ -92,13 +92,13 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
       <template v-if="!opsOnly">
         <div class="mt-1 flex flex-col gap-0.5 text-[14px] text-ink-2 num">
           <span v-if="row.share" data-cat-share>{{ row.share }} % дохода</span>
-          <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${plain(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
+          <span data-cat-usual>{{ row.usual !== null ? `обычно у вас ${money(row.usual)}` : 'обычно — когда будет 2 месяца выписок' }}</span>
           <!-- Выписок нет — план уже крупно («150 000 ₸ план»), второй раз строкой его не пишем (`/ux` «Разбор» 3). -->
-          <span v-if="row.amount !== null || row.plan === null" data-cat-plan>{{ row.plan !== null ? `план ${plain(row.plan)}` : 'плана нет' }}</span>
+          <span v-if="row.amount !== null || row.plan === null" data-cat-plan>{{ row.plan !== null ? `план ${money(row.plan)}` : 'плана нет' }}</span>
         </div>
         <div v-if="adviceLine || imageInAdvice" class="mt-3 rounded-[14px] bg-surface-2 px-3 py-[9px]" data-cat-advice-box>
           <p v-if="adviceLine && row.advice" class="text-[14px] font-semibold text-ink num" data-cat-advice>
-            до плана: +{{ plain(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
+            до плана: +{{ money(row.advice.amount) }} в мечту{{ row.advice.goalName ? ` «${row.advice.goalName}»` : '' }}<template v-if="row.advice.days"> · <span class="whitespace-nowrap">на {{ earlierLabel(row.advice.days) }} раньше</span></template>
           </p>
           <HabitImageRow v-if="image && imageInAdvice" :class="{ 'mt-2': adviceLine }" :short="adviceLine" :image="image" :label="imageLabel" @act="$emit('image', image.action!)" />
         </div>
@@ -116,7 +116,7 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
         <div class="mt-1.5 flex flex-col border-t border-line">
           <div v-for="p in plans" :key="p.by" class="flex items-center gap-2 border-b border-line py-2" :data-cat-person="p.by">
             <span class="min-w-0 flex-1 truncate text-[15px] text-ink">{{ p.name }}</span>
-            <span class="text-[15px] font-semibold text-ink num">{{ p.amount > 0 ? plain(p.amount) : '—' }}</span>
+            <span class="text-[15px] font-semibold text-ink num">{{ p.amount > 0 ? money(p.amount) : '—' }}</span>
             <Button v-if="canEdit" variant="ghost" size="sm" data-cat-edit @click="$emit('edit', p.by, p.amount)">Изменить</Button>
           </div>
         </div>

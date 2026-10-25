@@ -200,8 +200,7 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     const html = text(await screen(A.pinia, Money, '/money'))
     expect(html).toContain('Netflix')
     expect(html).toContain('10-го · 15 $')
-    expect(html).toContain('7 058') // FB-20: суммы списков «Капитала» без «₸»
-    expect(html).not.toContain('7 058 ₸')
+    expect(html).toContain('7 058 ₸') // Р-12 «Figma»: суммы списков «Капитала» с «₸»
     setActivePinia(A.pinia)
     const after = monthDues({ obligations: A.store.obligations, credits: A.store.credits, payments: A.store.payments, book: useFxStore().book }, '2026-10')
     expect(duesTotal(after)).toBe(before)

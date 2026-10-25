@@ -70,7 +70,7 @@ describe('e2e / понятность Блок 2 — плашка Капитал�
     const t = text(m[1])
     const two = t.match(/счета ([\d ]+?) − долги ([\d ]+)/)
     if (two) return { assets: digits(two[1]), debt: digits(two[2]), noDebt: false }
-    const one = t.match(/счета ([\d ]+?) · долгов нет/)
+    const one = t.match(/счета ([\d ]+?) ₸ · долгов нет/)
     if (!one) throw new Error(`формула не разобрана: ${t}`)
     return { assets: digits(one[1]), debt: 0, noDebt: true }
   }

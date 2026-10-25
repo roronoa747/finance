@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { imageLine, imageMath, type HabitImage, type InterestImage } from '@/lib/finance'
 import { dayLabel } from '@/lib/dates'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import Hint from '@/components/kit/Hint.vue'
 import Button from '@/components/ui/Button.vue'
 
@@ -42,7 +42,7 @@ const parts = computed(() => {
 })
 const math = computed(() => imageMath(props.image))
 /** «✓ 7 000 в мечту» — перенос сделан. */
-const moved = computed(() => ('habit' in props.image && props.image.moved ? `✓ ${plain(props.image.moved)} в мечту` : null))
+const moved = computed(() => ('habit' in props.image && props.image.moved ? `✓ ${money(props.image.moved)} в мечту` : null))
 /** Дата сверки цены: «17 октября 2026». */
 const checked = computed(() => {
   const d = math.value.checkedAt

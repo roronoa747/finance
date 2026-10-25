@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import Card from '@/components/kit/Card.vue'
 import Hint from '@/components/kit/Hint.vue'
@@ -56,10 +56,10 @@ watch(
     >
       <button type="button" class="row-open flex min-w-0 flex-1 flex-col gap-px text-left" @click="router.push(`/month?month=${m.key}`)">
         <span class="text-[15px] font-semibold text-ink">{{ title(m.key) }}</span>
-        <span class="type-meta num" data-left>осталось {{ plain(m.left) }}</span>
+        <span class="type-meta num" data-left>осталось {{ money(m.left) }}</span>
       </button>
       <span v-if="m.put > 0" class="flex shrink-0 items-center gap-1">
-        <span class="text-[15px] font-semibold num text-ok" data-put>+{{ plain(m.put) }}</span>
+        <span class="text-[15px] font-semibold num text-ok" data-put>+{{ money(m.put) }}</span>
         <span v-if="m.key === firstPut" class="relative z-10"><Hint label="Зелёным">Сколько отложили за месяц</Hint></span>
       </span>
       <PhCaretRight :size="14" class="shrink-0 text-ink-3" />

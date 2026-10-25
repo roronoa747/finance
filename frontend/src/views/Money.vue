@@ -22,7 +22,7 @@ import HistoryMonths from '@/components/money/HistoryMonths.vue'
  * формула «счета − долги» (понятность Р-2, эталон `capital-stats.html`); вся плашка — кнопка, по нажатию на месте
  * раскрывается статистика месяца (`CapitalStats`, Р-3), при каждом заходе закрыта (сложное скрыто, правило 12). Ниже
  * «Счета» с «Цели · N» (Р-109), «Кредиты» и «Платежи» справочником (без отметок месяца, подписки — одной строкой); у каждой
- * строки слот значка слева, суммы одной колонкой без «₸». Зарплат месяца здесь больше нет (были для справки, Р-108) — они в
+ * строки слот значка слева, суммы одной колонкой с «₸» (Р-12 бэклога «Figma»). Зарплат месяца здесь больше нет (были для справки, Р-108) — они в
  * «Месяце», тот же лист;
  * Долги — по макету Блока 16 (`DebtsWidget`, Р-110); История — месяцами, лента — свёрнутой «Все записи»
  * (`HistoryMonths`, Р-111). Плана месяца, «Подробнее», «До зарплаты» и виджетов «Траты» здесь нет: месяц живёт в
@@ -40,7 +40,7 @@ const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredit
 // Формула под суммой: «Счета» (счета и цели вне счетов, Р-109) и долги — те же функции, что у списков «Капитала».
 const assets = computed(() => amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total)
 const debt = computed(() => openDebt(finance.credits))
-const formula = computed(() => (debt.value > 0 ? `счета ${plain(assets.value)} − долги ${plain(debt.value)}` : `счета ${plain(assets.value)} · долгов нет`))
+const formula = computed(() => (debt.value > 0 ? `счета ${plain(assets.value)} − долги ${money(debt.value)}` : `счета ${money(assets.value)} · долгов нет`))
 
 /** Статистика раскрыта; локально — при заходе на экран всегда закрыто. */
 const statsOpen = ref(false)

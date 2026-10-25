@@ -153,7 +153,7 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     const bars = all('[data-trend-bars] em').map(txt)
     expect(bars[bars.length - 1]).toBe(`${Math.round(w.total / 1000)}к`)
     expect(all('[data-week-list] [data-row]').map((el) => [el.dataset.row, txt(el.querySelector('[data-amount]'))])).toEqual(
-      w.rows.map((r) => [r.categoryId, norm(plain(r.amount))]),
+      w.rows.map((r) => [r.categoryId, norm(money(r.amount))]),
     )
     expect(w.rows.map((r) => r.categoryId)).toEqual(['sc_food', 'sc_fun', 'sc_transport', 'sc_cafe'])
     // Стрелок к прошлой неделе у разделов нет (Р-116) — «↓ N к прошлой» в листе раздела (тест листа ниже).
@@ -198,7 +198,10 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(txt(document.body)).not.toContain('вне плана')
     // Полоса плана недели (Р-31): (100 000 + 11 000 + 40 000) × 7 / 30 = 35 233; потрачено 26 000 → осталось 9 233; 26 000 / 35 233 = 74 %.
     expect(w).toMatchObject({ plan: 35_233, rest: 9_233 })
-    expect(txt(q('[data-week-plan] [data-week-rest]'))).toBe(norm(`осталось ${plain(9_233)} / ${plain(35_233)}`))
+    expect(txt(q('[data-week-plan] [data-week-rest]'))).toBe(norm(`осталось ${plain(9_233)} / ${money(35_233)}`))
+    // Р-12 «Figma» (гард FG-06): у составной строки валюта одна, в конце; у каждой строки раздела — «₸».
+    expect(txt(q('[data-week-rest]')).match(/₸/g)).toHaveLength(1)
+    for (const el of all('[data-week-list] [data-row] [data-amount]')) expect(txt(el)).toMatch(/\d\s₸$/)
     expect(q('[data-week-plan] i')!.className).toContain('bg-brand')
     expect(q('[data-week-plan] i')!.getAttribute('style')).toContain('width: 74%')
   })
@@ -211,7 +214,7 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     finance.householdDoc.spendTotals = [...periodsOf(mineOps).flatMap(({ kind, period }) => spendTotals(mineOps, 'a', kind, period, '')), ...TOTALS.filter((t) => t.by === 'b')]
     await flush()
     expect(weekOf(finance)).toMatchObject({ total: 46_000, rest: -10_767 })
-    expect(txt(q('[data-week-rest]'))).toBe(norm(`сверх плана ${plain(10_767)} / ${plain(35_233)}`))
+    expect(txt(q('[data-week-rest]'))).toBe(norm(`сверх плана ${plain(10_767)} / ${money(35_233)}`))
     expect(q('[data-week-rest]')!.className).toContain('text-warn')
     expect(q('[data-week-plan] i')!.className).toContain('bg-warn')
     expect(q('[data-week-plan] i')!.getAttribute('style')).toContain('width: 100%')
@@ -233,7 +236,7 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(txt(q('[role="dialog"] [data-section-meta]'))).toContain(norm(`на сентябрь осталось ${plain(50_000)} из ${plain(100_000)}`))
     await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
     // План той же недели — тот же сентябрьский: 35 233, потрачено 25 000 → осталось 10 233.
-    expect(txt(q('[data-week-rest]'))).toBe(norm(`осталось ${plain(10_233)} / ${plain(35_233)}`))
+    expect(txt(q('[data-week-rest]'))).toBe(norm(`осталось ${plain(10_233)} / ${money(35_233)}`))
     expect(forward().disabled).toBe(false)
     await press(back()) // W37 — трат нет
     await press(back()) // W36 — самая ранняя со своими тратами (3 сентября)
@@ -253,7 +256,7 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(q('[data-week-tiles]')).toBeNull()
     expect(all('[data-week-list] [data-row]').map((el) => el.dataset.row)).toEqual(['sc_food', 'sc_fun', 'sc_transport', 'sc_cafe'])
     expect(q('[data-week-list] [data-row="sc_food"] [data-rest]')).toBeNull()
-    expect(txt(q('[data-week-rest]'))).toBe(norm(`осталось ${plain(9_233)} / ${plain(35_233)}`))
+    expect(txt(q('[data-week-rest]'))).toBe(norm(`осталось ${plain(9_233)} / ${money(35_233)}`))
   })
 
   it('нажатие раздела — лист: сумма, к прошлой, остаток, топ продавцов, операции по дням и «Ещё N»', async () => {
@@ -265,11 +268,11 @@ describe('B2C-95: «План · Неделя» — мои траты', () => {
     expect(txt(sheet.querySelector('[data-section-total]'))).toBe(norm(money(12_000)))
     const meta = txt(sheet.querySelector('[data-section-meta]'))
     expect(meta).toContain('21–27 сентября')
-    expect(meta).toContain(norm(`↓ ${plain(8_000)} к прошлой`))
-    expect(meta).toContain(norm(`на сентябрь осталось ${plain(weekOf(finance).rows[0]!.rest!)} из ${plain(100_000)}`))
+    expect(meta).toContain(norm(`↓ ${money(8_000)} к прошлой`))
+    expect(meta).toContain(norm(`на сентябрь осталось ${plain(weekOf(finance).rows[0]!.rest!)} из ${money(100_000)}`))
     // Топ: Magnum 4 000 + 3 000 + 500 = 7 500 (3 раза), Small 3 500 (2 раза), Базар 1 000.
     expect(d.tops).toEqual([{ name: 'Magnum', count: 3, amount: 7_500 }, { name: 'Small', count: 2, amount: 3_500 }, { name: 'Базар', count: 1, amount: 1_000 }])
-    expect(txt(sheet.querySelector('[data-section-tops]'))).toBe(norm(`Magnum3 раза · ${plain(7_500)}Small2 раза · ${plain(3_500)}Базар1 раз · ${plain(1_000)}`))
+    expect(txt(sheet.querySelector('[data-section-tops]'))).toBe(norm(`Magnum3 раза · ${money(7_500)}Small2 раза · ${money(3_500)}Базар1 раз · ${money(1_000)}`))
     // Операции — первые пять по дням, шестая — за «Ещё 1 · 4 000 ₸».
     const ops = txt(sheet.querySelector('[data-section-ops]'))
     expect(ops).toContain('24 сентября, чт')
@@ -388,7 +391,7 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     expect(txt(q('[data-toast]'))).toBe('Загружено 3 операцииОтменить')
     // 8 своих + 3 из выписки — в ленте сразу; «Не разобрано» — 4 000 строкой, а «Разобрать» — после отправки (Р-97).
     expect(txt(q('[data-week-feed]'))).toBe('Траты недели · 11')
-    expect(txt(row('_unknown')!.querySelector('[data-amount]'))).toBe(norm(plain(4_000)))
+    expect(txt(row('_unknown')!.querySelector('[data-amount]'))).toBe(norm(money(4_000)))
     expect(q('[data-bang]')).toBeNull()
     // Критик: трата выписки, что ждёт тост, в ленте нажимается — лист «куда отнести?» ищет её среди показанных (`shown`).
     await press(q('[data-week-feed]'))
@@ -410,7 +413,7 @@ describe('B2C-96: загрузка «сразу готово» и вопросы
     // Тост и «сразу готово»: +5 000 кафе, своя ✓, брендовой кнопки больше нет — без сводки и «Отправить».
     expect(txt(q('[data-toast]'))).toBe('Загружено 2 операцииОтменить')
     expect(txt(q('[data-week-total]'))).toBe(norm(money(31_000)))
-    expect(txt(row('sc_cafe')!.querySelector('[data-amount]'))).toBe(norm(plain(5_000)))
+    expect(txt(row('sc_cafe')!.querySelector('[data-amount]'))).toBe(norm(money(5_000)))
     expect(q('[data-my-uploads]')!.dataset.uploaded).toBe('true')
     expect(q('[data-upload]')!.dataset.upload).toBe('quiet')
     expect(all('button').filter((b) => b.className.includes('bg-brand '))).toHaveLength(0)
@@ -648,7 +651,7 @@ describe('WK-02: «Не разобрано» и «Разобрать» — то�
     // W39: строка «Не разобрано» — 2 500, один вопрос (пачка этой недели); сумма недели 26 000 + 2 500.
     expect(txt(q('[data-week-total]'))).toBe(norm(money(weekOf(finance).total)))
     expect(weekOf(finance).total).toBe(28_500)
-    expect(txt(unknownRow().querySelector('[data-amount]'))).toBe(norm(plain(2_500)))
+    expect(txt(unknownRow().querySelector('[data-amount]'))).toBe(norm(money(2_500)))
     expect(txt(unknownRow())).toContain('1 вопрос')
     await press(unknownRow())
     let sheet = txt(q('[role="dialog"]'))
@@ -661,7 +664,7 @@ describe('WK-02: «Не разобрано» и «Разобрать» — то�
     // ‹ W38: своя строка «Не разобрано» — 6 000, вопрос — про ИП СТАРЫЙ.
     await press(q('button[aria-label="Прошлая неделя"]'))
     expect(txt(q('[data-week-label]'))).toBe('14–20 сентября')
-    expect(txt(unknownRow().querySelector('[data-amount]'))).toBe(norm(plain(6_000)))
+    expect(txt(unknownRow().querySelector('[data-amount]'))).toBe(norm(money(6_000)))
     expect(txt(unknownRow())).toContain('1 вопрос')
     await press(unknownRow())
     sheet = txt(q('[role="dialog"]'))

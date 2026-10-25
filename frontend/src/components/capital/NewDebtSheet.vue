@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
-import { plain, parseMoney, ratePct } from '@/lib/money'
+import { money, plain, parseMoney, ratePct } from '@/lib/money'
 import { installmentMonths, rateFromSchedule, scheduleMismatch } from '@/lib/finance'
 import { plural } from '@/lib/utils'
 
@@ -195,7 +195,7 @@ function createDebt() {
 
       <div v-if="mismatch" class="mb-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-3">
         <p class="text-[12.5px] leading-relaxed text-ink-2">
-          {{ termMonths }} {{ plural(termMonths, 'платёж', 'платежа', 'платежей') }} по {{ plain(paymentVal) }} — это
+          {{ termMonths }} {{ plural(termMonths, 'платёж', 'платежа', 'платежей') }} по {{ money(paymentVal) }} — это
           {{ plain(mismatch.paid) }} ₸, а остаток вы указали {{ plain(leftPrincipal) }} ₸.{{
             mismatch.gap > 0
               ? ` Не хватает ${plain(mismatch.gap)} ₸: похоже, платежей ${mismatch.suggest}, а не ${termMonths}.`

@@ -168,7 +168,7 @@ function onClosed() {
 }
 const freedMeta = computed(() => {
   const f = extras.value.freed
-  return f ? `С ${monthFrom(f.record.period, false)} свободно +${plain(f.add)} в месяц` : ''
+  return f ? `С ${monthFrom(f.record.period, false)} свободно +${money(f.add)} в месяц` : ''
 })
 
 const spentFact = computed(() => spendFact(plan.value.spend))
@@ -615,7 +615,7 @@ function statusOf(q: PlanQueueItem): { text: string; warn?: boolean } | null {
     case 'noMonthly':
       return { text: 'взнос не задан' }
     case 'short':
-      return { text: `не хватает ${plain(st.amount)}`, warn: true }
+      return { text: `не хватает ${money(st.amount)}`, warn: true }
     case 'shortAll':
       return { text: 'в этом месяце не хватает', warn: true }
   }
@@ -776,7 +776,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span v-if="s.key === 'spend' && planFact" class="relative z-10 shrink-0" @click.stop>
               <Button size="xs" data-plan-fact @click="planFactOpen = true">Поставить план</Button>
             </span>
-            <span class="font-num text-[16px] font-bold num text-ink">{{ plain(s.total) }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink">{{ money(s.total) }}</span>
             <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="opened === s.key && 'rotate-90'" />
           </div>
 
@@ -814,7 +814,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                     </span>
                   </span>
                   <span class="font-num text-[15px] font-bold num whitespace-nowrap" :class="grouped.subs.allPaid ? 'font-semibold text-ink-2' : 'text-ink'">
-                    <span v-if="grouped.subs.allPaid" class="font-extrabold text-ok" data-subs-done>✓ </span>{{ plain(grouped.subs.total) }}
+                    <span v-if="grouped.subs.allPaid" class="font-extrabold text-ok" data-subs-done>✓ </span>{{ money(grouped.subs.total) }}
                   </span>
                   <PhCaretRight :size="15" class="shrink-0 text-ink-3 transition-transform" :class="subsOpen && 'rotate-90'" />
                 </button>
@@ -860,7 +860,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                   <span class="block truncate text-[15px] font-semibold text-ink">{{ f.name }}</span>
                   <span class="block text-[12.5px] text-ink-2 num">≈ {{ f.day }}-го</span>
                 </span>
-                <span class="font-num text-[15px] font-semibold num text-ink">{{ plain(f.amount) }}</span>
+                <span class="font-num text-[15px] font-semibold num text-ink">{{ money(f.amount) }}</span>
                 <Button variant="secondary" size="xs" class="shrink-0" :data-found-pay="f.opId" @click="payOp = f.opId">В платежи</Button>
               </div>
             </div>
@@ -876,8 +876,8 @@ function addFund(kind: 'reserve' | 'cushion') {
               <span class="flex w-full items-center justify-between gap-2 text-[15px]">
                 <span class="min-w-0 truncate text-ink">{{ l.name }}</span>
                 <span class="whitespace-nowrap num" data-person-amount>
-                  <template v-if="l.fact !== null"><b class="font-semibold text-ink">{{ plain(l.fact) }}</b><span v-if="l.plan" class="text-ink-2"> / {{ plain(l.plan) }}</span></template>
-                  <span v-else class="text-ink-2">план {{ plain(l.plan) }}</span>
+                  <template v-if="l.fact !== null"><b class="font-semibold text-ink">{{ l.plan ? plain(l.fact) : money(l.fact) }}</b><span v-if="l.plan" class="text-ink-2"> / {{ money(l.plan) }}</span></template>
+                  <span v-else class="text-ink-2">план {{ money(l.plan) }}</span>
                 </span>
               </span>
               <span v-if="l.plan" class="block h-[3px] w-full overflow-hidden rounded-pill bg-track">
@@ -903,8 +903,8 @@ function addFund(kind: 'reserve' | 'cushion') {
                   <AdviceMark :n="ai.markFor('cat', r.categoryId)" />
                 </span>
                 <span :id="`${uid}-s-${r.categoryId}`" class="whitespace-nowrap num" data-spend-amount>
-                  <b v-if="r.amount !== null" class="font-semibold text-ink">{{ plain(r.amount) }}</b>
-                  <span v-else class="text-ink-2">план {{ plain(r.plan ?? 0) }}</span>
+                  <b v-if="r.amount !== null" class="font-semibold text-ink">{{ money(r.amount) }}</b>
+                  <span v-else class="text-ink-2">план {{ money(r.plan ?? 0) }}</span>
                 </span>
               </span>
               <span v-if="r.plan" class="block h-[5px] w-full overflow-hidden rounded-pill bg-track">
@@ -921,7 +921,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               @click="unknownOpen = true"
             >
               <span>Не разобрано</span>
-              <span class="whitespace-nowrap num">{{ plain(compare.unknown) }}</span>
+              <span class="whitespace-nowrap num">{{ money(compare.unknown) }}</span>
             </button>
             <!-- «Разовые» (FB-07): так же тихо, но с листом своих разовых -->
             <button
@@ -932,7 +932,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               @click="oneOffOpen = true"
             >
               <span>Разовые</span>
-              <span class="whitespace-nowrap num">{{ plain(compare.oneOff) }}</span>
+              <span class="whitespace-nowrap num">{{ money(compare.oneOff) }}</span>
             </button>
             <!-- «Платежи без отметки» (Х-6): как «Не разобрано» — строки разделов платежей без отметки, лист с «В платежи» -->
             <button
@@ -944,7 +944,7 @@ function addFund(kind: 'reserve' | 'cushion') {
               @click="unmarkedOpen = true"
             >
               <span>Платежи без отметки</span>
-              <span class="whitespace-nowrap num">{{ plain(compare.unmarkedPayments) }}</span>
+              <span class="whitespace-nowrap num">{{ money(compare.unmarkedPayments) }}</span>
             </button>
             <button
               v-if="canEdit"
@@ -1022,7 +1022,7 @@ function addFund(kind: 'reserve' | 'cushion') {
                       :class="putById.get(id)?.done || queueById.get(id)!.paused ? 'font-semibold text-ink-2' : 'font-bold text-ink'"
                       data-given
                     >
-                      <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ plain(queueById.get(id)!.given) }}
+                      <span v-if="putById.get(id)?.done" class="font-extrabold text-ok" data-put-done>✓ </span>{{ money(queueById.get(id)!.given) }}
                     </span>
                     <span v-if="canEdit" data-no-drag class="relative z-10 shrink-0" @click.stop>
                       <Toggle
@@ -1161,7 +1161,7 @@ function addFund(kind: 'reserve' | 'cushion') {
             <Button v-if="putSheet.undo > 0" variant="ghost" size="md" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
           </template>
           <template v-else>
-            <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ plain(putSheet.put) }}</p>
+            <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ money(putSheet.put) }}</p>
             <Button class="w-full" data-put-one @click="onPut(putSheet)">Отложил{{ putSheet.put > 0 ? ` · ${money(putSheet.left)}` : '' }}</Button>
           </template>
           <Button variant="ghost" size="md" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
@@ -1273,7 +1273,7 @@ function addFund(kind: 'reserve' | 'cushion') {
           <div v-for="r in planFactRows" :key="r.categoryId" class="flex items-center gap-2.5 border-t border-line py-2.5 first:border-t-0" :data-plan-fact-row="r.categoryId">
             <span class="grid size-8 shrink-0 place-items-center rounded-[10px] text-[13px] font-bold text-on-photo" :style="{ background: spendColorOf(r.categoryId) }" aria-hidden="true">{{ r.name.slice(0, 1).toUpperCase() }}</span>
             <span class="min-w-0 flex-1 truncate text-[15.5px] font-semibold text-ink">{{ r.name }}</span>
-            <span class="font-num text-[16px] font-bold num text-ink">{{ plain(r.amount) }}</span>
+            <span class="font-num text-[16px] font-bold num text-ink">{{ money(r.amount) }}</span>
           </div>
           <button
             v-if="!planFactAll && planFact.rows.length > PLAN_FACT_TOP"
@@ -1283,11 +1283,11 @@ function addFund(kind: 'reserve' | 'cushion') {
             @click="planFactAll = true"
           >
             <span>ещё {{ planFact.rows.length - PLAN_FACT_TOP }} {{ plural(planFact.rows.length - PLAN_FACT_TOP, 'раздел', 'раздела', 'разделов') }}</span>
-            <span>{{ plain(planFact.rows.slice(PLAN_FACT_TOP).reduce((s, r) => s + r.amount, 0)) }}</span>
+            <span>{{ money(planFact.rows.slice(PLAN_FACT_TOP).reduce((s, r) => s + r.amount, 0)) }}</span>
           </button>
           <div class="flex items-center justify-between gap-2 border-t border-line pt-3 text-[13px] text-ink-2 num">
             <span>обычно в месяц</span>
-            <b class="font-num text-[16px] font-bold text-ink">{{ plain(planFact.total) }}</b>
+            <b class="font-num text-[16px] font-bold text-ink">{{ money(planFact.total) }}</b>
           </div>
         </div>
         <Button size="lg" class="mt-4 w-full" data-plan-fact-save @click="savePlanFact">Поставить</Button>

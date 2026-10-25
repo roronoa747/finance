@@ -270,9 +270,9 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(lists).toContain('data-payment-slot')
     expect(lists).toContain('data-add-account')
     expect(lists).toContain('data-add-payment')
-    // «₸» — только у суммы капитала.
+    // «₸» — у каждой суммы, и в списках тоже (Р-12 бэклога «Figma»; было «только у капитала», Р-34).
     expect(text(between(html, 'data-worth', '</span>'))).toContain('₸')
-    expect(text(lists)).not.toContain('₸')
+    expect(text(lists)).toContain('₸')
     // Viewer — без «Добавить».
     const V = await phone(server, st, pv, 'a', 'viewer', 'u-v')
     const viewer = await money$(V)

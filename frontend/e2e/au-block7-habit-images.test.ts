@@ -191,7 +191,7 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     expect(on(B).householdDoc.planShifts ?? []).toEqual([])
     // Перенос запомнен (Х-9): у телефона 2 вместо кнопки «✓ 16 000 в мечту» — второй раз план не урежется.
     const afterB = await month(B, 'sc_cafe')
-    expect(part(afterB, 'data-image-moved')).toMatch(/^✓\s16\s000\sв\sмечту$/)
+    expect(part(afterB, 'data-image-moved')).toMatch(/^✓\s16\s000\s₸\sв\sмечту$/)
     expect(afterB).not.toContain('data-image-act')
 
     at('2026-10-05T05:01:00Z')
@@ -230,7 +230,7 @@ describe('e2e / ИИ-польза Блок 7 — образы трат', () => {
     expect(moved).toContain('data-cat-advice-box')
     // Имя мечты — в строке образа (не `short`); `part` режет по первому вложенному `</span>`, поэтому — текст листа.
     expect(text(moved)).toContain(`${sp(imageLine(lunch))} `)
-    expect(part(moved, 'data-image-moved')).toMatch(/^✓\s16\s000\sв\sмечту$/)
+    expect(part(moved, 'data-image-moved')).toMatch(/^✓\s16\s000\s₸\sв\sмечту$/)
     expect(moved).not.toContain('data-image-act')
 
     at('2026-10-05T05:01:00Z')

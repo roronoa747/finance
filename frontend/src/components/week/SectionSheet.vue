@@ -54,16 +54,16 @@ const payFor = ref<string | null>(null)
       <p class="mb-3 type-meta num" data-section-meta>
         {{ weekRangeLabel(weekRange(week)) }}
         <template v-if="row.prev > 0 && row.delta !== 0">
-          · <span :class="row.delta > 0 ? 'text-warn' : 'text-ok'">{{ row.delta > 0 ? '↑' : '↓' }} {{ plain(Math.abs(row.delta)) }}</span> к прошлой
+          · <span :class="row.delta > 0 ? 'text-warn' : 'text-ok'">{{ row.delta > 0 ? '↑' : '↓' }} {{ money(Math.abs(row.delta)) }}</span> к прошлой
         </template>
         <!-- «из N» переехало сюда со строки «Недели» (Р-116). -->
-        <template v-if="row.rest !== null"> · на {{ monthName }} {{ row.rest >= 0 ? 'осталось' : 'сверх плана' }} {{ plain(Math.abs(row.rest)) }}<template v-if="row.rest >= 0 && row.plan !== null"> из {{ plain(row.plan) }}</template></template>
+        <template v-if="row.rest !== null"> · на {{ monthName }} {{ row.rest >= 0 ? 'осталось' : 'сверх плана' }} <template v-if="row.rest >= 0 && row.plan !== null">{{ plain(row.rest) }} из {{ money(row.plan) }}</template><template v-else>{{ money(Math.abs(row.rest)) }}</template></template>
       </p>
 
       <div v-if="detail.tops.length" class="mb-1 flex flex-col gap-1.5 rounded-[14px] bg-surface-2 px-3 py-2.5" data-section-tops>
         <div v-for="t in detail.tops" :key="t.name" class="flex justify-between gap-2 text-[13.5px] text-ink">
           <span class="min-w-0 truncate">{{ t.name }}</span>
-          <span class="shrink-0 text-ink-2 num">{{ t.count }} {{ plural(t.count, 'раз', 'раза', 'раз') }} · {{ plain(t.amount) }}</span>
+          <span class="shrink-0 text-ink-2 num">{{ t.count }} {{ plural(t.count, 'раз', 'раза', 'раз') }} · {{ money(t.amount) }}</span>
         </div>
       </div>
 
@@ -82,8 +82,8 @@ const payFor = ref<string | null>(null)
               @click="o.hand ? emit('edit', o.id) : emit('open', o.id)"
             >
               <span class="min-w-0 flex-1 truncate">{{ o.name }}<span v-if="o.oneOff" class="ml-1.5 type-meta" data-oneoff>разовая</span></span>
-              <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ plain(o.refund) }}</span>
-              <b class="font-num font-semibold num">{{ plain(o.amount) }}</b>
+              <span v-if="o.refund" class="shrink-0 type-meta num" data-refund>вернули {{ money(o.refund) }}</span>
+              <b class="font-num font-semibold num">{{ money(o.amount) }}</b>
               <PhPencilSimple v-if="o.hand" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
               <PhCaretRight v-else-if="!o.recurring" :size="14" class="shrink-0 text-ink-3" aria-hidden="true" />
             </button>

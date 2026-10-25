@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useId } from 'vue'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import type { PlanDue } from '@/lib/finance'
 import Avatar from '@/components/kit/Avatar.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
@@ -67,7 +67,7 @@ const uid = useId()
     </button>
     <Avatar v-else-if="due.payer" :id="due.payer" :name="payerName" :size="24" />
     <span :id="`${uid}-a`" class="font-num text-[15px] font-bold num whitespace-nowrap" :class="due.paid ? 'font-semibold text-ink-2' : 'text-ink'">
-      <span v-if="due.paid" class="font-extrabold text-ok">✓ </span>{{ plain(due.amount) }}
+      <span v-if="due.paid" class="font-extrabold text-ok">✓ </span>{{ money(due.amount) }}
     </span>
   </div>
 </template>

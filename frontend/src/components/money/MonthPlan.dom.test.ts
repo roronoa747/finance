@@ -173,7 +173,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(allCollapsed()).toBe(true)
     expect(q('[data-due]')).toBeNull()
     expect(q('[data-queue]')).toBeNull()
-    expect(txt(section('dues'))).toContain(norm(plain(plan.duesTotal)))
+    expect(txt(section('dues'))).toContain(norm(money(plan.duesTotal)))
+    // Р-12 «Figma» (гард FG-06): сумма каждой строки раздела — с «₸».
+    for (const el of all('[data-section] > span.font-num')) expect(txt(el)).toMatch(/\d\s₸$/)
     expect(txt(q('[data-section="dues"] [data-section-meta]'))).toBe(`${plan.dues.filter((d) => d.paid).length} из ${plan.dues.length} оплачено`)
     expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe('по плану')
     expect(txt(q('[data-section="queue"] [data-section-meta]'))).toBe(`0 из ${putsOf(finance).length} отложено`)
@@ -223,7 +225,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-queue-list] img')).toBeNull()
     expect(txt(document.body)).not.toContain('Желания')
     expect(txt(document.body)).not.toContain('главная')
-    for (const x of plan.queue) expect(txt(q(`[data-queue="${x.id}"] [data-given]`))).toBe(norm(plain(x.given)))
+    for (const x of plan.queue) expect(txt(q(`[data-queue="${x.id}"] [data-given]`))).toBe(norm(money(x.given)))
     // Цвет круга «Платежи» — открывает платежи, цели сворачиваются; остальные цвета бледнеют.
     q<SVGElement>('[data-part="dues"]')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush()
@@ -238,7 +240,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     await press(section('spend'))
     // AU-02: раскрытая «Траты» — разделы семьи (выписок нет — план), а не блоки участников.
     expect(q('[data-spend]')).toBeNull()
-    expect(txt(q('[data-spend-row="sc_taxi"] [data-spend-amount]'))).toBe(norm(`план ${plain(80_000)}`))
+    expect(txt(q('[data-spend-row="sc_taxi"] [data-spend-amount]'))).toBe(norm(`план ${money(80_000)}`))
   })
 
   it('выключил цель — остаток сменился сразу, она «на паузе», деньги ушли ниже', async () => {
@@ -252,8 +254,8 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(after.rest).not.toBe(before.rest)
     expect(txt(q('[data-rest]'))).toBe(norm(money(after.rest)))
     expect(txt(q('[data-queue="trip"] [data-status]'))).toBe('на паузе')
-    expect(txt(q('[data-queue="trip"] [data-given]'))).toBe('0')
-    expect(txt(q('[data-queue="cushion"] [data-given]'))).toBe(norm(plain(after.queue.find((x) => x.id === 'cushion')!.given)))
+    expect(txt(q('[data-queue="trip"] [data-given]'))).toBe(norm(money(0)))
+    expect(txt(q('[data-queue="cushion"] [data-given]'))).toBe(norm(money(after.queue.find((x) => x.id === 'cushion')!.given)))
     // Лист «Отложил» выключатель не открывает.
     expect(q('[role="dialog"]')).toBeNull()
   })
@@ -504,7 +506,7 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(q('[data-section="dues"] [data-section-call]')).not.toBeNull()
     await press(section('dues'))
     const tip = q('[data-freed]')!
-    expect(txt(tip)).toContain(norm(`С ноября свободно +${plain(70_000)} в месяц`))
+    expect(txt(tip)).toContain(norm(`С ноября свободно +${money(70_000)} в месяц`))
     expect(q('[data-due-id="obligation:rent"]')!.nextElementSibling).toBe(tip)
     const button = tip.querySelector('button')!
     expect(txt(button)).toBe('К «Отпуск»')
@@ -1054,7 +1056,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     await press(section('spend'))
     expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe'])
     expect(all('[data-spend-dot]').map((el) => el.closest<HTMLElement>('[data-spend-row]')!.dataset.spendRow)).toEqual(['sc_cafe'])
-    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(plain(50_000)))
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(money(50_000)))
     // «Не разобрано» в сентябре нет — тихой строки нет.
     expect(q('[data-spend-unknown]')).toBeNull()
   })
@@ -1068,7 +1070,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
       expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food', 'sc_cafe', 'sc_people'])
       expect(q('[data-spend-row="sc_people"] [data-spend-dot]')).toBeNull()
       const unknown = q('[data-spend-unknown]')!
-      expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(plain(12_000))])
+      expect([...unknown.children].map((el) => txt(el))).toEqual(['Не разобрано', norm(money(12_000))])
       // FB-17: строка нажимается — лист «Не разобрано» (тест ниже); точки у неё нет.
       expect(unknown.tagName).toBe('BUTTON')
       expect(unknown.querySelector('[data-spend-dot]')).toBeNull()
@@ -1113,9 +1115,9 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     await press(q('[data-spend-row="sc_cafe"]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Кафе и рестораны')
     expect(txt(q('[role="dialog"] [data-cat-amount]'))).toBe(norm(money(50_000)))
-    expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${plain(30_000)}`))
-    expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${plain(20_000)}`))
-    expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${plain(10_000)} в мечту «${cafe.advice!.goalName}»`))
+    expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${money(30_000)}`))
+    expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${money(20_000)}`))
+    expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${money(10_000)} в мечту «${cafe.advice!.goalName}»`))
     expect(q('[role="dialog"] [data-cat-rk]')).not.toBeNull()
     await press(q('[role="dialog"] [data-cat-person="a"] [data-cat-edit]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Сколько в месяц')
@@ -1127,7 +1129,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(q('[data-section="spend"] [data-section-call]')).toBeNull()
     await press(section('spend'))
     expect(q('[data-spend-dot]')).toBeNull()
-    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(`план ${plain(20_000)}`))
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(`план ${money(20_000)}`))
     // «Продукты» — только план Аруны: у Ильяса без выписок раздела нет.
     expect(q('[data-spend-row="sc_food"]')).toBeNull()
   })
@@ -1166,8 +1168,8 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     await openSpend()
     await press(section('spend'))
     expect(all('[data-spend-person]').map((el) => el.dataset.spendPerson)).toEqual(['a', 'b'])
-    expect(txt(q('[data-spend-person="a"] [data-person-amount]'))).toBe(norm(`${plain(140_000)} / ${plain(20_000)}`))
-    expect(txt(q('[data-spend-person="b"] [data-person-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+    expect(txt(q('[data-spend-person="a"] [data-person-amount]'))).toBe(norm(`${plain(140_000)} / ${money(20_000)}`))
+    expect(txt(q('[data-spend-person="b"] [data-person-amount]'))).toBe(norm(`план ${money(150_000)}`))
     // Строки участников — без кнопок (правило 12).
     expect(q('[data-spend-person] button')).toBeNull()
     expect(q('[data-spend-person]')!.tagName).toBe('DIV')
@@ -1183,7 +1185,7 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     await press(section('spend'))
     expect(all('[data-spend-person]').map((el) => el.dataset.spendPerson)).toEqual(['b', 'a'])
     expect(all('[data-spend-row]').map((el) => el.dataset.spendRow)).toEqual(['sc_food'])
-    expect(txt(q('[data-spend-row="sc_food"] [data-spend-amount]'))).toBe(norm(`план ${plain(150_000)}`))
+    expect(txt(q('[data-spend-row="sc_food"] [data-spend-amount]'))).toBe(norm(`план ${money(150_000)}`))
     expect(q('[data-spend-row="sc_cafe"]')).toBeNull()
     await press(q('[data-spend-row="sc_food"]'))
     expect(txt(q('[role="dialog"] [data-cat-plans-title]'))).toBe('План')
@@ -1340,8 +1342,8 @@ describe('FB-07: «Разовые» на «Месяце» — тихая стр�
   it('разовая: раздел без неё, «Разовые» — она; нажатие → лист с суммой и строкой → лист операции', async () => {
     const finance = await openMonth('member', true)
     expect(finance.householdDoc.spendTotals?.find((t) => t.id === 'a:month:2026-09:sc_cafe')).toMatchObject({ amount: 7_000, oneOff: 4_500 })
-    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(plain(2_500)))
-    expect(txt(q('[data-spend-oneoff]'))).toBe(norm(`Разовые${plain(4_500)}`))
+    expect(txt(q('[data-spend-row="sc_cafe"] [data-spend-amount]'))).toBe(norm(money(2_500)))
+    expect(txt(q('[data-spend-oneoff]'))).toBe(norm(`Разовые${money(4_500)}`))
     await press(q('[data-spend-oneoff]'))
     expect(txt(q('[data-oneoff-amount]'))).toBe(norm(money(4_500)))
     expect(txt(q('[data-cat-ops-title]'))).toBe('Мои операции · 1')
@@ -1428,7 +1430,7 @@ describe('TL-05: «Платежи без отметки» на «Месяце» 
 
   it('строка внизу «Трат»: строки + «Платежи без отметки» = потрачено; лист — строки с «В платежи»; «В платежи» → строка ушла, сумма пересчитана', async () => {
     const finance = await openMonth()
-    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${plain(29_990)}`))
+    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${money(29_990)}`))
     expect(spentRows()).toBe(32_490)
     expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(32_490)}`))
     // Тихая, как «Не разобрано»: не брендовая.
@@ -1450,7 +1452,7 @@ describe('TL-05: «Платежи без отметки» на «Месяце» 
     // Строка ушла из листа, сумма — 25 000; «Подписки» отмечены — в «потрачено» их больше нет, строки снова сходятся.
     expect(txt(q('[data-unmarked-amount]'))).toBe(norm(money(25_000)))
     expect(all('[role="dialog"] [data-cat-op]').map((el) => el.dataset.catOp)).toEqual(['ut9'])
-    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${plain(25_000)}`))
+    expect(txt(q('[data-spend-unmarked]'))).toBe(norm(`Платежи без отметки${money(25_000)}`))
     expect(spentRows()).toBe(27_500)
     expect(txt(q('[data-section="spend"] [data-section-meta]'))).toBe(norm(`потрачено ${plain(27_500)}`))
   })

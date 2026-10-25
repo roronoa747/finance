@@ -7,7 +7,7 @@ import { routes } from '@/router'
 import { apiClient } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import type { Account, AccountSpent } from '@/types/finance'
 import Week from './Week.vue'
 
@@ -68,7 +68,7 @@ const txt = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ')
 describe('F2-08: «На карте» на «Неделе»', () => {
   it('есть счёт для трат — строка с тающим остатком; нажатие — лист счёта', async () => {
     const { router } = await openWeek([card()])
-    expect(txt(line()).replace(/\s/g, ' ')).toBe(`На карте ${plain(245_000)}`.replace(/\s/g, ' '))
+    expect(txt(line()).replace(/\s/g, ' ')).toBe(`На карте ${money(245_000)}`.replace(/\s/g, ' '))
     line()!.click()
     for (let i = 0; i < 4; i++) await nextTick()
     await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/money?account=k1'))

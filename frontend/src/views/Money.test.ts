@@ -302,7 +302,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(raw).toMatch(new RegExp(`data-worth[^>]*>${money(worth)}<`))
       expect(raw).not.toContain('Что такое капитал')
       const assets = amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total
-      expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${plain(openDebt(store.credits))}<`)
+      expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${money(openDebt(store.credits))}<`)
       // Статистика (Р-3) закрыта: плашка — кнопка с aria-expanded, в SSR закрытого экрана строк долей нет; раскрытая — есть.
       expect(raw).toMatch(/data-capital[^>]*aria-expanded="false"|aria-expanded="false"[^>]*data-capital/)
       for (const attr of ['data-stat-row', 'data-growth', 'data-debt-free', 'data-capital-stats-body']) expect(raw).not.toContain(attr)
@@ -313,11 +313,11 @@ describe('views/Money.vue — финансовые показатели (рас�
       // «Кредиты» — без итога у заголовка (он — «долги» в подсказке у капитала): 969 500 + 300 000 + 240 000 = 1 509 500.
       const credits = text(raw.slice(raw.indexOf('data-credits'), raw.indexOf('data-payments')))
       expect(openDebt(store.credits)).toBe(1_509_500)
-      expect(html).not.toContain(money(1_509_500))
+      expect(credits).not.toContain(money(1_509_500)) // итога кредитов в списке нет; «долги» — в формуле
       // Строка кредита — вид и остаток; ставки и срока нет (Р-116) — они в листе кредита.
-      expect(credits).toContain(`Кредит кредит ${plain(969_500)}`) // FB-20: суммы списков без «₸»
+      expect(credits).toContain(`Кредит кредит ${money(969_500)}`) // Р-12 «Figma»: суммы списков с «₸»
       expect(credits).not.toMatch(/33 %|до [а-я]+ 20\d\d/)
-      expect(credits).toContain(`Рассрочка рассрочка ${plain(240_000)}`)
+      expect(credits).toContain(`Рассрочка рассрочка ${money(240_000)}`)
       const loanSheet = await renderScreen(Money, '/money?credit=loan')
       expect(loanSheet).toContain(`value="${rateField(store.credits.find((c) => c.id === 'loan')!.annualRate)}"`)
       // Рассрочка 0 %: 240 000 / 20 000 = 12 платежей — в листе: срок строкой, число — в раскрытом «Графике платежей» (Б17).
@@ -834,7 +834,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       ]
       const dues = [screenMixin({ opened: 'dues' })]
       let plan = await renderScreen(Month, '/month', undefined, dues)
-      expect(plan).toContain(`С октября свободно +${plain(1_000)} в месяц`)
+      expect(plan).toContain(`С октября свободно +${money(1_000)} в месяц`)
       expect(plan).toMatch(/>\s*К «Отпуск»\s*</)
       expect(plan).not.toContain(plain(12_000))
       // Зарплата не ждёт «Отложил» — кнопка подсказки брендовая, и она на экране одна (правило 12).
@@ -852,7 +852,7 @@ describe('views/Money.vue — финансовые показатели (рас�
       ]
       store.householdDoc.accounts = [{ id: 'card', name: 'Kaspi Gold', note: '', kind: 'card', amount: 100_000, updatedAt: '' }]
       plan = await renderScreen(Month, '/month', undefined, dues)
-      expect(plan).toContain(`С октября свободно +${plain(80_000)} в месяц`)
+      expect(plan).toContain(`С октября свободно +${money(80_000)} в месяц`)
       expect(await renderScreen(Money, '/money')).not.toContain('не хватает')
     } finally {
       vi.useRealTimers()

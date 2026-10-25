@@ -111,7 +111,7 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(q('[data-credits-total]')).toBeNull()
     expect(num(q('[data-goals-total]'))).toBe(goals.total)
     expect(q('button[aria-label="Что такое капитал"]')).toBeNull()
-    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(plain(1_540_000))}`)
+    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(money(1_540_000))}`)
     expect(2_250_000 - 1_540_000).toBe(num(q('[data-worth]')))
     expect(num(q('[data-worth]'))).toBe(710_000)
     // Брендовой кнопки на экране нет (правило 12).
@@ -135,7 +135,7 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/trip'), { timeout: 5000 })
   })
 
-  it('FB-20 (Р-34, Figma 19:2): сегмент как «Неделя | Месяц»; у каждой строки слот 32 слева; суммы без «₸» одной колонкой; «Добавить» — строка со слотом, одна черта', async () => {
+  it('FB-20 (Р-34, Figma 19:2): сегмент как «Неделя | Месяц»; у каждой строки слот 32 слева; суммы с «₸» одной колонкой (Р-12 «Figma»); «Добавить» — строка со слотом, одна черта', async () => {
     const finance = await open()
     // Сегмент — группа кнопок без рамок-коробок, активный по адресу.
     const seg = q('[role="group"][aria-label="Деньги"]')!
@@ -153,10 +153,10 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     const rows = [...all('[data-payments] [data-payment]'), q('[data-goals] > button')!, ...all('[data-credits] button'), q('[data-add-account]')!, q('[data-add-payment]')!]
     for (const r of rows) expect(r.querySelector('.size-8'), r.textContent ?? '').not.toBeNull()
     expect(q('[data-payments] [data-payment] [data-payment-slot]')).not.toBeNull()
-    // Суммы списков — без «₸»; «₸» — только у капитала.
+    // Суммы списков — с «₸» (Р-12 бэклога «Figma»; было «без ₸», Р-34).
     const sums = all('[data-payments] .num, [data-credits] .num, [data-goals-total]').map(txt)
     expect(sums.length).toBeGreaterThan(3)
-    for (const s of sums) expect(s).not.toContain('₸')
+    for (const s of sums) expect(s).toMatch(/\d\s₸$/)
     expect(txt(q('[data-worth]'))).toContain('₸')
     // «Добавить» — строка списка (без обёртки с лишней чертой), у viewer её нет.
     expect(q('[data-add-payment]')!.closest('.border-b')).not.toBeNull()
@@ -231,7 +231,7 @@ describe('B2C-101: «Долги» по макету', () => {
     expect(all('[data-debt]').map((r) => r.dataset.debt)).toEqual(o.rows.map((r) => r.creditId))
     const cc = q('[data-debt="cc"]')!
     // В строке — платёж в месяц; ставка (40 %) — в листе кредита (Р-116).
-    expect(txt(cc)).toContain(`${plain(25_000).replace(/\s+/g, ' ')} в месяц`)
+    expect(txt(cc)).toContain(`${money(25_000).replace(/\s+/g, ' ')} в месяц`)
     expect(txt(cc)).not.toContain('40 %')
     expect(cc.querySelector<HTMLElement>('[data-debt-bar] span')!.style.width).toBe('5%')
     expect(q('[data-debt="loan"] [data-debt-bar]')).toBeNull()
@@ -409,7 +409,7 @@ describe('ML-17: «Долги» — долг человеку, «Людям · N
     expect(o.total).toBe(2_040_000)
     expect(num(q('[data-debts-total]'))).toBe(2_040_000)
     const bro = q('[data-debt="bro"]')!
-    expect(txt(bro)).toBe(`Брату${norm(money(500_000))}${norm(plain(50_000))} в месяц`)
+    expect(txt(bro)).toBe(`Брату${norm(money(500_000))}${norm(money(50_000))} в месяц`)
     expect(giveIn('bro')).not.toBeNull()
     expect(giveIn('loan')).toBeNull()
     // Людям: 100 000 + 45 000 = 145 000 в месяц; свёрнута.

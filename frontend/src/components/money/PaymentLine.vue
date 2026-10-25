@@ -2,7 +2,7 @@
 import { computed, useId } from 'vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
-import { money, moneyIn, plain } from '@/lib/money'
+import { money, moneyIn } from '@/lib/money'
 import { MONTHS_PRE } from '@/lib/dates'
 import { amountAt, amountIn, creditDueAmount, nextChange, payerOf } from '@/lib/finance'
 import type { Credit, Obligation } from '@/types/finance'
@@ -13,7 +13,7 @@ import AdviceMark from '@/components/ai/AdviceMark.vue'
  * Строка справочника «Платежи» в «Деньгах» (Р-91, Р-94): кредит или обязательство — название, «<день>-го», кружок
  * плательщика и сумма; у валютного — сумма в валюте (Р-75), «≈ оценка», «сумма изменится», годовое — «раз в год · в
  * <месяце>». В «Капитале» (`slot`, Блок 5 «Фидбек», Р-34, Figma `19:73`) кружок плательщика стоит в слоте 32 слева, а
- * сумма — одной колонкой без «₸»; в «Долгах» и листе группы — как было. Отметок месяца и «Оплатил» здесь нет: ✓ ставит
+ * сумма — одной колонкой, с «₸» (Р-12 бэклога «Figma»); в «Долгах» и листе группы — как было. Отметок месяца и «Оплатил» здесь нет: ✓ ставит
  * выписка или нажатие платежа в «Месяце». Нажатие — лист платежа (изменить).
  */
 const props = defineProps<{
@@ -24,7 +24,7 @@ const props = defineProps<{
   /** Номер совета ИИ про этот платёж (`ai.markFor`, бэклог «Разбор», RZ-10) — ✦ после названия; нет — ничего. */
   mark?: number | null
   /**
-   * Вид «Капитала» (Р-34): слот плательщика 32 слева, сумма без «₸». Без него — как было («Долги», лист группы): кружок
+   * Вид «Капитала» (Р-34): слот плательщика 32 слева, сумма с «₸» (Р-12 «Figma»). Без него — как было («Долги», лист группы): кружок
    * плательщика 24 у суммы, сумма с «₸».
    */
   slot?: boolean
@@ -75,7 +75,7 @@ const uid = useId()
         </span>
         <span v-if="note" :id="`${uid}-n`" class="block text-[12.5px] text-ink-2">{{ note }}</span>
       </span>
-      <span v-if="slot" :id="`${uid}-a`" class="block shrink-0 text-[14.5px] font-semibold num text-ink">{{ plain(amount) }}</span>
+      <span v-if="slot" :id="`${uid}-a`" class="block shrink-0 text-[14.5px] font-semibold num text-ink">{{ money(amount) }}</span>
       <span v-else class="flex shrink-0 items-center gap-2">
         <Avatar v-if="payer" :id="payer" :name="payerName" :size="24" />
         <span :id="`${uid}-a`" class="block text-[14.5px] font-semibold num text-ink">{{ money(amount) }}</span>

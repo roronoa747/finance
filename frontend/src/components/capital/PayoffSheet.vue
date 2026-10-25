@@ -209,8 +209,8 @@ function prepayUndoNote(p: Payment): string {
             <b class="ml-auto num text-ink">{{ money(p.amount) }}</b>
           </div>
           <div class="text-ink-2 num">
-            в долг {{ plain(paymentSplit(p, activePayoffCredit, 0).body) }} · банку
-            {{ plain(paymentSplit(p, activePayoffCredit, 0).interest) }}
+            в долг {{ money(paymentSplit(p, activePayoffCredit, 0).body) }} · банку
+            {{ money(paymentSplit(p, activePayoffCredit, 0).interest) }}
           </div>
           <div class="flex items-baseline gap-2">
             <span v-if="(p.saved ?? 0) > 0" class="text-brand">не отдадим банку <span class="num">{{ money(p.saved ?? 0) }}</span></span>
@@ -249,7 +249,7 @@ function prepayUndoNote(p: Payment): string {
             :key="item.extra"
             class="flex items-center justify-between border-b border-line/60 py-1"
           >
-            <span class="num text-ink-2">+{{ plain(item.extra) }}</span>
+            <span class="num text-ink-2">+{{ money(item.extra) }}</span>
             <span class="num text-ink-2">−{{ item.monthsSaved }} мес.</span>
             <span class="num font-medium text-brand">{{ money(item.saved) }}</span>
           </div>

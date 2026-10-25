@@ -338,11 +338,11 @@ describe('PV-03: форма долга — ставка из срока и ра�
   })
 
   it('«Знаю срок», 1 000 000 / 10 000 / 12 — предупреждение с числами и «Записать всё равно можно»', async () => {
-    const { plain } = await import('@/lib/money')
+    const { money, plain } = await import('@/lib/money')
     const html = await render({ debtMode: 'term', debtPrincipal: '1 000 000', debtPayment: '10 000', debtTerm: '12' })
     expect(html).toContain('Сколько платежей осталось')
     expect(html).toContain(
-      `12 платежей по ${plain(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸. Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`,
+      `12 платежей по ${money(10_000)} — это ${plain(120_000)} ₸, а остаток вы указали ${plain(1_000_000)} ₸. Не хватает ${plain(880_000)} ₸: похоже, платежей 100, а не 12.`,
     )
     expect(html).toContain(
       'Записать всё равно можно: сохраним как рассрочку без процентов, а ставку поправите, когда сверитесь с банком.',
@@ -607,7 +607,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).not.toContain('½')
     expect(html).toMatch(/>\s*Отдача падает\s*</)
     // Добавка в строке лесенки — без «₸», как React `+{plain(r.extra)}` (критик).
-    expect(html).toContain(`+${plain(29_000)}</span>`)
+    expect(html).toContain(`+${money(29_000)}</span>`)
     expect(html).toContain(
       `Половину переплаты снимает уже добавка в ${money(half)} — дальше каждая следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.`,
     )
@@ -1126,7 +1126,7 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
 
   // Снят в B2C-45: доли платежа в строке не печатаются (B2C-42); в листе — «модалка: За всё время» ниже и PaidRow.test PV-13.
   it('модалка: «За всё время» = creditTotals (с досрочкой); у досрочки — в долг и банку', async () => {
-    const { money, plain } = await import('@/lib/money')
+    const { money } = await import('@/lib/money')
     const { creditTotals } = await import('@/lib/finance')
     const store = await family()
     expect(await render('/capital?credit=loan')).not.toContain('За всё время')
@@ -1143,7 +1143,7 @@ describe('PV-13: разбивка и график в Капитале (SSR)', ()
     expect(hint).toContain(`За всё время: в долг ${money(130_500)}, банку ${money(27_500)} (2 платежа)`)
 
     const payoff = await render('/capital?payoff=loan')
-    expect(payoff).toContain(`в долг ${plain(100_000)} · банку 0`)
+    expect(payoff).toContain(`в долг ${money(100_000)} · банку ${money(0)}`)
   })
 
   it('график платежей: свёрнут; развёрнутый — оплаченный месяц помечен, Σ «в долг» неоплаченных = остаток', async () => {

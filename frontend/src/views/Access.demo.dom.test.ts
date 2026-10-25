@@ -272,7 +272,7 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
     expect(debt).toBeGreaterThan(0)
     expect(assets - debt).toBe(worth)
     const raw = await renderScreen(Money, '/money')
-    expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${plain(debt)}<`)
+    expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${money(debt)}<`)
     expect(raw).not.toContain('Что такое капитал')
     expect(raw).not.toContain('data-stat-row')
     const opened = text(await renderScreen(Money, '/money', undefined, [screenMixin({ statsOpen: true })]))

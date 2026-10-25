@@ -5,7 +5,7 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { createMemoryHistory, RouterView, type Router } from 'vue-router'
 import { createAppRouter } from '../src/router'
 import { apiClient, type ApiClient } from '../src/api/client'
-import { plain } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import { todayIso } from '../src/lib/dates'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
@@ -208,7 +208,7 @@ describe('e2e / приёмка Фидбек Блок 5 — нажатиями в
     await press(button('Неделя'), 'сегмент «Неделя»')
     expect(router.currentRoute.value.path).toBe('/week')
     expect(q('[data-week-plan]')).not.toBeNull()
-    expect(txt(q('[data-week-rest]'))).toBe(`осталось ${sp(plain(33_419))} / ${sp(plain(33_419))}`)
+    expect(txt(q('[data-week-rest]'))).toBe(`осталось ${sp(plain(33_419))} / ${sp(money(33_419))}`)
     expect(q('[data-plan-dot]')).toBeNull()
 
     // «+ Зарплата» → лист оклада → 300 000 → «Остаётся» числом, равным monthPlan().rest.

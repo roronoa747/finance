@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { useAiStore } from '@/stores/ai'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { monthBy, monthKey } from '@/lib/dates'
 import { debtsOverview, firstDebt, interestImage, isPeoplePayment, lastAccountFor, liveObligations, monthlyAmount, paidFor, peopleGroup, type DebtRow } from '@/lib/finance'
 import type { PersonId } from '@/types/finance'
@@ -55,8 +55,8 @@ const pastPlans = computed(() => financeStore.plans.some((p) => !p.deletedAt && 
 
 // Строка — платёж в месяц; ставка и месяц закрытия — в листе кредита (Р-116). Без ставки и «не закрывается» — предупреждения, остаются.
 function rowMeta(r: DebtRow): string {
-  if (r.person) return `${plain(r.payment)} в месяц`
-  return [`${plain(r.payment)} в месяц`, r.rateUnknown ? 'ставку уточните' : '', r.endMonth ? '' : 'не закрывается'].filter(Boolean).join(' · ')
+  if (r.person) return `${money(r.payment)} в месяц`
+  return [`${money(r.payment)} в месяц`, r.rateUnknown ? 'ставку уточните' : '', r.endMonth ? '' : 'не закрывается'].filter(Boolean).join(' · ')
 }
 
 const creditId = ref<string | null>(null)

@@ -53,10 +53,10 @@ describe('SpendCategorySheet', () => {
     expect(txt(q('[role="dialog"] h3'))).toBe('Кафе и рестораны')
     expect(txt(q('[data-cat-amount]'))).toBe(norm(money(60_000)))
     expect(txt(q('[data-cat-share]'))).toBe('5 % дохода')
-    expect(txt(q('[data-cat-usual]'))).toBe(norm(`обычно у вас ${plain(30_000)}`))
-    expect(txt(q('[data-cat-plan]'))).toBe(norm(`план ${plain(20_000)}`))
+    expect(txt(q('[data-cat-usual]'))).toBe(norm(`обычно у вас ${money(30_000)}`))
+    expect(txt(q('[data-cat-plan]'))).toBe(norm(`план ${money(20_000)}`))
     // Х-2: «в мечту «<мечта>»» без склонения имени; справка называет группу (у кафе и транспорта одна доля).
-    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в мечту «Отпуск» · на 3 недели раньше`))
+    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${money(10_000)} в мечту «Отпуск» · на 3 недели раньше`))
     expect(txt(q('[data-cat-rk]'))).toContain('услуги: у вас 45 % · в Алматы 24 %')
     // Hint — сначала открыть.
     q('[data-cat-rk] button')!.click()
@@ -85,7 +85,7 @@ describe('SpendCategorySheet', () => {
     await mount({}, { image: { ...IMG, action: null, moved: 20_000 } })
     expect(q('[data-cat-advice]')).toBeNull()
     expect(txt(q('[data-cat-advice-box] [data-image-line]'))).toBe('Доставка за год — 24 % мечты «Отпуск»')
-    expect(txt(q('[data-cat-advice-box] [data-image-moved]'))).toBe(norm(`✓ ${plain(20_000)} в мечту`))
+    expect(txt(q('[data-cat-advice-box] [data-image-moved]'))).toBe(norm(`✓ ${money(20_000)} в мечту`))
     expect(q('[data-image-act]')).toBeNull()
     app!.unmount()
     document.body.innerHTML = ''
@@ -105,7 +105,7 @@ describe('SpendCategorySheet', () => {
 
   it('без мечты — «в мечту» без дней; выписок нет — план крупно с подписью', async () => {
     await mount({ amount: null, share: null, advice: { amount: 10_000, goalId: null, goalName: null, days: null } })
-    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${plain(10_000)} в мечту`))
+    expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${money(10_000)} в мечту`))
     expect(txt(q('[data-cat-amount]'))).toBe(norm(`${money(20_000)}план`))
     // План уже крупно — второй раз строкой его нет (`/ux` Блока 3: шумная цифра); «обычно» — на месте.
     expect(q('[data-cat-plan]')).toBeNull()

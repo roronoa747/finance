@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { ApiClient } from '../src/api/client'
-import { plain } from '../src/lib/money'
+import { money, plain } from '../src/lib/money'
 import { assignIds } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import { useAuthStore } from '../src/stores/auth'
@@ -133,12 +133,12 @@ describe('e2e / приёмка Фидбек Блок 3 — общий разде
     const b = await month(B)
     // Порядок — по факту: «Продукты» с нулём ниже транспорта.
     expect(rows(b)).toEqual(['sc_transport', 'sc_food'])
-    expect(amountOf(b, 'sc_food')).toBe(sp(plain(0)))
-    expect(amountOf(a, 'sc_food')).toBe(sp(plain(30_000)))
+    expect(amountOf(b, 'sc_food')).toBe(sp(money(0)))
+    expect(amountOf(a, 'sc_food')).toBe(sp(money(30_000)))
     // Одна и та же строка участника — одна и та же цифра у обоих.
-    expect(line(a, 'a')).toBe(sp(`Ильяс ${plain(30_000)} / ${plain(190_000)}`))
+    expect(line(a, 'a')).toBe(sp(`Ильяс ${plain(30_000)} / ${money(190_000)}`))
     expect(line(b, 'a')).toBe(line(a, 'a'))
-    expect(line(a, 'b')).toBe(sp(`Аруна ${plain(6_000)} / ${plain(125_000)}`))
+    expect(line(a, 'b')).toBe(sp(`Аруна ${plain(6_000)} / ${money(125_000)}`))
     expect(line(b, 'b')).toBe(line(a, 'b'))
 
     // Лист «Продуктов» партнёра: свой план, ни цифры, ни операции Ильяса.
@@ -158,8 +158,8 @@ describe('e2e / приёмка Фидбек Блок 3 — общий разде
     await pull(A)
 
     const a = await month(A)
-    expect(line(a, 'b')).toBe(sp(`Аруна ${plain(6_000)} / ${plain(105_000)}`))
-    expect(line(a, 'a')).toBe(sp(`Ильяс ${plain(30_000)} / ${plain(190_000)}`))
+    expect(line(a, 'b')).toBe(sp(`Аруна ${plain(6_000)} / ${money(105_000)}`))
+    expect(line(a, 'a')).toBe(sp(`Ильяс ${plain(30_000)} / ${money(190_000)}`))
     const food = await month(A, '/month?cat=sc_food')
     expect(planPeople(food)).toEqual(['a'])
     expect(sheet(food)).toContain(sp(plain(150_000)))
