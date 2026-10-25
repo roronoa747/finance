@@ -81,7 +81,7 @@ const incomes = computed(() => (op.value && refundMode.value === 'pick' ? store.
 // Возврат магазина (кандидат-`purchase`, TL-07) — «Возврат»: имя продавца уже в заголовке листа, а «MAGNUM · 2 400» читалось
 // второй покупкой, Freedom «Возврат. Отмена покупки …» не влезал в строку (`/ux` Блока 3).
 const incomeLabel = (i: Operation) =>
-  `${i.counterparty ? `От ${i.counterparty}` : i.kind === 'purchase' ? 'Возврат' : shortMerchant(i.merchant)} · ${dayLabel(Number(i.date.slice(8, 10)), i.date.slice(0, 7))} · ${plain(i.amount)}`
+  `${i.counterparty ? `От ${i.counterparty}` : i.kind === 'purchase' ? 'Возврат' : shortMerchant(i.merchant)} · ${dayLabel(Number(i.date.slice(8, 10)), i.date.slice(0, 7))} · ${money(i.amount)}`
 function toggleRefund() {
   const o = op.value
   if (!o) return
@@ -113,7 +113,7 @@ function saveCash() {
   <Sheet :open="!!op" :z="z" :title="title" @close="close">
     <template v-if="op">
       <p class="mb-3 type-meta num" data-op-meta>
-        {{ dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7)) }} · {{ money(Math.abs(op.amount)) }}<template v-if="op.refund"> · вернули {{ plain(op.refund.amount) }}</template>
+        {{ dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7)) }} · {{ money(Math.abs(op.amount)) }}<template v-if="op.refund"> · вернули {{ money(op.refund.amount) }}</template>
       </p>
       <Input v-model="memo" placeholder="Что это было" maxlength="60" autocapitalize="sentences" class="mb-3 w-full" data-op-memo @blur="saveMemo" />
       <!-- Подпись «Раздел» — как в форме «Трата»: без неё чипы читались как теги; что ответ уводит все траты продавца — в «?». -->

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { PhDeviceMobile } from '@phosphor-icons/vue'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 
 /**
  * Строка операции `.op` (DESIGN.md §5): квадрат 36 с буквой на цвете раздела, продавец,
@@ -54,7 +54,7 @@ const emit = defineEmits<{ (e: 'click'): void }>()
       </span>
       <span class="flex items-center gap-1.5 text-[12px] text-ink-2">
         <i class="size-[7px] shrink-0 rounded-full" :style="{ background: category?.color ?? 'var(--s-unknown)' }" aria-hidden="true" />
-        <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template><template v-if="refund"> · <span data-refund>вернули {{ plain(refund) }}</span></template></span>
+        <span class="truncate">{{ category?.name ?? 'Не разобрано' }}<template v-if="date"> · {{ date }}</template><template v-if="refund"> · <span data-refund>вернули {{ money(refund) }}</span></template></span>
       </span>
     </span>
     <span v-if="muted" class="money whitespace-nowrap text-ink-2">{{ money(Math.abs(amount)) }}</span>

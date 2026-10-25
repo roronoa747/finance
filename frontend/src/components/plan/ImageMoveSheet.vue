@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { imageMoveFrom, liveSpendCategories, shiftSpan, spendCategoryName, type ImageAction } from '@/lib/finance'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -35,8 +35,8 @@ const view = computed(() => {
   const who = from.value ? finance.people.find((p) => p.id === from.value!.by)?.name ?? '' : ''
   return {
     amount: money(a.amount),
-    fromText: from.value ? `−${plain(a.amount)} из плана «${cat}» · ${who}` : `плана «${cat}» нет — только взнос`,
-    toText: `+${plain(a.amount)} в мечту «${a.goalName}»`,
+    fromText: from.value ? `−${money(a.amount)} из плана «${cat}» · ${who}` : `плана «${cat}» нет — только взнос`,
+    toText: `+${money(a.amount)} в мечту «${a.goalName}»`,
     effect: a.days ? `на ${shiftSpan(a.days)} раньше` : '',
   }
 })
@@ -58,7 +58,7 @@ function confirm() {
   const moveId = finance.addImageMove({ categoryId: a.categoryId, goalId: goal.id, amount: a.amount })
   undoTo.value = { plan, goalId: goal.id, monthly, moveId }
   emit('close')
-  flash(a.days ? `«${a.goalName}» ближе на ${shiftSpan(a.days)}` : `+${plain(a.amount)} в «${a.goalName}» каждый месяц`)
+  flash(a.days ? `«${a.goalName}» ближе на ${shiftSpan(a.days)}` : `+${money(a.amount)} в «${a.goalName}» каждый месяц`)
 }
 
 function undo() {

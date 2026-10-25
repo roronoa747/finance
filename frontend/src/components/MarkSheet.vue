@@ -228,7 +228,7 @@ const unmarkNote = computed(() => {
         </div>
         <div v-if="split" class="flex justify-between gap-3">
           <span class="text-ink-2">Из них</span>
-          <b class="num text-ink">в долг {{ plain(split.body) }} · банку {{ plain(split.interest) }}</b>
+          <b class="num text-ink">в долг {{ money(split.body) }} · банку {{ money(split.interest) }}</b>
         </div>
         <div class="flex justify-between gap-3">
           <span class="text-ink-2">Счёт</span>

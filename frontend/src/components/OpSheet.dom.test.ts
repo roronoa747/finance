@@ -102,9 +102,9 @@ describe('FB-04: лист операции (OpSheet)', () => {
     await open('s1')
     await press(dialog()!.querySelector('[data-op-refund]'))
     const income = dialog()!.querySelector<HTMLElement>('[data-op-income="i1"]')
-    expect(txt(income)).toBe('От Дана К. · 12 октября · 30 000')
+    expect(txt(income)).toBe('От Дана К. · 12 октября · 30 000 ₸') // Р-12 «Figma»: «₸» у суммы
     await press(income)
-    expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('9 октября · 30 000 ₸ · вернули 30 000')
+    expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('9 октября · 30 000 ₸ · вернули 30 000 ₸') // Р-12 «Figma»
     expect(dialog()!.querySelector('[data-op-refund]')!.getAttribute('aria-pressed')).toBe('true')
     expect(store.all.find((o) => o.id === 'i1')?.internal).toBe(true)
     expect(store.pendingMatches.some((c) => c.opId === 'i1')).toBe(false)
@@ -126,9 +126,9 @@ describe('FB-04: лист операции (OpSheet)', () => {
     await press(dialog()!.querySelector('[data-op-refund]'))
     const rows = [...dialog()!.querySelectorAll<HTMLElement>('[data-op-income]')].map((el) => el.dataset.opIncome)
     expect(rows).toEqual(['r1', 'i2'])
-    expect(txt(dialog()!.querySelector('[data-op-income="r1"]'))).toBe('Возврат · 15 октября · 2 000')
+    expect(txt(dialog()!.querySelector('[data-op-income="r1"]'))).toBe('Возврат · 15 октября · 2 000 ₸')
     await press(dialog()!.querySelector<HTMLElement>('[data-op-income="r1"]'))
-    expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('14 октября · 8 000 ₸ · вернули 2 000')
+    expect(txt(dialog()!.querySelector('[data-op-meta]'))).toBe('14 октября · 8 000 ₸ · вернули 2 000 ₸')
     expect(store.all.find((o) => o.id === 'r1')?.internal).toBe(true)
   })
 

@@ -124,7 +124,7 @@ describe('приёмка / Хвосты Блок 3 — «Мне вернули»
     await press(q('[role="dialog"] [data-op-refund]'))
     const rows = all('[role="dialog"] [data-op-income]')
     expect(rows.map((el) => el.dataset.opIncome)).toEqual([back.id])
-    expect(txt(rows[0]!)).toBe('Возврат · 12 октября · 3 000')
+    expect(txt(rows[0]!)).toBe('Возврат · 12 октября · 3 000 ₸') // Р-12 «Figma»: «₸» у суммы
     await press(rows[0]!)
     expect(txt(q('[role="dialog"] [data-op-meta]'))).toContain('вернули 3 000')
     expect(ops.all.find((o) => o.id === back.id)?.internal).toBe(true)

@@ -8,7 +8,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import { DEFAULT_SPEND_CATEGORIES } from '@/lib/statements/dictionary'
 import type { WhereRow } from '@/lib/finance'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import WhereBars from './WhereBars.vue'
 
 /**
@@ -63,7 +63,7 @@ describe('RZ-08: WhereBars — «Куда ушло» картинкой', () => 
     expect([...document.querySelectorAll('[data-where-row]')].map((el) => el.getAttribute('data-where-row'))).toEqual(['sc_food', 'sc_cafe', 'sc_fun'])
     const food = rowEl('sc_food')
     expect(txt(food.querySelector('[data-where-name]'))).toBe('Продукты')
-    expect(food.querySelector('b')!.textContent).toBe(plain(450_000))
+    expect(food.querySelector('b')!.textContent).toBe(money(450_000)) // Р-12 «Figma»: «₸» у суммы
     // Одна цифра на строку: «обычно» и план — рисками, без чисел.
     expect(txt(food).match(/\d[\d\s ]*/g)).toHaveLength(1)
   })

@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { openPath } from '@/lib/aiFacts'
 import type { WhereRow } from '@/lib/finance'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { useGrow } from '@/lib/motion'
 
 /**
@@ -37,7 +37,7 @@ const legend = computed(() => ({ usual: props.rows.some((r) => r.usualShare !== 
           {{ r.name
           }}<template v-if="r.over"><span class="ml-1.5 inline-block size-2 rounded-full bg-brand align-middle" data-where-dot aria-hidden="true" /><span class="sr-only">, больше обычного</span></template>
         </span>
-        <b class="whitespace-nowrap font-semibold text-ink num">{{ plain(r.amount) }}</b>
+        <b class="whitespace-nowrap font-semibold text-ink num">{{ money(r.amount) }}</b>
       </span>
       <span class="relative block h-[10px] w-full rounded-pill bg-track" aria-hidden="true">
         <i

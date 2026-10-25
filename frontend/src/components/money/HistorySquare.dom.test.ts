@@ -254,7 +254,7 @@ describe('FB-04: лист операции из «Истории»', () => {
     await nextTick()
     expect(ops.all.find((o) => o.id === 's1')?.refund).toEqual({ amount: 30_000, opId: 'i1' })
     expect(document.body.textContent).not.toContain('+30')
-    expect(document.querySelector('[data-refund]')?.textContent?.replace(/\s/g, '')).toBe('вернули30000')
+    expect(document.querySelector('[data-refund]')?.textContent?.replace(/\s/g, '')).toBe('вернули30000₸') // Р-12 «Figma»
   })
 
   it('viewer — строки операций не кнопки', async () => {

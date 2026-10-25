@@ -704,9 +704,9 @@ onUnmounted(() => {
                 <li v-for="s in outcome.sections" :key="s.categoryId" class="flex items-center justify-between gap-3 border-t border-line py-3 text-[15px] first:border-t-0" data-outcome-section>
                   <span class="flex min-w-0 flex-col">
                     <span class="truncate text-ink">{{ s.name }}</span>
-                    <span v-if="s.usual !== null" class="text-[12.5px] text-ink-2 num">обычно {{ plain(s.usual) }}</span>
+                    <span v-if="s.usual !== null" class="text-[12.5px] text-ink-2 num">обычно {{ money(s.usual) }}</span>
                   </span>
-                  <b class="whitespace-nowrap font-semibold text-ink num">{{ plain(s.amount) }}</b>
+                  <b class="whitespace-nowrap font-semibold text-ink num">{{ money(s.amount) }}</b>
                 </li>
                 <li v-if="outcome.dream && dreamLine" class="flex items-center justify-between gap-3 border-t border-line py-3 text-[15px] first:border-t-0" data-outcome-dream>
                   <span class="flex min-w-0 flex-col">

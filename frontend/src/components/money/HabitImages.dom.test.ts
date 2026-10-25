@@ -148,8 +148,9 @@ describe('строка-образ в листе раздела', () => {
     expect(txt(q('[data-image-act]'))).toBe('Перенести в мечту')
     await press(q('[data-image-act]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Перенести в мечту')
-    expect(txt(q('[data-move-from]'))).toBe(norm('−20 000 из плана «Кафе и рестораны» · Ильяс'))
-    expect(txt(q('[data-move-to]'))).toBe(norm('+20 000 в мечту «Отпуск»'))
+    // Р-12 «Figma» (критик Блока 1): «₸» и у сумм в строках листа.
+    expect(txt(q('[data-move-from]'))).toBe(norm('−20 000 ₸ из плана «Кафе и рестораны» · Ильяс'))
+    expect(txt(q('[data-move-to]'))).toBe(norm('+20 000 ₸ в мечту «Отпуск»'))
     await press(q('[data-move-confirm]'))
     const cafeA = () => finance.householdDoc.spendPlans!.find((s) => s.id === 'a:sc_cafe')!.amount
     const trip = () => finance.goals.find((g) => g.id === 'trip')!.monthly
