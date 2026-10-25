@@ -60,6 +60,7 @@ import {
   settlePlans,
   stepDue,
   shiftedBase,
+  spendAccountOf,
   type LumpMode,
   type MonthlyKind,
   type PlanState,
@@ -1423,6 +1424,36 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  /**
+   * Счёт для трат (F2-06, Р-5): `owner` — участник, «оба» или `null` (снять отметку). Кто стал хозяином
+   * здесь, тот снимается с прежнего счёта (там «оба» → остаётся партнёр, свой → `null`) — одной правкой
+   * документа. Только общие счета; якорь сверки не трогается.
+   */
+  function setSpendAccount(accountId: string, owner: PersonId | 'both' | null) {
+    const list = householdDoc.value.accounts || []
+    const target = list.find((x) => x.id === accountId)
+    if (!target || target.spendBy === owner) return
+    const ids = people.value.map((p) => p.id)
+    const moved = owner === 'both' ? ids : owner ? [owner] : []
+    const t = new Date().toISOString()
+    // Прежние счета тех, кто переезжает: до правки — с учётом «единственной карты».
+    const before = new Map(ids.map((p) => [p, spendAccountOf(list, p)?.id]))
+    mutateHouseholdDoc((doc) => {
+      for (const a of doc.accounts || []) {
+        if (a.id === accountId) {
+          Object.assign(a, { spendBy: owner }, amountAnchor(a, {}, t), { updatedAt: t })
+          continue
+        }
+        const owners = ids.filter((p) => before.get(p) === a.id)
+        if (!owners.length) continue
+        const left = owners.filter((p) => !moved.includes(p))
+        if (left.length === owners.length && a.spendBy !== undefined) continue
+        const spendBy = left.length >= 2 ? 'both' : (left[0] ?? null)
+        Object.assign(a, { spendBy }, amountAnchor(a, {}, t), { updatedAt: t })
+      }
+    })
+  }
+
   function setDeposit(id: string, deposit: Partial<NonNullable<Account['deposit']>>) {
     const t = new Date().toISOString()
     const isPriv = ((privateDoc.value.accounts as Account[]) || []).some((x) => x.id === id)
@@ -2733,6 +2764,7 @@ export const useFinanceStore = defineStore('finance', () => {
     updateAccount,
     setAccountAmount,
     shiftAccountAmount,
+    setSpendAccount,
     setDeposit,
     removeAccount,
     setCategoryAmount,

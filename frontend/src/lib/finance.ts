@@ -1610,6 +1610,28 @@ export const liveExchanges = (list: FxExchange[] = []) => list.filter(alive);
 
 const isForeign = (a: Pick<Account, 'currency'>) => !!a.currency && a.currency !== 'KZT';
 
+/** Может ли счёт быть счётом для трат (Р-5): живая тенговая карта или наличные; вклады, конверты, валютные — никогда. */
+const spendable = (a: Account) => alive(a) && (a.kind === 'card' || a.kind === 'cash') && !isForeign(a);
+
+/** Участники, которых покрывает «оба» у счёта для трат. */
+const SPEND_PEOPLE: PersonId[] = ['a', 'b'];
+
+/**
+ * Счёт для трат участника (F2-06, Р-5): явная отметка `spendBy` (он сам или «оба»); нет явных отметок ни у
+ * одного счёта и ровно одна тенговая карта — она, хозяин «оба» (явный `null` её снимает). У человека один
+ * счёт для трат: две отметки после слияния — первая по списку.
+ */
+export function spendAccountOf(accounts: Account[], person: PersonId): Account | null {
+  const list = (accounts || []).filter(spendable);
+  if (list.some((a) => a.spendBy)) return list.find((a) => a.spendBy === person || a.spendBy === 'both') ?? null;
+  const cards = list.filter((a) => a.kind === 'card');
+  return cards.length === 1 && cards[0].spendBy !== null ? cards[0] : null;
+}
+
+/** Кто тратит со счёта (F2-06): участники, чей счёт для трат — он (`spendAccountOf`). */
+export const spendOwners = (account: Pick<Account, 'id'>, accounts: Account[]): PersonId[] =>
+  SPEND_PEOPLE.filter((p) => spendAccountOf(accounts, p)?.id === account.id);
+
 /**
  * Остаток валютного счёта в валюте (Р-73): база ручной сверки (`foreignAmount`) + пришедшие
  * зарплаты в валюте − обмены, всё — после сверки (`amountSetAt`): сверка после обмена его не удваивает.
