@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import { nextTick } from 'vue'
-import type { ApiClient } from '../src/api/client'
+import { apiClient, type ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { useOperationsStore } from '../src/stores/operations'
@@ -273,11 +273,15 @@ describe('e2e / Блок 2 «Figma» — взнос ↔ выписка (F2-Х1)'
     await statement(a, [row('2026-10-17', -have, 'AVIATA')])
     expect(card(a)).toBe(450_000 - have)
     at('2026-10-17T09:00:00Z')
+    // Через час после своего pull наблюдатель счёта сначала тянет свои операции (FG-27) — общим клиентом, ручками A.
+    vi.spyOn(apiClient, 'listOperations').mockImplementation(statementsFor(st, 'u-a', 'a').listOperations as never)
     setActivePinia(a.pinia)
     a.store.undoGoalDone('trip')
     await nextTick()
     expect(a.store.accountShifts.filter((s) => s.kind === 'done')).toEqual([])
-    expect(card(a)).toBe(450_000 - have) // не 450 000: пересчёт будит снятая запись, не ждёт синка
+    // не 450 000: пересчёт будит снятая запись, не ждёт синка документа
+    await vi.waitFor(() => expect(card(a)).toBe(450_000 - have))
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
     await sync(a)
     expect(card(a)).toBe(450_000 - have)
   })

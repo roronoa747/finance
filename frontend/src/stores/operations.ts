@@ -66,6 +66,8 @@ export const PULL_LIMIT = 2000
  * строк безвреден — копия пишется по id.
  */
 export const CURSOR_OVERLAP_MS = 60_000
+/** Свои операции, запрошенные не раньше стольких мс назад, — свежие: сигналы подряд не шлют новый запрос, ждут идущий (FG-27). */
+export const PULL_FRESH_MS = 5_000
 /** Возврат в приложение подтягивает траты с телефона не чаще раза в столько (Р-19). */
 export const PHONE_PULL_MS = 30_000
 
@@ -170,6 +172,8 @@ export const useOperationsStore = defineStore('operations', () => {
   /** В этом запуске пришли свои операции (удачный `pull`) и записи выписок (`loadUploads`) — вход разбора (FB-HF1). */
   let pulledOk = false
   let uploadsOk = false
+  /** Документ будил запись потраченного со счёта до первого удачного `pull` — её пишет этот `pull` (FG-27). */
+  let spentDue = false
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -299,7 +303,7 @@ export const useOperationsStore = defineStore('operations', () => {
     pending.value = []
     demoUploads.value = []
     serverUploads.value = []
-    pulledOk = uploadsOk = false
+    pulledOk = uploadsOk = spentDue = false
     dropHold()
     draft.value = null
     lastAutoMarked.value = 0
@@ -934,6 +938,15 @@ export const useOperationsStore = defineStore('operations', () => {
     return run
   }
 
+  /**
+   * `pull`, если копия не свежая (FG-27): запрошенная меньше `PULL_FRESH_MS` назад — новый запрос не шлётся, ждётся
+   * идущий. Наблюдатель счёта для трат и круг движка зовут разом — один запрос.
+   */
+  function pullFresh(client: ApiClient = apiClient): Promise<unknown> {
+    if (Date.now() - lastPullAt < PULL_FRESH_MS) return pulling
+    return pull(client)
+  }
+
   async function pullOnce(client: ApiClient): Promise<string[]> {
     const got: string[] = []
     if (demo.value || !auth.isMember) return got
@@ -977,6 +990,10 @@ export const useOperationsStore = defineStore('operations', () => {
       if (stale.size) await settleReleased(stale, client)
       await settlePhone(phone, gone, client)
       pulledOk = true
+      if (spentDue) {
+        spentDue = false
+        if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+      }
     } catch (err) {
       lastError.value = err instanceof Error ? err.message : String(err)
     }
@@ -1147,6 +1164,9 @@ export const useOperationsStore = defineStore('operations', () => {
    * запись пересчитывается от нового якоря. Пустая копия (ещё не загружена) не пишет: ноль затёр бы запись второго
    * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`. Новый или снятый сдвиг рукой (FG-15) — тоже,
    * и досрочка с этого счёта (FG-18): выписка могла прийти раньше досрочки; «Снять» — её строка снова трата.
+   * Документ мог прийти фоном на второй свой телефон с несвежей копией операций (FG-27): запись — только после
+   * `pullFresh` (те же операции, что у телефона, грузившего выписку); до первого удачного `pull` в запуске — не пишется,
+   * её пишет этот `pull`. Демо — по локальной копии сразу (сервера нет); viewer не пишет.
    */
   watch(
     () => {
@@ -1156,7 +1176,16 @@ export const useOperationsStore = defineStore('operations', () => {
       return a ? `${a.id}:${a.amountSetAt ?? ''}:${shifts}:${prepaid}` : ''
     },
     () => {
-      if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+      const write = () => {
+        if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+      }
+      if (demo.value) return write()
+      if (!auth.isMember) return
+      if (!pulledOk) {
+        spentDue = true
+        return
+      }
+      void pullFresh().then(() => (pulledOk ? write() : (spentDue = true)))
     },
     { immediate: true },
   )
@@ -1205,6 +1234,7 @@ export const useOperationsStore = defineStore('operations', () => {
     removeHand,
     flush,
     pull,
+    pullFresh,
     pullOnReturn,
     loadUploads,
     loaded,

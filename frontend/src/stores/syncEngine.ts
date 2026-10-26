@@ -124,6 +124,9 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     // Операции выписки, не ушедшие без сети (B2C-07), — тем же кругом.
     const operations = useOperationsStore()
     if (operations.pendingCount) void operations.flush()
+    // Свои операции — тем же кругом (FG-27): документ партнёра будит запись потраченного со счёта, а копия этого
+    // телефона могла отстать от второго своего; запрошенные только что (старт) — не повторяются.
+    if (auth.isMember) void operations.pullFresh()
   }
 
   win.addEventListener('online', sync)
@@ -162,8 +165,8 @@ export function startSyncEngine(win: Window = window, doc: Document = document):
     // (`unsent` → статус 'dirty') — полный синк со слиянием. Операции — тоже: решения «Недели»
     // на новом устройстве готовы сразу, а не после захода на «Неделю».
     else {
-      sync()
       if (auth.isMember) void useOperationsStore().pull()
+      sync()
     }
     rates()
   }

@@ -57,11 +57,44 @@ describe('startSyncEngine — правки партнёра без собств�
     const pull = vi.spyOn(finance, 'pullHousehold').mockResolvedValue(null)
     const sync = vi.spyOn(finance, 'syncHousehold').mockResolvedValue()
     const opsPull = vi.spyOn(useOperationsStore(), 'pull').mockResolvedValue([])
+    const opsFresh = vi.spyOn(useOperationsStore(), 'pullFresh').mockResolvedValue([])
     const loaded = vi.spyOn(useOperationsStore(), 'loaded').mockResolvedValue(true)
     const env = fakeEnv()
     startSyncEngine(env.win, env.doc)
-    return { finance, pull, sync, opsPull, loaded, ...env }
+    return { finance, pull, sync, opsPull, opsFresh, loaded, ...env }
   }
+
+  it('FG-27: круг движка у участника тянет и свои операции (интервал, фокус); старт — один pull; viewer и демо — нет', () => {
+    const { finance, opsPull, opsFresh, win } = setup('real-token')
+    expect(opsPull).toHaveBeenCalledTimes(1)
+    finance.status = 'idle'
+    opsFresh.mockClear()
+    vi.advanceTimersByTime(BACKGROUND_SYNC_MS)
+    expect(opsFresh).toHaveBeenCalledTimes(1)
+    win.dispatchEvent(new Event('focus'))
+    expect(opsFresh).toHaveBeenCalledTimes(2)
+    expect(opsPull).toHaveBeenCalledTimes(1)
+
+    for (const token of ['viewer-token', DEMO_TOKEN]) {
+      setActivePinia(createPinia())
+      resetSyncEngineForTests()
+      storage.clear()
+      if (token === 'viewer-token') {
+        useAuthStore().setAuthData({
+          token,
+          user: { id: 'u3', email: 'v@b.kz', created_at: '2026-09-24T00:00:00Z' },
+          household: { id: 'h1', name: 'Казна', created_by: 'u1', created_at: '2026-09-24T00:00:00Z' },
+          member: { household_id: 'h1', user_id: 'u3', slot: 'c', display_name: 'Гость', role: 'viewer', joined_at: '2026-09-24T00:00:00Z' },
+        })
+      }
+      const other = setup(token === DEMO_TOKEN ? token : undefined)
+      other.finance.status = 'idle'
+      vi.advanceTimersByTime(BACKGROUND_SYNC_MS)
+      other.win.dispatchEvent(new Event('focus'))
+      expect(other.opsFresh).not.toHaveBeenCalled()
+      expect(other.opsPull).not.toHaveBeenCalled()
+    }
+  })
 
   it('B2C-25: старт без неотправленного — только забираем документ и операции (ревизия не растёт)', () => {
     const { pull, sync, opsPull } = setup('real-token')
