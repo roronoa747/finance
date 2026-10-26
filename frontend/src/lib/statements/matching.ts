@@ -190,6 +190,9 @@ export function markedOps(
   return out
 }
 
+/** То, что `shiftedOps` берёт от сдвига: запись `AccountShift` или досрочка со счёта (`prepaidShifts`, FG-18). */
+export type ShiftLike = Pick<AccountShift, 'id' | 'amount' | 'date' | 'by' | 'deletedAt'>
+
 /**
  * Строки выписки, уже вычтенные из счёта сдвигом рукой (FG-15, F2-Х1): взнос в цель с карты, снятие, внеплановый доход,
  * «Сбылось» двигают остаток сами, и тот же перевод в выписке не должен списаться второй раз (`spentSince`). Каждому
@@ -199,9 +202,9 @@ export function markedOps(
  * со счёта: итоги разделов (`SpendTotal`) пару считают — покупка мечты остаётся тратой раздела. `me` null — сдвиги любого
  * телефона (счёт для трат одного хозяина: его выписки — только у него).
  */
-export function shiftedOps(ops: Operation[], shifts: AccountShift[], me: PersonId | null, skip: ReadonlySet<string> = new Set()): Set<string> {
+export function shiftedOps(ops: Operation[], shifts: ShiftLike[], me: PersonId | null, skip: ReadonlySet<string> = new Set()): Set<string> {
   const out = new Set<string>()
-  const fits = (o: Operation, s: AccountShift) =>
+  const fits = (o: Operation, s: ShiftLike) =>
     o.fx ? Math.sign(o.amount) === Math.sign(s.amount) && within(Math.abs(o.amount), Math.abs(s.amount), AMOUNT_TOLERANCE) : o.amount === s.amount
   const mine = shifts
     .filter((s) => !s.deletedAt && (me === null || s.by === me) && s.amount !== 0)
@@ -217,6 +220,17 @@ export function shiftedOps(ops: Operation[], shifts: AccountShift[], me: PersonI
     if (best) out.add(best.id)
   }
   return out
+}
+
+/**
+ * Досрочки со счёта как сдвиги для `shiftedOps` (FG-18, FG-Х5): запись досрочки уже уменьшила остаток (`accountBalance`),
+ * и её строка «−сумма» в выписке не вычитается второй раз. Живые `prepay` этого счёта; `accountId: null` и чужой счёт — нет.
+ * День — по Алматы (`todayIso`), как даты строк выписки и записей сдвига.
+ */
+export function prepaidShifts(payments: Payment[], accountId: string): ShiftLike[] {
+  return payments
+    .filter((p) => !p.deletedAt && p.kind === 'prepay' && p.accountId === accountId && p.amount > 0)
+    .map((p) => ({ id: p.id, amount: -p.amount, date: todayIso(new Date(p.at)), by: p.by }))
 }
 
 function key(c: { kind: string; targetId: string; period: string }) {

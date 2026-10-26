@@ -16,7 +16,7 @@
  */
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { monthIn } from '@/lib/dates'
 import {
   costliestCredits,
@@ -196,7 +196,7 @@ function choose() {
     <div class="mb-3 flex items-center gap-1.5 text-[13px] text-ink-2">
       Одинаковые траты, разный порядок
       <Hint>
-        В обоих сценариях уходит одно и то же: платежи по долгам плюс {{ plain(inputs.saving) }} ₸ в цели.
+        В обоих сценариях уходит одно и то же: платежи по долгам плюс {{ money(inputs.saving) }} в цели.
         Разница только в том, куда идут деньги. «Сначала долги» направляет взносы в самый
         дорогой долг, а закрытый долг освобождает платёж для следующего.
       </Hint>
@@ -272,7 +272,7 @@ function choose() {
             @change="toggleKept(g.id, ($event.target as HTMLInputElement).checked)"
           />
           <span class="min-w-0 flex-1 truncate">{{ g.name }}</span>
-          <span class="shrink-0 text-[12.5px] text-ink-2 num">{{ plain(g.monthly) }}/мес</span>
+          <span class="shrink-0 text-[12.5px] text-ink-2 num">{{ money(g.monthly) }}/мес</span>
         </label>
       </div>
     </div>

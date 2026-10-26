@@ -130,7 +130,7 @@ const column = (title: string, savings: number, debt: number, interest: number, 
     expect(capital).toContain(money(82_593))
     expect(capital).toContain('чистыми через 36 мес. — это деньги, которые не ушли банку')
     expect(capital).toContain('Что не останавливать')
-    expect(capital).toContain(`${plain(150_000)}/мес`)
+    expect(capital).toContain(`${money(150_000)}/мес`)
     // Подушка — месяц обязательных: аренда 220 000 + платежи 141 680 → до тысяч.
     expect(capital).toContain(`Сначала подушка — ${money(362_000)}`)
     expect(capital).toContain(`Вложить уже накопленное — ${money(738_000)}`)

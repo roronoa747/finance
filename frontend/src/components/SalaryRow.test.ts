@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import type { Payment } from '@/types/finance'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -88,7 +88,7 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
     family('member', 'a', [bonus])
     const mine = await row('a')
     expect(mine).toContain('пришла 10 сентября · Kaspi Gold')
-    expect(mine).toContain(`+${plain(900_000)}`)
+    expect(mine).toContain(`+${money(900_000)}`)
     expect(hasMark(mine)).toBe(false)
     expect(mine).toContain('aria-label="Пришла — подробнее"')
 

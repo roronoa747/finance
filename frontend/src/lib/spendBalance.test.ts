@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { accountBalance, shiftedBase, spendAccountOf, spendOwners, spentSince } from '@/lib/finance'
-import type { Account, AccountShift, AccountSpent } from '@/types/finance'
+import type { Account, AccountShift, AccountSpent, Payment } from '@/types/finance'
 import type { Operation } from '@/lib/statements/types'
-import { shiftedOps } from '@/lib/statements/matching'
+import { prepaidShifts, shiftedOps } from '@/lib/statements/matching'
 import { spendTotals } from '@/lib/statements/model'
 
 /** F2-06 (Р-5): счёт для трат — явная отметка или единственная тенговая карта («оба»). */
@@ -199,5 +199,33 @@ describe('FG-15: spentSince с парой сдвига', () => {
     expect(spentSince(ops, shifted, ANCHOR)).toBe(3_000)
     const totals = spendTotals(ops, 'a', 'month', '2026-10', T0, { marked: none, categories: [] })
     expect(totals.find((t) => t.categoryId === 'travel')?.amount).toBe(123_000)
+  })
+})
+
+/** FG-18 (FG-Х5): досрочка со счёта уже уменьшила остаток — её строка «−сумма» в потраченное не идёт; раздел её считает. */
+describe('FG-18: spentSince с парой досрочки', () => {
+  const sh = (id: string, amount: number): AccountShift => ({ id, accountId: 'k1', amount, date: '2026-10-11', by: 'a', kind: 'goal-out', updatedAt: T0 })
+  const pp = (p: Partial<Payment> = {}): Payment => ({
+    id: 'p1', kind: 'prepay', targetId: 'loan', period: '2026-10', amount: 250_000, accountId: 'k1', by: 'a', at: '2026-10-11T08:00:00.000Z', updatedAt: T0, ...p,
+  })
+  const bank = op('bank', -250_000, { kind: 'transfer-out', merchant: 'Погашение кредита', categoryId: 'loans' })
+  const dep = op('dep', 150_000, { kind: 'transfer-in', internal: true, merchant: 'С депозита' })
+  const pairs = (ops: Operation[], payments: Payment[]) => shiftedOps(ops, [sh('s1', 150_000), ...prepaidShifts(payments, 'k1')], 'a')
+
+  it('месяц старта плана: строки −шаг и +took при досрочке и goal-out — ноль; без пары — +100 000', () => {
+    const ops = [bank, dep]
+    expect(spentSince(ops, none, ANCHOR)).toBe(100_000)
+    expect(spentSince(ops, pairs(ops, [pp()]), ANCHOR)).toBe(0)
+  })
+
+  it('вторая строка −250 000 через 10 дней — трата; досрочка «не списывать» — строка считается', () => {
+    const ops = [bank, dep, op('bank2', -250_000, { date: '2026-10-21', merchant: 'Погашение кредита' })]
+    expect(spentSince(ops, pairs(ops, [pp()]), ANCHOR)).toBe(250_000)
+    expect(spentSince([bank, dep], pairs([bank, dep], [pp({ accountId: null })]), ANCHOR)).toBe(250_000)
+  })
+
+  it('итоги разделов строку −250 000 считают (как FG-15)', () => {
+    const totals = spendTotals([bank, dep], 'a', 'month', '2026-10', T0, { marked: none, categories: [] })
+    expect(totals.find((t) => t.categoryId === 'loans')?.amount).toBe(250_000)
   })
 })

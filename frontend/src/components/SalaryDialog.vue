@@ -202,7 +202,7 @@ function handlePlanSubmit() {
       </Field>
       <!-- Сменили ритм через «неделю»: оклад ещё прежний — тихое предложение, запись только нажатием. -->
       <Button v-if="weekHint" variant="ghost" size="sm" class="-mt-2 mb-2 -ml-2" data-week-hint @click="useWeekHint">
-        ≈ {{ plain(weekHint.amount) }} {{ weekHint.per }}
+        ≈ {{ moneyIn(weekHint.amount, current.currency) }} {{ weekHint.per }}
       </Button>
       <p v-if="current.currency !== 'KZT'" class="-mt-1 mb-3 text-[12.5px] text-ink-2 num">≈ {{ money(currentTenge) }} по курсу Нацбанка</p>
 

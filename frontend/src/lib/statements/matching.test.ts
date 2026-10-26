@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { markedOps, matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit, shiftedOps } from './matching'
+import { markedOps, matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, prepaidShifts, ruleHit, shiftedOps } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
 import type { AccountShift, Credit, Obligation, Payment, Person } from '@/types/finance'
@@ -293,5 +293,50 @@ describe('shiftedOps', () => {
     // 99 000 в пределах 2 % от 100 000; непересчитанная (amount 0) — нет.
     expect(ids(shiftedOps(list.slice(2), [sh('s3', '2026-10-07', -100_000, { kind: 'done' })], 'a'))).toEqual([list[2].id])
     expect(shiftedOps(list.slice(3), [sh('s3', '2026-10-07', -100_000, { kind: 'done' })], 'a').size).toBe(0)
+  })
+})
+
+/** FG-18 (FG-Х5): досрочка со счёта ↔ строка выписки «−сумма» — тем же `shiftedOps`, что сдвиги. */
+describe('FG-18: prepaidShifts', () => {
+  const AT = '2026-10-15T08:00:00Z'
+  const pp = (id: string, amount: number, p: Partial<Payment> = {}): Payment => ({
+    id, kind: 'prepay', targetId: 'k1', period: '2026-10', amount, accountId: 'card', by: 'a', at: AT, updatedAt: AT, ...p,
+  })
+  const ids = (s: Set<string>) => [...s].sort()
+
+  it('живая досрочка с этого счёта — сдвиг −сумма в день at; надгробие, «не списывать», чужой счёт, другие платежи — нет', () => {
+    expect(prepaidShifts([pp('p1', 250_000)], 'card')).toEqual([{ id: 'p1', amount: -250_000, date: '2026-10-15', by: 'a' }])
+    // День — по Алматы (UTC+5), как даты строк выписки: 20:00 UTC — уже 16-е.
+    expect(prepaidShifts([pp('p1', 250_000, { at: '2026-10-15T20:00:00Z' })], 'card')[0].date).toBe('2026-10-16')
+    expect(prepaidShifts([pp('p1', 250_000, { deletedAt: AT })], 'card')).toEqual([])
+    expect(prepaidShifts([pp('p1', 250_000, { accountId: null })], 'card')).toEqual([])
+    expect(prepaidShifts([pp('p1', 250_000, { accountId: 'other' })], 'card')).toEqual([])
+    expect(prepaidShifts([pp('p1', 0)], 'card')).toEqual([])
+    expect(prepaidShifts([pp('p1', 58_000, { kind: 'credit' })], 'card')).toEqual([])
+  })
+
+  it('пара: строка −250 000 через день — да; +250 000 — нет; через 6 дней — нет', () => {
+    const p = prepaidShifts([pp('p1', 250_000)], 'card')
+    const list = ops(op('2026-10-16', -250_000, 'Pogashenie'), op('2026-10-16', 250_000, 'Vozvrat'), op('2026-10-21', -250_000, 'Pogashenie'))
+    expect(ids(shiftedOps(list, p, 'a'))).toEqual([list[0].id])
+    expect(shiftedOps(list.slice(1, 2), p, 'a').size).toBe(0)
+    expect(shiftedOps(list.slice(2), p, 'a').size).toBe(0)
+  })
+
+  it('две досрочки и одна строка — одна пара; одна досрочка и две строки — ближайшая; строка из skip не берётся', () => {
+    const two = prepaidShifts([pp('p1', 250_000), pp('p2', 250_000)], 'card')
+    const one = ops(op('2026-10-16', -250_000, 'Pogashenie'))
+    expect(shiftedOps(one, two, 'a').size).toBe(1)
+    const list = ops(op('2026-10-18', -250_000, 'Pogashenie'), op('2026-10-16', -250_000, 'Pogashenie'))
+    const p = prepaidShifts([pp('p1', 250_000)], 'card')
+    expect(ids(shiftedOps(list, p, 'a'))).toEqual([list[1].id])
+    expect(ids(shiftedOps(list, p, 'a', new Set([list[1].id])))).toEqual([list[0].id])
+  })
+
+  it('досрочка партнёра: при me «a» — нет, при null (карта одного хозяина) — пара', () => {
+    const p = prepaidShifts([pp('p1', 250_000, { by: 'b' })], 'card')
+    const list = ops(op('2026-10-16', -250_000, 'Pogashenie'))
+    expect(shiftedOps(list, p, 'a').size).toBe(0)
+    expect(ids(shiftedOps(list, p, null))).toEqual([list[0].id])
   })
 })

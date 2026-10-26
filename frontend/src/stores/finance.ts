@@ -1407,6 +1407,17 @@ export const useFinanceStore = defineStore('finance', () => {
     updateAccount(id, { amount })
   }
 
+  /** Запись сдвига счёта рукой (FG-14, FG-17): `by` — этот телефон, день — `meta.date` или сегодня. */
+  function newAccountShift(
+    accountId: string,
+    amount: number,
+    meta: { kind: AccountShift['kind']; goalId?: string; date?: string },
+    t: string,
+  ): AccountShift {
+    const hex = Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0')
+    return { id: `as_${hex}`, accountId, amount, date: meta.date ?? todayIso(), by: (useAuthStore().slot ?? 'a') as PersonId, kind: meta.kind, ...(meta.goalId ? { goalId: meta.goalId } : {}), updatedAt: t }
+  }
+
   /**
    * Сдвинуть остаток на сумму — взнос в цель со счёта, снятие с цели, внеплановый
    * доход. Это не сверка: база сдвигается на ту же дельту, якорь прежний
@@ -1433,10 +1444,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const raw = priv ?? (householdDoc.value.accounts || []).find((x) => x.id === id)
     const next = raw ? shiftedBase(raw, payments.value, delta, balanceCtx()) : 0
     if (!raw || next === raw.amount) return
-    const hex = Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0')
-    const record: AccountShift | null = meta
-      ? { id: `as_${hex}`, accountId: id, amount: next - raw.amount, date: meta.date ?? todayIso(), by: (useAuthStore().slot ?? 'a') as PersonId, kind: meta.kind, ...(meta.goalId ? { goalId: meta.goalId } : {}), updatedAt: t }
-      : null
+    const record = meta ? newAccountShift(id, next - raw.amount, meta, t) : null
     if (priv) {
       mutatePrivateDoc((doc) => {
         doc.accounts = ((doc.accounts as Account[]) || []).map((x) => (x.id === id ? { ...x, ...shift(x) } : x))
@@ -1799,6 +1807,8 @@ export const useFinanceStore = defineStore('finance', () => {
     const period = opts.period ?? monthKey()
     const takes = debtPlan ? planLumpTakes(debtPlan, goals.value, plan.paid, period) : []
     const took = takes.reduce((a, x) => a + x.amount, 0)
+    // Одна запись на сдвиг счёта: перевод «с депозита» — одной строкой выписки; цель — только если она одна.
+    const shiftMeta = { kind: 'goal-out' as const, ...(takes.length === 1 ? { goalId: takes[0].goalId } : {}) }
     const record = newPayment(
       {
         kind: 'prepay',
@@ -1830,9 +1840,13 @@ export const useFinanceStore = defineStore('finance', () => {
         g.updatedAt = t
       }
       const acc = took && !privateAccount ? (doc.accounts || []).find((a) => a.id === record.accountId) : undefined
-      if (acc) Object.assign(acc, { amount: acc.amount + took, updatedAt: t })
+      if (acc) {
+        Object.assign(acc, { amount: acc.amount + took, updatedAt: t })
+        // Запись сдвига (FG-17): приход «с депозита» той же суммы в выписке — пара, не второй вычет из «потрачено».
+        doc.accountShifts = [...(doc.accountShifts ?? []), newAccountShift(acc.id, took, shiftMeta, t)]
+      }
     })
-    if (took && privateAccount && record.accountId) shiftAccountAmount(record.accountId, took)
+    if (took && privateAccount && record.accountId) shiftAccountAmount(record.accountId, took, shiftMeta)
     settlePlan()
     return record
   }
@@ -1849,6 +1863,7 @@ export const useFinanceStore = defineStore('finance', () => {
     mutateHouseholdDoc((doc) => {
       const rec = (doc.payments ?? []).find((x) => x.id === id)
       if (rec) Object.assign(rec, { deletedAt: t, updatedAt: t })
+      // Запись `goal-out` досрочки из целей (FG-17) не хороним: деньги с целей остались на карте, перевод придёт выпиской.
       const c = p.prevPayment !== undefined ? doc.credits.find((x) => x.id === p.targetId) : undefined
       if (c && c.payment === p.newPayment) {
         Object.assign(c, { payment: p.prevPayment, principalSetAt: c.principalSetAt ?? null, updatedAt: t })
