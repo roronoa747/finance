@@ -164,7 +164,7 @@ function pick(id: Choice) {
           v-for="o in options"
           :key="o.id"
           type="button"
-          class="press flex min-h-[70px] items-center gap-3 rounded-card border bg-surface px-4 py-3.5 text-left cursor-pointer disabled:opacity-60"
+          class="press flex min-h-[74px] items-center gap-3 rounded-card border bg-surface px-4 py-3.5 text-left cursor-pointer disabled:opacity-60"
           :class="choice === o.id ? 'border-brand' : 'border-line'"
           :disabled="busy"
           :data-choice="o.id"
