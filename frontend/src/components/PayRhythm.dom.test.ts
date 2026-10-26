@@ -144,7 +144,7 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     expect(finance.people[0]).toMatchObject({ payRhythm: 'week', weekday: 5, salary: 700_000 })
     expect(document.body.textContent).toContain('Оклад сейчас — за неделю, ₸')
     // 700 000 × 12 / 52 = 161 538.
-    expect(txt(q('[data-week-hint]'))).toBe('≈ 161 538 за неделю')
+    expect(txt(q('[data-week-hint]'))).toBe('≈ 161 538 ₸ за неделю')
     await press(byText('[data-weekday] button', 'пн'))
     expect(finance.people[0].weekday).toBe(1)
     await press(q('[data-week-hint]'))
@@ -325,7 +325,7 @@ describe('/ux Б7: подсказка пересчёта оклада, перв�
     expect(q('[data-week-hint]')).toBeNull()
     await press(byText('[data-pay-rhythm] button', 'Раз в месяц'))
     // 150 000 × 52 / 12 = 650 000 — оклад недели теперь читается как месячный.
-    expect(txt(q('[data-week-hint]'))).toBe('≈ 650 000 в месяц')
+    expect(txt(q('[data-week-hint]'))).toBe('≈ 650 000 ₸ в месяц')
     await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     // Раньше: «≈ 34 615 за неделю» — недельный оклад ещё раз делился на 4,33.
     expect(q('[data-week-hint]')).toBeNull()
@@ -346,7 +346,7 @@ describe('/ux Б7: подсказка пересчёта оклада, перв�
     expect(q('[data-week-hint]')).toBeNull()
     await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     // Подпись поля уже «за неделю», а число — месячное: 650 000 × 12 / 52 = 150 000.
-    expect(txt(q('[data-week-hint]'))).toBe('≈ 150 000 за неделю')
+    expect(txt(q('[data-week-hint]'))).toBe('≈ 150 000 ₸ за неделю')
     await press(q('[data-week-hint]'))
     expect(q('[data-week-hint]')).toBeNull()
     expect(finance.people[0]).toMatchObject({ salary: 150_000, payRhythm: 'week' })

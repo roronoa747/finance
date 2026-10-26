@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { PhCheck } from '@phosphor-icons/vue'
-import { plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { monthShort } from '@/lib/dates'
 import type { ScheduleRow } from '@/lib/finance'
 import { cn } from '@/lib/utils'
@@ -24,12 +24,12 @@ withDefaults(defineProps<{ rows: ScheduleRow[]; extraLabel?: string }>(), { extr
         <PhCheck v-if="r.paid" :size="11" weight="bold" aria-label="оплачен" />
         {{ monthShort(r.period) }}
       </span>
-      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ plain(r.amount) }}</span>
-      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ plain(r.body) }}</span>
-      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ plain(r.interest) }}</span>
-      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ plain(r.left) }}</span>
+      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ money(r.amount) }}</span>
+      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ money(r.body) }}</span>
+      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ money(r.interest) }}</span>
+      <span :class="r.paid ? 'text-ink-2' : 'text-ink'">{{ money(r.left) }}</span>
       <span v-if="r.extra > 0" class="col-span-5 -mt-0.5 text-right text-brand">
-        {{ extraLabel }} {{ plain(r.extra) }}
+        {{ extraLabel }} {{ money(r.extra) }}
       </span>
     </template>
   </div>

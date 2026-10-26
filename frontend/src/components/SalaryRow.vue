@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { PhArrowUp, PhCheck } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
-import { moneyIn, plain } from '@/lib/money'
+import { money, moneyIn } from '@/lib/money'
 import { atLabel } from '@/lib/dates'
 import type { PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
@@ -56,7 +56,7 @@ const { target, record, own, fxSalary, due, mine, canMark, arrival, title, sheet
 
 /** Сумма в строке: у отмеченной — пришедшая. */
 const shown = computed(() => (record.value ? (record.value.foreign ?? record.value.amount) : due.value))
-const shownText = computed(() => (fxSalary.value || record.value?.foreign ? moneyIn(shown.value, record.value?.currency ?? own.value!.currency) : plain(shown.value)))
+const shownText = computed(() => (fxSalary.value || record.value?.foreign ? moneyIn(shown.value, record.value?.currency ?? own.value!.currency) : money(shown.value)))
 
 const toAccount = computed(() => {
   const id = record.value?.accountId

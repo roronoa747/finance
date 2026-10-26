@@ -3,7 +3,7 @@ import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routes } from '@/router'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { planDraft, planForecast, planLumpOf, simulateStrategy, strategyGain, strategyInputs } from '@/lib/finance'
 import type { Credit, DebtPlan, Goal, Obligation, Payment } from '@/types/finance'
 import StrategyCompare from './StrategyCompare.vue'
@@ -81,8 +81,10 @@ describe('PV-02: StrategyCompare — «копить или гасить» как
     expect(html).toContain('Что не останавливать')
     expect(html).toContain('Квартира')
     expect(html).toContain('Декрет')
-    expect(html).toContain(`${plain(100_000)}/мес`)
-    expect(html).toContain(`${plain(50_000)}/мес`)
+    expect(html).toContain(`${money(100_000)}/мес`)
+    expect(html).toContain(`${money(50_000)}/мес`)
+    // Р-12 (FG-16): «/мес» — только после «₸», голого числа перед ним нет.
+    expect(html).not.toMatch(/\d\/мес/)
     // Подушка: аренда + платежи по долгам, до тысяч.
     expect(x.cushionSize).toBe(337_000)
     expect(html).toContain(`Сначала подушка — ${money(337_000)}`)
