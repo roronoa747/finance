@@ -323,7 +323,7 @@ describe('PN-32 (понятность Р-14): демо — прошедшая п
     expect(spent).toMatchObject({ total: own.amount + 64_000, budget: 400_000 })
 
     const screen = text(await renderScreen(GoalDetail, '/goals/g-trip')).replace(/\s+/g, ' ')
-    expect(screen).toContain(`За поездку ${plain(spent.total)} из ${money(400_000)}`.replace(/\s+/g, ' '))
+    expect(screen).toContain(`Потрачено в поездке ${money(spent.total)} из ${money(400_000)}`.replace(/\s+/g, ' '))
     // Поездка прошла (решение владельца Б): «Съездили?» вместо срока и «Пополнить».
     expect(screen).toContain('Съездили?')
     expect(screen).not.toContain('Пополнить')

@@ -213,12 +213,12 @@ const column = (title: string, savings: number, debt: number, interest: number, 
     expect(good).not.toContain('Записать всё равно можно')
   })
 
-  it('PV-04: снятие больше накопленного — 0 у обоих телефонов, движение целиком, прогноз «дорожает вместе с рынком»', async () => {
+  it('PV-04: снятие больше накопленного — 0 у обоих телефонов, движение целиком; прогноз «дорожает» снят с экрана цели (FG-24, вариант составителя)', async () => {
     const A = await phone(server)
     const B = await phone(server)
     const kid = (p: typeof A) => p.store.goals.find((g) => g.id === 'kid')!
 
-    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`около ${money(2_612_338)}`) // 34 взноса → к месяцу закрытия 33 мес. (B2C-18)
+    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).not.toContain('дорожает')
 
     // A снимает 500 000 из 300 000, B в это время офлайн пополняет на 100 000.
     at('2026-09-25T05:00:00Z')
@@ -239,13 +239,11 @@ const column = (title: string, savings: number, debt: number, interest: number, 
       expect(kid(P).movements.map((m) => m.amount).sort((x, y) => x - y)).toEqual([-500_000, 100_000])
       const detail = await screen(P.pinia, GoalDetail, '/goals/kid')
       expect(detail).toContain(`0 из ${money(2_000_000)}`)
-      expect(detail).toContain('Цель дорожает вместе с рынком')
-      expect(detail).toContain('10,2%')
-      expect(detail).toContain(`около ${money(2_742_333)}`) // 2 000 000 / 50 000 = 40 взносов → 39 мес.
+      // FG-24: прогноз «дорожает» снят с экрана цели (вариант составителя).
+      expect(detail).not.toContain('дорожает')
       expect(detail).not.toContain('Дисциплина накоплений')
     }
     expect(server.data.goals.find((g) => g.id === 'kid')?.have).toBe(0)
-    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`около ${money(7_900_704)}`) // 35 взносов → 34 мес.
   })
 
   // Критик Б3 (правило 12): плашки про инфляцию и «ИИ-советника» свёрнуты в одну строку с подсказкой.
@@ -262,17 +260,16 @@ const column = (title: string, savings: number, debt: number, interest: number, 
   // PV-06 (мастер: «Пропустить» не пишет введённое) снят вместе с мастером — первый запуск из выписки
   // пишет только подтверждённые ответы (B2C-19, `Start.test.ts`, e2e часть 4).
 
-  it('PV-08: тёмная тема — «Ритм цели» тёмным оттенком цели (кольца списка ушли с плитками «Мечт», B2C-18)', async () => {
+  it('PV-08 → FG-24: «Ритм цели» снят с экрана (вариант составителя) — оттенка ритма нет ни в тёмной, ни в светлой теме', async () => {
     const A = await phone(server)
     setActivePinia(A.pinia)
     A.store.contribute('flat', 10_000, 'a')
     A.store.contribute('kid', 10_000, 'b')
     isDark.value = true
     const dark = await screen(A.pinia, GoalDetail, '/goals/flat')
-    expect(dark).toContain(`background:${HUES.blue.dark}`)
-    expect(dark).not.toContain(HUES.blue.light)
-    expect(await screen(A.pinia, GoalDetail, '/goals/kid')).toContain(`background:${HUES.plum.dark}`)
+    expect(dark).not.toContain(HUES.blue.dark)
+    expect(dark).not.toContain('Ритм цели')
     isDark.value = false
-    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).toContain(`background:${HUES.blue.light}`)
+    expect(await screen(A.pinia, GoalDetail, '/goals/flat')).not.toContain(HUES.blue.light)
   })
 })

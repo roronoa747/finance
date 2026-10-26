@@ -122,10 +122,10 @@ describe('e2e / PV Блок 3 — план «Сначала долги» на д
 
       expect(await pausedOn(B, 'trip')).toBe(true)
       expect(await pausedOn(B, 'cushion')).toBe(false)
-      // Сумма взноса, что идёт в долг, — в карточке цели («N ₸ в месяц»), рядом строка паузы (Р-116).
+      // Сумма взноса, что идёт в долг, — ячейкой «В месяц» (FG-24), рядом строка паузы (Р-116).
       const car = await screen(B.pinia, GoalDetail, '/goals/car')
       expect(car).toContain('На паузе — взнос идёт в долг')
-      expect(car).toContain(`${money(60_000)} в месяц`)
+      expect(car).toContain(`data-goal-monthly-value>${money(60_000)}<`)
 
       // «Досрочно по плану» — шаг месяца плана; план живёт на экране «Закрыть быстрее» `/money/debts/faster` (B2C-109).
       expect(await screen(B.pinia, DebtFaster, '/money/debts/faster')).toContain(`${money(100_000)} досрочно`)

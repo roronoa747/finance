@@ -1,26 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
-import { PhArrowUUpLeft, PhCamera, PhCaretRight, PhCheck, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhMinus, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
+import { PhArrowUUpLeft, PhCamera, PhCaretRight, PhCheck, PhDotsThree, PhPause, PhPencilSimple, PhPlay, PhShareNetwork, PhStar } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
-import { money, pct, plain, parseMoney, ratePct } from '@/lib/money'
+import { money, pct, plain, parseMoney } from '@/lib/money'
 import {
-  INFLATION,
   closerDays,
-  contributionStreak,
   cushionCover,
   doneLabel,
   doneTerm,
   dreamShift,
   fundMonthsOf,
-  goalMonthly,
   goalPace,
   goalTerm,
-  indexedNeed,
   liveGoals,
-  monthsBetween,
   monthsLabel,
   movementMonth,
   payableAccounts,
@@ -29,10 +24,8 @@ import {
   shiftLabel,
   tripStatus,
 } from '@/lib/finance'
-import { addMonths, atLabel, monthIn, monthKey, monthTitle, MONTHS_NOM, parseMonthKey, todayIso, weekRangeLabel } from '@/lib/dates'
-import { hueColor } from '@/lib/palette'
-import { isDark } from '@/lib/theme'
-import { cn, plural } from '@/lib/utils'
+import { atLabel, monthIn, monthKey, MONTHS_DAT, MONTHS_NOM, parseMonthKey, todayIso, weekRangeLabel } from '@/lib/dates'
+import { plural } from '@/lib/utils'
 import { templateById, templateImageUrl, type GoalTemplate } from '@/lib/goalTemplates'
 import { attachFile, attachTemplate } from '@/lib/photos/goalPhoto'
 import { deletePhoto } from '@/lib/photos/store'
@@ -56,7 +49,6 @@ import Section from '@/components/kit/Section.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
-import Tag from '@/components/kit/Tag.vue'
 import Toast from '@/components/kit/Toast.vue'
 import { useSavedMark } from '@/components/kit/useSavedMark'
 import DoneSheet from '@/components/goals/DoneSheet.vue'
@@ -67,16 +59,15 @@ import StorySheet from '@/components/goals/StorySheet.vue'
 import TripCard from '@/components/goals/TripCard.vue'
 import Button from '@/components/ui/Button.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
-import { buttonVariants } from '@/components/ui/button'
 import Input from '@/components/ui/Input.vue'
 
 /**
- * Экран цели (DESIGN.md §2 g4 «Экран цели»; B2C-18): фото-герой с процентом и «накоплено из
- * нужно» (имя — в шапке, месяц — в карточке ниже), «Будет вашей в …» со взносом и числом
- * взносов, «Пополнить» / «Поделиться» (B2C-20) / «Сделать главной», взносы с аватарами, правка
- * по карандашу (`GoalSheet`), viewer — без форм. Расчёты («за год», «дорожает», ритм) — за
- * свёрнутым «Подробнее» (правило 12). Хвосты: месяц взноса и серия — по Алматы
- * (`movementMonth`), цена «дорожает» — до месяца закрытия (после плана — позже).
+ * Экран цели v2 (пачка 2 «Figma», 78:50 / 78:104, FG-24): обложка-карточка — название, процент, «накоплено из нужно», полоса,
+ * внизу срок («к сентябрю 2034») и главная «Пополнить» у предмета; под ней карточка «В месяц | Осталось» — «В месяц» открывает
+ * лист «Взнос в месяц» (поле, «Снять», у фонда — месяцев трат, «осталось N взносов»); метка сдвига и «Вернуть срок» — под
+ * ней; взносы — на экране. «Подробнее» нет: «за год», «дорожает» и ритм сняты (вариант составителя, Р-9). «Купили?» /
+ * «Съездили?» — тонкой строкой с маленькими кнопками. Правка по меню (`GoalSheet`), viewer — без форм и кнопок.
+ * Хвосты: месяц взноса — по Алматы (`movementMonth`).
  */
 const router = useRouter()
 const route = useRoute()
@@ -155,13 +146,6 @@ const progress = computed(() => (isDone.value ? 100 : goal.value ? pct(goal.valu
 // «Купили?» (PN-14): мечта (не фонд — у фонда «Собрано», он не сбывается) накоплена целиком и ещё не отмечена.
 const askBought = computed(() => !!goal.value && !isDone.value && isDream.value && remaining.value <= 0 && !notYet.value)
 
-const doneTitle = computed(() => {
-  if (term.value?.off) return 'На паузе'
-  if (doneMonth.value) return `${isFund.value ? 'Соберём' : 'Будет вашей'} в ${monthIn(doneMonth.value)}`
-  if (term.value?.afterPlan) return 'После плана'
-  // Взнос есть, но остатка месяца на него не хватает (план даёт 0) — срока нет, как на «Мечтах».
-  return goal.value && goal.value.monthly > 0 && remaining.value > 0 ? 'Срока пока нет' : 'Взнос не задан'
-})
 /**
  * «Мечта сдвинулась» (AU-06, Р-6): метка к снимку начала месяца — тот же расчёт, что на «Мечтах» (`dreamShift`);
  * «Вернуть срок» — кандидат `returnTermShift` (денег нет — кнопки нет), лист `DoSheet`.
@@ -176,29 +160,35 @@ const returnShift = computed(() =>
   shift.value && shift.value.days > 0 && goal.value ? returnTermShift(shiftInput.value.state, shiftInput.value.ctx, shiftSnap.value, goal.value.id) : null,
 )
 const returnOpen = ref(false)
-// Выключенная в плане — без строки взносов: её нет в этом месяце.
-const doneLine = computed(() => {
-  if (!goal.value || term.value?.off) return ''
-  if (remaining.value <= 0) return isFund.value ? 'Собрано' : 'Накоплено — мечта ваша'
-  if (!Number.isFinite(months.value)) return goal.value.monthly > 0 ? 'Остатка месяца не хватает на взнос' : 'Задайте взнос — и появится дата'
-  return `${money(goal.value.monthly)} в месяц`
-})
-// Сколько взносов осталось и «после плана» — в «Подробнее» (Р-116): под сроком одна строка.
+// Сколько взносов осталось и «после плана» — подписью под полем в листе «Взнос в месяц» (FG-24).
 const leftLine = computed(() => {
   if (!goal.value || term.value?.off || remaining.value <= 0 || !Number.isFinite(months.value)) return ''
   // Подушка (PN-20): срок «Соберём в …» уходит сюда — в карточке «хватит на N».
   if (cover.value && doneMonth.value) return `Соберём в ${monthIn(doneMonth.value)} · осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}`
   return `Осталось ${months.value} ${plural(months.value, 'взнос', 'взноса', 'взносов')}${term.value?.afterPlan && doneMonth.value ? ' · после плана' : ''}`
 })
-// Во сколько обойдётся та же цель к сроку (хвост PV: горизонт — до месяца закрытия, у паузы — позже). Фонд — не покупка.
-const indexed = computed(() =>
-  goal.value && !isFund.value && doneMonth.value ? indexedNeed(goal.value.need, monthsBetween(monthKey(), doneMonth.value)) : null,
-)
+/**
+ * Срок на обложке (FG-24, 78:50) — одна строка 13: «к сентябрю 2034», «на паузе», «после плана», «срока пока нет», «взнос не
+ * задан»; поездка — её даты; сбывшаяся — «Сбылось». Те же `term`, что у прежней карточки. Подушка — тот же срок: «хватит на N»
+ * уже заголовком карточки под обложкой (правило 12 «нет шумных цифр» — не дублировать).
+ */
+const termShort = computed(() => {
+  if (!goal.value) return ''
+  if (isDone.value) return 'Сбылось'
+  if (goal.value.from && goal.value.to) return weekRangeLabel({ from: goal.value.from, to: goal.value.to })
+  if (term.value?.off) return 'на паузе'
+  if (remaining.value <= 0) return isFund.value ? 'собрано' : 'накоплено'
+  if (doneMonth.value) {
+    const { year, month } = parseMonthKey(doneMonth.value)
+    return `к ${MONTHS_DAT[month]} ${year}`
+  }
+  if (term.value?.afterPlan) return 'после плана'
+  return goal.value.monthly > 0 ? 'срока пока нет' : 'взнос не задан'
+})
 
 /* ------------------ Поездка (PN-31, Р-14) ------------------ */
-// До поездки — экран как обычно, даты строкой в «Подробнее»; с первого дня — карточка «Потрачено N из M» под героем.
+// Даты поездки — сроком на обложке (FG-24); с первого дня — карточка «Потрачено в поездке» под ней.
 const trip = computed(() => (goal.value ? tripStatus(goal.value, todayIso()) : 'none'))
-const tripDates = computed(() => (goal.value?.from && goal.value.to ? `Поездка ${weekRangeLabel({ from: goal.value.from, to: goal.value.to })}` : ''))
 // «Съездили?» (возврат приёмки Б9, решение владельца Б): после последнего дня вместо срока и «Пополнить» — как «Купили?»;
 // «Ещё нет» — тот же `notYet`: срок и «Пополнить» на этот заход.
 const askTrip = computed(() => trip.value === 'after' && !isDone.value && isDream.value && !notYet.value)
@@ -237,16 +227,18 @@ function onFundMonths(text: string) {
   if (goal.value && v > 0 && v !== fundMonths.value) financeStore.setFundMonths(goal.value.id, v)
 }
 
-/* ------------------ Ритм (месяцы по Алматы) ------------------ */
-const rhythmColor = computed(() => (goal.value ? hueColor(goal.value.hue, isDark.value) : ''))
-const streak = computed(() => (goal.value ? contributionStreak(goal.value.movements || []) : 0))
-const filled = computed(() => new Set((goal.value?.movements || []).filter((m) => m.amount > 0).map((m) => movementMonth(m.date))))
-const last12 = computed(() =>
-  Array.from({ length: 12 }, (_, i) => {
-    const k = addMonths(monthKey(), i - 11)
-    return { key: k, label: monthTitle(k), filled: filled.value.has(k) }
-  }),
-)
+/* ------------------ Лист «Взнос в месяц» (FG-24): поле взноса, «Снять», у фонда — месяцев трат ------------------ */
+const monthlyOpen = ref(false)
+/** «Снять» из листа взноса — тот же лист «Снять средства», что был в «Подробнее». */
+function openWithdraw() {
+  monthlyOpen.value = false
+  depositOperation.value = 'withdraw'
+  openDepositModal.value = true
+}
+function openDeposit() {
+  depositOperation.value = 'deposit'
+  openDepositModal.value = true
+}
 
 /* ------------------ Пополнение / Снятие ------------------ */
 const openDepositModal = ref(false)
@@ -423,7 +415,7 @@ function share() {
       <button
         type="button"
         aria-label="Поделиться"
-        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
         data-goal-share
         @click="share"
       >
@@ -433,7 +425,7 @@ function share() {
         v-if="canEdit"
         type="button"
         aria-label="Меню цели"
-        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
         @click="menuOpen = true"
       >
         <PhDotsThree :size="20" weight="bold" />
@@ -466,18 +458,17 @@ function share() {
       </div>
     </Sheet>
 
-    <!-- Фото-герой (B2C-17): картинка шаблона или своя; автор — один раз, на фото, ссылкой (Р-28).
-         Поверх картинки — только маленькая кнопка смены фото (владелец, 2026-09-27: крупные чипы
-         закрывали фото); «Убрать фото» — в окне выбора, «Сделать главной» — в карточке ниже.
-         Строка — только «накоплено из нужно» (макет g4): имя уже в шапке, месяц — в карточке. -->
+    <!-- Обложка-карточка (FG-24, 78:50): название, процент, «накоплено из нужно», полоса; внизу — срок и «Пополнить» у предмета.
+         Поверх картинки — маленькая кнопка смены фото; автор — один раз, на фото, ссылкой (Р-28). -->
     <DreamHero
+      :title="goal.name"
       :percent="progress"
       :line="isDone ? money(goal.have) : `${plain(goal.have)} из ${money(need)}`"
-      :eyebrow="isDone ? 'Сбылось' : isFund ? 'Собрано' : undefined"
       :src="photoSrc"
       :author="goal.photoCredit?.author"
       :author-url="goal.photoCredit?.url"
       size="goal"
+      data-goal-cover
     >
       <template v-if="canEdit && goal.photoId && !isDone" #corner>
         <button
@@ -488,6 +479,11 @@ function share() {
         >
           <PhCamera :size="18" />
         </button>
+      </template>
+      <template #footer="{ onPhoto }">
+        <!-- ✦ совета ИИ про эту цель (бэклог «Разбор», RZ-11) — у срока: нажатие — отчёт на карточке совета. -->
+        <span class="flex min-w-0 items-center gap-1 text-[13px] num" :class="onPhoto ? 'opacity-90' : 'text-ink-2'" data-goal-term>{{ termShort }}<AdviceMark :n="goalMark" /></span>
+        <Button v-if="canEdit && !isDone && !askBought && !askTrip" size="sm" class="shrink-0" data-goal-deposit @click="openDeposit">Пополнить</Button>
       </template>
       <template v-if="canEdit && !goal.photoId && !isDone" #actions>
         <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
@@ -506,157 +502,70 @@ function share() {
       @remove="removePhoto"
     />
 
-    <!-- Поездка (PN-31): в пути и после — «Потрачено N из M» у мечты; в пути срок и «Пополнить» ниже остаются (копить можно), после — «Съездили?». -->
+    <!-- Поездка (PN-31, FG-24 78:104): в пути и после — «Потрачено в поездке» у мечты. -->
     <TripCard v-if="trip === 'during' || trip === 'after'" :goal="goal" :status="trip" />
 
-    <!-- Карточка g4: срок цели (живёт здесь, Р-116), взнос в месяц и одна главная — «Пополнить» у срока. -->
-    <!-- Сбывшаяся (PN-14): вместо срока — месяц и «за N месяцев»; действий нет. -->
+    <!-- «Купили?» / «Съездили?» (PN-14, Б9) — тонкая строка 48: «Ещё нет» и брендовая «Сбылось» маленькими, у вопроса. -->
+    <div v-if="!isDone && (askBought || askTrip)" class="flex min-h-12 items-center justify-between gap-3 rounded-card border border-card-border bg-surface px-4" :data-goal-ask="askBought ? '' : undefined" :data-trip-ask="askTrip ? '' : undefined">
+      <span class="text-[14px] font-medium text-ink">{{ askTrip ? 'Съездили?' : canEdit ? 'Купили?' : 'Накоплено' }}</span>
+      <span v-if="canEdit" class="flex shrink-0 gap-2">
+        <Button variant="outline" size="xs" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
+        <Button size="xs" data-goal-done @click="markDone">Сбылось</Button>
+      </span>
+    </div>
+
+    <!-- Сбывшаяся (PN-14): месяц и «за N месяцев»; действий нет. -->
     <Card v-if="isDone">
       <h2 class="type-h2 flex items-center gap-2 text-ink" data-goal-done-at>
         <span class="grid size-[22px] shrink-0 place-items-center rounded-full bg-ok text-surface"><PhCheck :size="13" weight="bold" /></span>{{ doneAtTitle }}
       </h2>
       <p class="mt-1.5 text-[15px] text-ink-2">{{ doneTermLine }}</p>
     </Card>
-    <!-- Накоплено целиком (PN-14): «Купили?» — брендовая «Сбылось» у предмета, тихая «Ещё нет»; «Пополнить» нет. -->
-    <Card v-else-if="askBought" data-goal-ask>
-      <h2 class="type-h2 text-ink">{{ canEdit ? 'Накоплено!' : 'Накоплено' }}</h2>
-      <template v-if="canEdit">
-        <p class="mt-1.5 text-[15px] text-ink-2">Купили?</p>
-        <div class="mt-3.5 flex gap-2.5">
-          <Button variant="secondary" size="md" class="flex-1" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
-          <Button size="md" class="flex-1" data-goal-done @click="markDone">Сбылось</Button>
-        </div>
-      </template>
-    </Card>
-    <!-- Поездка прошла (решение владельца Б, Б9): «Съездили?» — брендовая «Сбылось», тихая «Ещё нет»; срока и «Пополнить» нет. -->
-    <Card v-else-if="askTrip" data-trip-ask>
-      <h2 class="type-h2 text-ink">Съездили?</h2>
-      <template v-if="canEdit">
-        <p class="mt-1.5 text-[15px] text-ink-2">Отметьте — поездка уйдёт в «Сбылось»</p>
-        <div class="mt-3.5 flex gap-2.5">
-          <Button variant="secondary" size="md" class="flex-1" data-goal-not-yet @click="notYet = true">Ещё нет</Button>
-          <Button size="md" class="flex-1" data-goal-done @click="markDone">Сбылось</Button>
-        </div>
-      </template>
-    </Card>
-    <Card v-else>
-      <!-- Подушка (PN-20): «хватит на N месяцев» — заголовок, «нужно на M месяцев» строкой (сумма — в герое, /ux Б6); собрано — ✓ цветом «готово», «Собрано» не пишем. -->
+    <!-- «В месяц | Осталось» (FG-24): «В месяц» — лист взноса (поле, «Снять», фонд); подушка — «хватит на» заголовком над ячейками. -->
+    <Card v-else data-goal-cells>
       <template v-if="cover">
-        <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}<AdviceMark :n="goalMark" /></h2>
-        <p class="mt-1.5 text-[15px] text-ink-2 num" data-cushion-need>нужно на {{ monthsLabel(cover.monthsNeeded) }}</p>
+        <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}</h2>
+        <p class="mb-3 mt-1 text-[14px] text-ink-2 num" data-cushion-need>нужно на {{ monthsLabel(cover.monthsNeeded) }}</p>
       </template>
-      <template v-else>
-        <!-- ✦ совета ИИ про эту цель (бэклог «Разбор», RZ-11) — у срока: нажатие — отчёт на карточке совета. -->
-        <h2 class="type-h2 text-ink" data-goal-term>{{ doneTitle }}<AdviceMark :n="goalMark" /></h2>
-        <p v-if="doneLine" class="mt-1.5 text-[15px] text-ink-2">{{ doneLine }}</p>
-      </template>
-      <!-- Метка «мечта сдвинулась» (AU-06, Р-6) и «Вернуть срок» у неё — тихо, главная остаётся «Пополнить» -->
-      <div v-if="shift" class="mt-2 flex items-center justify-between gap-2">
+      <div class="grid grid-cols-2 gap-3">
+        <component
+          :is="canEdit ? 'button' : 'div'"
+          :type="canEdit ? 'button' : undefined"
+          class="flex min-w-0 flex-col items-start text-left"
+          :class="canEdit && 'press cursor-pointer'"
+          data-goal-monthly
+          @click="canEdit && (monthlyOpen = true)"
+        >
+          <span class="flex items-center gap-0.5 text-[13px] text-ink-2">В месяц<PhCaretRight v-if="canEdit" :size="12" class="text-ink-3" /></span>
+          <span class="text-[17px] font-semibold num text-ink" data-goal-monthly-value>{{ goal.monthly > 0 ? money(goal.monthly) : '—' }}</span>
+        </component>
+        <div class="flex min-w-0 flex-col items-start" data-goal-left>
+          <span class="text-[13px] text-ink-2">Осталось</span>
+          <span class="text-[17px] font-semibold num text-ink">{{ money(Math.max(0, remaining)) }}</span>
+        </div>
+      </div>
+      <!-- Метка «мечта сдвинулась» (AU-06, Р-6) и «Вернуть срок» у неё — тихо, под ячейками -->
+      <div v-if="shift" class="mt-3 flex items-center justify-between gap-2">
         <p class="flex min-w-0 items-start gap-1.5 text-[13px] text-ink-2" data-goal-shift>
           <!-- Точка — у первой строки: метка рядом с «Вернуть срок» переносится на две -->
           <i class="mt-1.5 size-1.5 shrink-0 rounded-full" :class="shift.days > 0 ? 'bg-warn' : 'bg-ok'" aria-hidden="true" />{{ shiftText }}
         </p>
         <Button v-if="canEdit && returnShift" variant="secondary" size="sm" class="shrink-0" data-return-term @click="returnOpen = true">Вернуть срок</Button>
       </div>
-      <Button
-        v-if="canEdit"
-        class="mt-3.5 w-full"
-        @click="
-          depositOperation = 'deposit';
-          openDepositModal = true;
-        "
-      >
-        Пополнить
-      </Button>
     </Card>
 
-    <!-- Пауза плана и подушка — строкой к плану долгов на «Закрыть быстрее» (Б17, принято на воротах); абзаца нет. -->
+    <!-- Пауза плана и подушка — тихой строкой к плану долгов на «Закрыть быстрее» (FG-24: без цветной плашки). -->
     <RouterLink
       v-if="(paused || planCushion) && !isDone"
       to="/money/debts/faster"
-      class="press flex items-center gap-2.5 rounded-[16px] px-3.5 py-3 text-[14.5px] font-semibold"
-      :class="paused ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'"
+      class="press flex items-center gap-2.5 border-b border-line px-1 py-3 text-[14px] text-ink"
       data-goal-plan
     >
       <span class="min-w-0 flex-1">{{ paused ? 'На паузе — взнос идёт в долг' : 'Подушка плана — взносы идут' }}</span>
-      <PhCaretRight :size="16" class="shrink-0" />
+      <PhCaretRight :size="16" class="shrink-0 text-ink-3" />
     </RouterLink>
 
-    <!-- Взнос полем, «Снять», расчёты и график — за «Подробнее», по умолчанию свёрнуты (правило 12; в макете g4 их нет) -->
-    <details v-if="!isDone">
-      <summary :class="cn(buttonVariants({ variant: 'ghost' }), 'flex w-full list-none [&::-webkit-details-marker]:hidden')">Подробнее</summary>
-      <div class="mt-2 flex flex-col gap-3">
-        <p v-if="leftLine" class="px-1 text-[14px] text-ink-2 num" data-goal-left>{{ leftLine }}</p>
-        <p v-if="tripDates" class="px-1 text-[14px] text-ink-2 num" data-trip-dates>{{ tripDates }}</p>
-        <!-- Взнос вводится числом, а не ползунком (исключение из Р-2, владелец 2026-09-25). Viewer — только сумма. -->
-        <Card v-if="canEdit">
-          <div class="-mb-3.5 flex justify-end">
-            <SavedMark :on="monthlySaved" />
-          </div>
-          <Field label="Откладывать в месяц">
-            <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
-          </Field>
-          <Button
-            variant="ghost"
-            class="mt-2 px-2.5"
-            @click="
-              depositOperation = 'withdraw';
-              openDepositModal = true;
-            "
-          >
-            <PhMinus :size="16" weight="bold" /> Снять
-          </Button>
-        </Card>
-
-        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану. -->
-        <Card v-if="canEdit && fundKind">
-          <div class="-mb-3.5 flex justify-end">
-            <SavedMark :on="fundSaved" />
-          </div>
-          <Field label="Месяцев трат">
-            <template v-if="cover" #hint><Hint label="Как считается «нужно»">Нужно = месяцы × (платежи + траты по плану)</Hint></template>
-            <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
-          </Field>
-        </Card>
-
-        <!-- Фонд — не покупка к сроку: «за год» и «дорожает» только у мечты (PN-20). -->
-        <p v-if="remaining > 0 && !isFund" class="px-1 text-[13px] text-ink-2">
-          Чтобы успеть за год, нужно {{ money(goalMonthly(remaining, 12)) }} в месяц.
-        </p>
-
-        <Callout v-if="indexed !== null" tone="neutral" title="Цель дорожает вместе с рынком">
-          При инфляции {{ ratePct(INFLATION, 1) }} в год {{ doneMonth ? `в ${monthIn(doneMonth)}` : 'к сроку' }}
-          такая же покупка будет стоить около {{ money(indexed) }}. Расчёт выше — в сегодняшних деньгах.
-        </Callout>
-
-        <!-- Ритм цели -->
-        <Section title="Ритм цели" />
-        <Card>
-          <div class="mb-3 flex items-center gap-2.5">
-            <b class="text-[14.5px] font-semibold text-ink">Пополняем без пропусков</b>
-            <Hint>
-              {{
-                streak > 0
-                  ? 'Считается по взносам именно в эту цель, а не по общему плану.'
-                  : 'Закрасится, как только появится первый взнос в эту цель.'
-              }}
-            </Hint>
-            <Tag v-if="streak > 0" tone="gold">{{ streak }} мес.</Tag>
-          </div>
-          <div class="flex gap-1.5">
-            <i
-              v-for="m in last12"
-              :key="m.key"
-              :title="m.label"
-              class="h-[20px] flex-1 rounded transition-colors"
-              :style="{ background: m.filled ? rhythmColor : 'var(--track)' }"
-            />
-          </div>
-        </Card>
-      </div>
-    </details>
-
-    <!-- Взносы -->
+    <!-- Взносы — прямо на экране (FG-24) -->
     <Section title="Взносы" />
     <Card flush>
       <div
@@ -679,14 +588,38 @@ function share() {
             'shrink-0 text-[14.5px] font-semibold num',
             m.amount > 0 ? 'text-ok' : 'text-ink-2',
           ]"
-        >
-          {{ m.amount > 0 ? '+' : '−' }}{{ plain(Math.abs(m.amount)) }} ₸
-        </span>
+          data-goal-movement
+        >{{ m.amount > 0 ? '+' : '−' }}{{ money(Math.abs(m.amount)) }}</span>
       </div>
       <div v-if="!(goal.movements && goal.movements.length)" class="px-4 py-6 text-center text-[13px] text-ink-2">
-        Взносов пока нет — история появится после первого пополнения
+        Пока нет — появятся после первого пополнения
       </div>
     </Card>
+
+    <!-- Лист «Взнос в месяц» (FG-24): поле взноса, у фонда — месяцев трат; «осталось N взносов» подписью; тихая «Снять». -->
+    <Sheet v-if="canEdit" :open="monthlyOpen" title="Взнос в месяц" @close="monthlyOpen = false">
+      <template #default="{ close }">
+        <div class="-mb-3.5 flex justify-end">
+          <SavedMark :on="monthlySaved" />
+        </div>
+        <Field label="Откладывать в месяц">
+          <NumFieldBlur :initial="plain(goal.monthly)" data-goal-monthly-field @commit="onMonthly" />
+        </Field>
+        <p v-if="leftLine" class="-mt-2 mb-3.5 text-[13px] text-ink-2 num" data-goal-left-line>{{ leftLine }}</p>
+        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану. -->
+        <template v-if="fundKind">
+          <div class="-mb-3.5 flex justify-end">
+            <SavedMark :on="fundSaved" />
+          </div>
+          <Field label="Месяцев трат">
+            <template v-if="cover" #hint><Hint label="Как считается «нужно»">Нужно = месяцы × (платежи + траты по плану)</Hint></template>
+            <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
+          </Field>
+        </template>
+        <Button class="w-full" data-goal-monthly-save @click="close">Сохранить</Button>
+        <Button variant="outline" size="md" class="mx-auto mt-2 flex w-fit" data-goal-withdraw @click="openWithdraw">Снять</Button>
+      </template>
+    </Sheet>
 
     <!-- Окно: Пополнить / Снять -->
     <Sheet

@@ -164,7 +164,7 @@ describe('e2e / Разбор Блок 3 — приёмка: ✦ поверх с�
       cafe: markIn(spend, 'data-spend-row="sc_cafe"', /data-spend-row=/),
       food: markIn(spend, 'data-spend-row="sc_food"', /data-spend-row=/),
       queue: markIn(queue, 'data-queue="fund"', /data-queue=/),
-      goal: markIn(await screen(p.pinia, GoalDetail, '/goals/fund'), 'data-cushion-cover', /<\/h2>/),
+      goal: markIn(await screen(p.pinia, GoalDetail, '/goals/fund'), 'data-goal-term', /data-goal-cells/), // FG-24: ✦ у срока на обложке
       dreams: marks(await screen(p.pinia, Dreams, '/')),
       debts: marks(await screen(p.pinia, Money, '/money/debts')),
     }

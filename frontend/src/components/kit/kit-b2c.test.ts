@@ -41,7 +41,7 @@ const noLiterals = (html: string) => {
 }
 
 describe('DreamHero', () => {
-  it('экран цели (умолчание): фото, процент (type-percent, 34) без подписи «До мечты» (Р-116), строка, полоса, автор-ссылка, угол — 380; у фонда — «Собрано»', async () => {
+  it('экран цели (умолчание): фото, процент (type-percent, 34) без подписи «До мечты» (Р-116), строка, полоса, автор-ссылка, угол — 400 со скруглением 24 (FG-24); у фонда — «Собрано»', async () => {
     const html = await render(
       DreamHero,
       { line: '1 116 000 из 1 800 000 ₸', percent: 62, src: 'blob:photo', author: 'Matthew Skinner', authorUrl: 'https://unsplash.com/@m' },
@@ -58,7 +58,8 @@ describe('DreamHero', () => {
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('aria-valuenow="62"')
     expect(html).toContain('aria-label="Сменить фото"')
-    expect(html).toContain('min-h-[380px]')
+    expect(html).toContain('min-h-[400px]')
+    expect(html).toContain('rounded-card')
     expect(html).not.toContain('min-h-[440px]')
     noLiterals(html)
     expect(await render(DreamHero, { line: 'x', percent: 30, eyebrow: 'Собрано' })).toContain('Собрано')
@@ -93,8 +94,8 @@ describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
     expect(text.indexOf(pctText(62))).toBeLessThan(text.indexOf('Япония'))
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('photo-scrim')
-    // Экран цели и превью — со скруглением, как были.
-    expect(await render(DreamHero, { line: 'Х', size: 'goal' })).toContain('rounded-hero')
+    // Превью — со скруглением, как было.
+    expect(await render(DreamHero, { line: 'Х', size: 'preview' })).toContain('rounded-hero')
     noLiterals(html)
   })
 
@@ -299,5 +300,22 @@ describe('OpRow / Tabs / Toggle / EmptyState / Avatar / Tag / Card', () => {
     expect(warn).toContain('bg-warn-soft')
     expect(warn).toContain('Не всё ушло')
     expect(await render(Callout, { tone: 'neutral', icon: 'none' }, { default: () => 'x' })).not.toContain('<svg')
+  })
+})
+
+describe('DreamHero — обложка-карточка цели (FG-24, 78:50)', () => {
+  it('название 26 над процентом, строка «из», полоса, нижняя строка (срок и «Пополнить»)', async () => {
+    const html = await render(
+      DreamHero,
+      { title: 'Поездка в Японию', line: '900 000 из 6 000 000 ₸', percent: 15, src: 'blob:p' },
+      { footer: () => [h('span', 'к сентябрю 2034'), h('button', 'Пополнить')] },
+    )
+    expect(html).toContain('text-[26px]')
+    const text = html.replace(/<[^>]*>/g, ' ')
+    expect(text.indexOf('Поездка в Японию')).toBeLessThan(text.indexOf(pctText(15)))
+    expect(text.indexOf(pctText(15))).toBeLessThan(text.indexOf('900 000 из'))
+    expect(html.indexOf('role="progressbar"')).toBeLessThan(html.indexOf('к сентябрю 2034'))
+    expect(html).toContain('Пополнить')
+    noLiterals(html)
   })
 })

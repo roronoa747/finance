@@ -99,11 +99,13 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(page()).toContain(norm(`из ${money(item.need)}`))
     const card0 = card()!.closest('div')!.textContent!
     expect(card0).not.toContain('Соберём')
-    expect(document.querySelector('[data-goal-left]')?.textContent ?? '').toMatch(/^Соберём в .+ · осталось \d+ взнос/)
     // «Чтобы успеть за год» и «дорожает» у фонда нет.
     expect(page()).not.toContain('Чтобы успеть за год')
     expect(page()).not.toContain('дорожает')
-    // Поле порога и подсказка формулы — в «Подробнее».
+    // FG-24: «Соберём в … · осталось N взносов», поле порога и подсказка формулы — в листе «Взнос в месяц» (ячейка «В месяц»).
+    ;(document.querySelector('[data-goal-monthly]') as HTMLElement).click()
+    await nextTick()
+    expect(document.querySelector('[data-goal-left-line]')?.textContent ?? '').toMatch(/^Соберём в .+ · осталось \d+ взнос/)
     expect(document.querySelector('input[aria-label="Порог фонда — месяцев трат"]')).not.toBeNull()
     expect(document.querySelector('[aria-label="Как считается «нужно»"]')).not.toBeNull()
   })
@@ -143,7 +145,7 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     const res: Goal = { ...pot({ id: 'res', name: 'Запас', fund: 'reserve', template: 'cushion-3' }) }
     await open('/goals/res', [res])
     expect(card()).toBeNull()
-    expect(page()).toMatch(/Соберём в |Срока пока нет|Взнос не задан/)
+    expect(page()).toMatch(/к [а-я]+ \d{4}|срока пока нет|взнос не задан/)
     app?.unmount()
     document.body.innerHTML = ''
     await open('/goals/trip', [pot(), { ...pot({ id: 'trip', name: 'Отпуск', need: 500_000, fund: null, template: null }) }])
@@ -151,10 +153,10 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(page()).not.toContain('Хватит на')
   })
 
-  it('старая мечта с картинкой подушки (до блока, без `fund`) — мечта: без «хватит», «за год» на месте (критик Б6)', async () => {
+  it('старая мечта с картинкой подушки (до блока, без `fund`) — мечта: без «хватит»; «за год» снят с экрана (FG-24)', async () => {
     await open('/goals/old', [pot(), pot({ id: 'old', name: 'На чёрный день', need: 900_000, fund: null, template: 'cushion' })])
     expect(card()).toBeNull()
     expect(page()).not.toContain('Хватит на')
-    expect(page()).toContain('Чтобы успеть за год')
+    expect(page()).not.toContain('Чтобы успеть за год')
   })
 })

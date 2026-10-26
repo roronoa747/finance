@@ -195,7 +195,7 @@ function navigateAndClose(to: string) {
           v-if="!isRoot"
           type="button"
           aria-label="Назад"
-          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-2 text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
           @click="goBack"
         >
           <PhCaretLeft :size="20" />

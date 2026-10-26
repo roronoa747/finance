@@ -8,11 +8,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
 import { goalDoneMonth, goalMonths } from '@/lib/finance'
-import { monthBy, monthIn } from '@/lib/dates'
+import { monthBy, MONTHS_DAT, parseMonthKey } from '@/lib/dates'
 import { money, pct } from '@/lib/money'
 import type { SyncDoc } from '@/types/finance'
 import GoalDetail from './GoalDetail.vue'
 import Dreams from './Dreams.vue'
+
+/** Срок на обложке цели v2 (FG-24): «к сентябрю 2034». */
+const toMonth = (k: string) => `к ${MONTHS_DAT[parseMonthKey(k).month]} ${parseMonthKey(k).year}`
 
 vi.mock('@/lib/photos/store', async (orig) => ({
   ...(await orig<typeof import('@/lib/photos/store')>()),
@@ -91,9 +94,9 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(page()).toContain(norm(`из ${money(item.need)}`))
     expect(page()).not.toContain(norm(`из ${money(800_000)}`))
     expect(page()).toContain(`${pct(300_000, item.need)}`)
-    expect(page()).toContain(`Соберём в ${monthIn(item.doneMonth!)}`)
+    // Срок на обложке v2 (FG-24): «к <месяцу> <год>».
+    expect(page()).toContain(toMonth(item.doneMonth!))
     expect(page()).not.toContain('мечта ваша')
-    expect(page()).toContain('Собрано')
     expect(page()).not.toContain('До мечты')
   })
 
@@ -104,8 +107,8 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(item.given).toBeLessThan(item.want)
     const own = goalDoneMonth(goalMonths(item.need - item.have, 600_000), KEY)
     expect(item.doneMonth).not.toBe(own)
-    expect(page()).toContain(`Будет вашей в ${monthIn(item.doneMonth!)}`)
-    if (own) expect(page()).not.toContain(`Будет вашей в ${monthIn(own)}`)
+    expect(page()).toContain(toMonth(item.doneMonth!))
+    if (own) expect(page()).not.toContain(toMonth(own))
 
     app?.unmount()
     document.body.innerHTML = ''
@@ -114,21 +117,27 @@ describe('Н-2: срок и «нужно» — из плана месяца', ()
     expect(page()).not.toContain(monthBy(item.doneMonth!, KEY))
   })
 
-  it('выключенная цель — «На паузе» без строки взносов', async () => {
+  it('выключенная цель — «на паузе» сроком на обложке, без строки взносов', async () => {
     const finance = await open(GoalDetail, '/goals/car')
     finance.pauseGoal('car', true)
     for (let i = 0; i < 3; i++) await nextTick()
-    expect(page()).toContain('На паузе')
+    expect(document.querySelector('[data-goal-term]')?.textContent).toContain('на паузе')
     expect(page()).not.toContain('осталось')
   })
 })
 
 describe('Н-9: порог фонда полем «Месяцев трат»', () => {
   const field = () => document.querySelector<HTMLInputElement>('input[aria-label="Порог фонда — месяцев трат"]')
+  // FG-24: поле — в листе «Взнос в месяц» (ячейка «В месяц»).
+  const openMonthly = async () => {
+    ;(document.querySelector('[data-goal-monthly]') as HTMLElement).click()
+    for (let i = 0; i < 2; i++) await nextTick()
+  }
 
   it('фонд: правка 1 → 2 — свой порог, «нужно» плана вдвое, экран показывает новое «из»', async () => {
     const finance = await open(GoalDetail, '/goals/res')
     const before = finance.monthPlanOf(KEY).queue.find((q) => q.id === 'res')!.need
+    await openMonthly()
     const input = field()!
     expect(input.value).toBe('1')
     input.focus()
@@ -144,6 +153,7 @@ describe('Н-9: порог фонда полем «Месяцев трат»', (
 
   it('цель — поля нет', async () => {
     await open(GoalDetail, '/goals/car')
+    await openMonthly()
     expect(field()).toBeNull()
   })
 })

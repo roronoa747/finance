@@ -4,7 +4,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useOperationsStore } from '@/stores/operations'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { dayLabel } from '@/lib/dates'
 import { tripSpent, type TripStatus } from '@/lib/finance'
 import { spendColor } from '@/lib/palette'
@@ -19,7 +19,8 @@ import { useFlash } from '@/components/kit/useFlash'
 import Button from '@/components/ui/Button.vue'
 
 /**
- * Поездка в пути и после (PN-31, Р-14): «Потрачено N из M» — одна цифра у мечты; итог семьи — из записей участников
+ * Поездка в пути и после (PN-31, Р-14; v2 — пачка 2 «Figma», 78:104, FG-24): «Потрачено в поездке» 13, итог 26 слева, «из M ₸»
+ * справа, полоса — одна крупная цифра у мечты; итог семьи — из записей участников
  * (`tripSpent`), строки — только свои (операции личные, Р-5). «Операции · N» и «Убрано · N» свёрнуты; «Убрать» снимает
  * строку с поездки (операция остаётся в выписке), «Вернуть» — назад. Viewer — итог без строк и действий.
  */
@@ -32,9 +33,8 @@ const canEdit = computed(() => !auth.isViewer)
 
 const spent = computed(() => tripSpent(props.goal, finance.householdDoc.tripSpends, finance.people))
 const over = computed(() => spent.value.total > spent.value.budget)
-// Подпись отдельно, число — одной строкой, как «N из M ₸» у героя (/ux Б9: «За поездку — N ₸ из M ₸» на 390 px — в две).
-const label = computed(() => (props.status === 'during' ? 'Потрачено' : 'За поездку'))
-const title = computed(() => `${plain(spent.value.total)} из ${money(spent.value.budget)}`)
+// Подпись одна и в пути, и после (v2): итог — крупно слева, бюджет — тихо справа.
+const label = 'Потрачено в поездке'
 // Кто сколько — только когда тратили оба: у одного строка повторила бы итог.
 const split = computed(() =>
   spent.value.byPerson.length > 1 ? spent.value.byPerson.map((x) => `${x.person === auth.slot ? 'Вы' : x.name} ${money(x.amount)}`).join(' · ') : '',
@@ -62,8 +62,11 @@ const day = (iso: string) => dayLabel(Number(iso.slice(8, 10)), iso.slice(0, 7))
 
 <template>
   <Card data-trip :data-trip-status="status">
-    <p class="text-[14.5px] font-medium text-ink-2" data-trip-label>{{ label }}</p>
-    <h2 class="mt-0.5 type-h2 num text-ink" data-trip-title>{{ title }}</h2>
+    <p class="text-[13px] text-ink-2" data-trip-label>{{ label }}</p>
+    <div class="mt-0.5 flex items-baseline justify-between gap-3" data-trip-title>
+      <span class="font-num text-[26px] font-bold leading-tight num text-ink" data-trip-total>{{ money(spent.total) }}</span>
+      <span class="shrink-0 text-[13px] text-ink-2 num" data-trip-budget>из {{ money(spent.budget) }}</span>
+    </div>
     <ProgressBar class="mt-3" :value="spent.budget > 0 ? spent.total / spent.budget : 0" :tone="over ? 'warn' : 'brand'" />
     <p v-if="split" class="mt-2 text-[13.5px] text-ink-2 num" data-trip-split>{{ split }}</p>
 

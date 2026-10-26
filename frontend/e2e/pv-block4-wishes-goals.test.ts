@@ -4,7 +4,10 @@ import { defaultSyncDoc } from '../src/stores/finance'
 import { useAuthStore } from '../src/stores/auth'
 import { liveWishlist, planForecast } from '../src/lib/finance'
 import { money, plain } from '../src/lib/money'
-import { addMonths, monthIn, monthKey } from '../src/lib/dates'
+import { addMonths, monthIn, monthKey, MONTHS_DAT, parseMonthKey } from '../src/lib/dates'
+
+/** Срок на обложке цели v2 (FG-24): «к сентябрю 2027». */
+const toMonth = (k: string) => `к ${MONTHS_DAT[parseMonthKey(k).month]} ${parseMonthKey(k).year}`
 import type { SyncDoc, WishItem } from '../src/types/finance'
 import Wishes from '../src/views/Wishes.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
@@ -139,7 +142,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
       expect(html).toContain(`${plain(400_000)} из ${money(1_000_000)}`)
       expect(html).toContain(percent(400_000, 1_000_000))
-      expect(html).toContain(`+${plain(50_000)} ₸`)
+      expect(html).toContain(`+${money(50_000)}`)
     })
 
     it('A вводит «Откладывать в месяц» числом → B видит сумму и новую дату', async () => {
@@ -158,7 +161,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
       expect(html).toContain(money(73_000))
       // 900 000 при 73 000 в месяц — 13 взносов с сентября: сентябрь 2027.
-      expect(html).toContain('Будет вашей в сентябре 2027')
+      expect(html).toContain('к сентябрю 2027')
       expect(html).not.toContain('type="range"')
     })
   })
@@ -183,11 +186,11 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const free = debtFree(B)
       expect(await screen(B.pinia, DebtFaster, '/money/debts/faster')).toContain(`Закроется в ${monthIn(free)}`)
       for (const p of [A, B]) {
-        const car = await screen(p.pinia, GoalDetail, '/goals/car')
-        // Пауза — строка-ссылка на план (Р-116); «Осталось 47 взносов · после плана» — в «Подробнее» (`data-goal-left`).
+        const car = await screen(p.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ monthlyOpen: true })])
+        // Пауза — строка-ссылка на план (Р-116); «Осталось 47 взносов · после плана» — в листе «Взнос в месяц» (FG-24).
         expect(car).toContain('На паузе — взнос идёт в долг')
-        expect(car).toContain(`Будет вашей в ${monthIn(addMonths(free, 47))}`)
-        expect(car.match(/data-goal-left[^>]*>([^<]*)</)?.[1]).toBe('Осталось 47 взносов · после плана')
+        expect(car).toContain(toMonth(addMonths(free, 47)))
+        expect(car.match(/data-goal-left-line[^>]*>([^<]*)</)?.[1]).toBe('Осталось 47 взносов · после плана')
       }
 
       // A поднимает взнос машины до 70 000: у B «Досрочно по плану» 40 000 + 70 000, конец плана —
@@ -203,7 +206,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       const free2 = debtFree(B)
       expect(free2 <= free).toBe(true)
       expect(await screen(B.pinia, DebtFaster, '/money/debts/faster')).toContain(`Закроется в ${monthIn(free2)}`)
-      expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(`Будет вашей в ${monthIn(addMonths(free2, 40))}`)
+      expect(await screen(B.pinia, GoalDetail, '/goals/car')).toContain(toMonth(addMonths(free2, 40)))
     })
 
     it('viewer: правки A в покупках и цели видны — итог, даты, «Уже накоплено»; ни галочек, ни «Вернуть», ни «Добавить покупку», ни карандаша, ни поля взноса', async () => {
@@ -238,7 +241,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
 
       const goalV = await screen(V.pinia, GoalDetail, '/goals/trip')
       expect(goalV).toContain(`${plain(400_000)} из ${money(1_000_000)}`)
-      expect(goalV).toContain(`+${plain(50_000)} ₸`)
+      expect(goalV).toContain(`+${money(50_000)}`)
       expect(goalV).not.toContain('aria-label="Меню цели"')
       expect(goalV).not.toContain('Откладывать в месяц')
       expect(goalV).toContain(money(50_000))
@@ -269,7 +272,7 @@ describe('e2e / PV Блок 4 — покупки и цели на двух те�
       expect(B.store.goals[0].movements.map((m) => m.amount).sort()).toEqual([30_000, 50_000])
       const html = await screen(B.pinia, GoalDetail, '/goals/trip')
       expect(html).toContain(`${plain(80_000)} из ${money(1_000_000)}`)
-      expect(html).toContain(`+${plain(30_000)} ₸`)
+      expect(html).toContain(`+${money(30_000)}`)
     })
   })
 })

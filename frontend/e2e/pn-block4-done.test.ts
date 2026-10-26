@@ -74,7 +74,7 @@ describe('e2e / понятность Блок 4 — «Сбылось»', () => {
     const before = worth(a)
     expect((await worthOnScreen(a)).replace(/\D/g, '')).toBe(String(before))
     const ask = text(await screen(a.pinia, GoalDetail, '/goals/trip'))
-    expect(ask).toContain('Накоплено!')
+    // FG-24: тонкая строка «Купили?» с маленькими «Ещё нет» / «Сбылось».
     expect(ask).toContain('Купили?')
     expect(ask).not.toContain('Пополнить')
 

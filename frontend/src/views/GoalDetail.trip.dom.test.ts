@@ -77,7 +77,8 @@ async function open(opts: { role?: 'member' | 'viewer'; slot?: 'a' | 'b'; ops?: 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim()
 const q = (sel: string) => document.querySelector<HTMLElement>(sel)
 const all = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)]
-const title = () => norm(q('[data-trip-title]')?.textContent)
+// Поездка v2 (FG-24, 78:104): итог крупно слева, «из M ₸» — справа.
+const title = () => `${norm(q('[data-trip-total]')?.textContent)} ${norm(q('[data-trip-budget]')?.textContent)}`
 const click = async (el: HTMLElement | null) => {
   el!.click()
   await nextTick()
@@ -85,24 +86,24 @@ const click = async (el: HTMLElement | null) => {
 }
 
 describe('PN-31: экран цели-поездки', () => {
-  it('до поездки — карточки нет, даты строкой в «Подробнее»', async () => {
+  it('до поездки — карточки нет, даты — сроком на обложке (FG-24)', async () => {
     vi.setSystemTime(new Date('2026-10-05T08:00:00Z'))
     await open({ ops: MINE })
     expect(q('[data-trip]')).toBeNull()
-    expect(norm(q('[data-trip-dates]')?.textContent)).toBe('Поездка 10–15 октября')
+    expect(norm(q('[data-goal-term]')?.textContent)).toBe('10–15 октября')
   })
 
   it('в пути — «Потрачено N из M» без платежа по отметке и трат вне дат; «Убрать» и «Вернуть» меняют сумму и списки', async () => {
     const finance = await open({ ops: MINE })
-    expect(title()).toBe('82 000 из 150 000 ₸')
-    expect(norm(q('[data-trip-label]')?.textContent)).toBe('Потрачено')
+    expect(title()).toBe('82 000 ₸ из 150 000 ₸')
+    expect(norm(q('[data-trip-label]')?.textContent)).toBe('Потрачено в поездке')
     expect(q('[data-trip-ops]'), 'строки свёрнуты').toBeNull()
     expect(norm(q('[data-trip-ops-toggle]')?.textContent)).toBe('Операции · 2')
     await click(q('[data-trip-ops-toggle]'))
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Cafe', 'Hotel'])
 
     await click(q('[data-trip-op="Hotel"] [data-trip-exclude]'))
-    expect(title()).toBe('12 000 из 150 000 ₸')
+    expect(title()).toBe('12 000 ₸ из 150 000 ₸')
     expect(norm(q('[data-trip-toast]')?.textContent), 'тост: не удалено').toBe('Убрано из поездки — операция осталась')
     expect(finance.householdDoc.tripSpends).toMatchObject([{ id: 'trip:a', amount: 12_000, ops: 1 }])
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Cafe'])
@@ -111,22 +112,22 @@ describe('PN-31: экран цели-поездки', () => {
 
     await click(q('[data-trip-excluded-toggle]'))
     await click(q('[data-trip-excluded-op="Hotel"] [data-trip-include]'))
-    expect(title()).toBe('82 000 из 150 000 ₸')
+    expect(title()).toBe('82 000 ₸ из 150 000 ₸')
     expect(q('[data-trip-excluded-toggle]')).toBeNull()
   })
 
   it('сверх бюджета — полоса цветом предупреждения; срок и «Пополнить» остаются', async () => {
     await open({ ops: [...MINE, op('Ski', '2026-10-14', -100_000)] })
-    expect(title()).toBe('182 000 из 150 000 ₸')
+    expect(title()).toBe('182 000 ₸ из 150 000 ₸')
     expect(q('[data-trip] [role="progressbar"] i')!.className).toContain('bg-warn')
     expect([...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Пополнить')).toBe(true)
   })
 
-  it('после поездки — «За поездку» и «N из M»', async () => {
+  it('после поездки — та же подпись «Потрачено в поездке» и «N ₸ из M ₸» (FG-24)', async () => {
     vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
     await open({ ops: MINE })
-    expect(norm(q('[data-trip-label]')?.textContent)).toBe('За поездку')
-    expect(title()).toBe('82 000 из 150 000 ₸')
+    expect(norm(q('[data-trip-label]')?.textContent)).toBe('Потрачено в поездке')
+    expect(title()).toBe('82 000 ₸ из 150 000 ₸')
   })
 
   const hasTopUp = () => all('button').some((b) => b.textContent?.trim() === 'Пополнить')
@@ -134,8 +135,9 @@ describe('PN-31: экран цели-поездки', () => {
   it('после поездки — «Съездили?» вместо срока и «Пополнить»; «Ещё нет» возвращает срок', async () => {
     vi.setSystemTime(new Date('2026-10-20T08:00:00Z'))
     await open({ ops: MINE })
-    expect(norm(q('[data-trip-ask] h2')?.textContent)).toBe('Съездили?')
-    expect(norm(q('[data-trip-ask] p')?.textContent)).toBe('Отметьте — поездка уйдёт в «Сбылось»')
+    // FG-24: тонкая строка — «Съездили?» и маленькие «Ещё нет» / «Сбылось».
+    expect(norm(q('[data-trip-ask] span')?.textContent)).toBe('Съездили?')
+    expect(q('[data-trip-ask] [data-goal-done]')!.className).toContain('h-[26px]')
     expect(hasTopUp(), 'у прошедшей поездки «Пополнить» нет').toBe(false)
     await click(q('[data-trip-ask] [data-goal-not-yet]'))
     expect(q('[data-trip-ask]')).toBeNull()
@@ -156,7 +158,7 @@ describe('PN-31: экран цели-поездки', () => {
     expect(finance.householdDoc.goals.find((g) => g.id === 'trip')?.doneAt).toBeTruthy()
     expect(q('[data-trip-ask]')).toBeNull()
     expect(q('[data-goal-done-at]')).not.toBeNull()
-    expect(title()).toBe('82 000 из 150 000 ₸')
+    expect(title()).toBe('82 000 ₸ из 150 000 ₸')
   })
 
   it('viewer после поездки — «Съездили?» без строки и кнопок', async () => {
@@ -170,7 +172,7 @@ describe('PN-31: экран цели-поездки', () => {
   it('партнёр: общий итог и «кто сколько», чужих строк нет', async () => {
     const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
     await open({ slot: 'b', ops: [op('Taxi', '2026-10-12', -8_000)], spends: [spendA] })
-    expect(title()).toBe('90 000 из 150 000 ₸')
+    expect(title()).toBe('90 000 ₸ из 150 000 ₸')
     expect(norm(q('[data-trip-split]')?.textContent)).toBe('Ильяс 82 000 ₸ · Вы 8 000 ₸')
     await click(q('[data-trip-ops-toggle]'))
     expect(all('[data-trip-op]').map((x) => x.dataset.tripOp)).toEqual(['Taxi'])
@@ -179,7 +181,7 @@ describe('PN-31: экран цели-поездки', () => {
   it('viewer — итог без строк и действий', async () => {
     const spendA: TripSpend = { id: 'trip:a', goalId: 'trip', by: 'a', amount: 82_000, ops: 2, updatedAt: T0 }
     await open({ role: 'viewer', slot: 'b', spends: [spendA] })
-    expect(title()).toBe('82 000 из 150 000 ₸')
+    expect(title()).toBe('82 000 ₸ из 150 000 ₸')
     expect(q('[data-trip-ops-toggle]')).toBeNull()
     expect(q('[data-trip-exclude]')).toBeNull()
   })
@@ -189,7 +191,7 @@ describe('PN-31: экран цели-поездки', () => {
     finance.setOpEdit('Hotel', { refund: { amount: 20_000 } })
     useOperationsStore().writeTripTotals()
     await nextTick()
-    expect(title()).toBe('62 000 из 150 000 ₸')
+    expect(title()).toBe('62 000 ₸ из 150 000 ₸')
     await click(q('[data-trip-ops-toggle]'))
     expect(norm(q('[data-trip-op="Hotel"]')?.textContent)).toContain('вернули 20 000')
     expect(norm(q('[data-trip-op="Hotel"] .money')?.textContent)).toBe('−50 000 ₸')

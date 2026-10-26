@@ -176,11 +176,11 @@ describe('e2e / B2C Блок 3 — часть 1: главный «Мечты» (
     expect(html).toContain(`7${NBSP}%`)
     expect(html).toContain('Машина')
     expect(html).not.toContain(`июль${NBSP}2030`)
-    const goal = await screen(A.pinia, GoalDetail, '/goals/car')
-    // У срока — `data-goal-term` (якорь ✦ совета ИИ, RZ-11).
-    expect(goal).toMatch(/<h2 class="type-h2 text-ink"[^>]*>[^<]*июл[^<]*2030<\/h2>/)
-    expect(goal).toContain(`${money(60_000)} в месяц`)
-    expect(goal).toMatch(/data-goal-left>Осталось 47 взносов</)
+    // Цель v2 (FG-24): срок на обложке — `data-goal-term` (якорь ✦ совета ИИ, RZ-11); взнос — ячейкой; «осталось N взносов» — в листе взноса.
+    const goal = await screen(A.pinia, GoalDetail, '/goals/car', undefined, [screenMixin({ monthlyOpen: true })])
+    expect(goal).toMatch(/data-goal-term[^>]*>к июлю 2030/)
+    expect(goal).toContain(`data-goal-monthly-value>${money(60_000)}<`)
+    expect(goal).toMatch(/data-goal-left-line>Осталось 47 взносов</)
 
     // «Свободно» руками: доход 1 200 000 − платежи сентября (аренда 220 000 +
     // кредит 58 000 + кредитка 25 000 + рассрочка 20 000 = 323 000) − взносы в цели 130 000 −
@@ -418,13 +418,13 @@ describe('e2e / B2C Блок 3 — часть 3: мечта из шаблона 
     const goalB = B.store.goals.find((g) => g.id === id)!
     expect(goalB).toMatchObject({ name: 'Япония', template: 'japan', photoId: goalA.photoId, photoCredit: goalA.photoCredit })
     expect(await photoUrl(goalB.photoId!, B.client)).toBe('blob:90000')
-    const screenB = await screen(B.pinia, GoalDetail, `/goals/${id}`)
+    const screenB = await screen(B.pinia, GoalDetail, `/goals/${id}`, undefined, [screenMixin({ monthlyOpen: true })])
     // Имя цели — в шапке оболочки (screen() её не рисует); в герое — «накоплено из нужно» (правило 12, критик Б3).
     expect(screenB).toContain(`${plain(goalB.have)} из ${money(goalB.need)}`)
     expect(screenB).toContain(templateById('japan')!.photo.author)
-    // Взнос — в карточке срока, «осталось N взносов» — в «Подробнее» (B2C-108, Р-116).
-    expect(screenB).toContain(`${money(150_000)} в месяц`)
-    expect(screenB).toMatch(/data-goal-left>Осталось 12 взносов</)
+    // Взнос — ячейкой «В месяц», «осталось N взносов» — в листе взноса (FG-24).
+    expect(screenB).toContain(`data-goal-monthly-value>${money(150_000)}<`)
+    expect(screenB).toMatch(/data-goal-left-line>Осталось 12 взносов</)
     expect(screenB).toContain('aria-label="Меню цели"')
 
     // Сюрприз A для Аруны: фото скрытое, запись — в личном документе A.
