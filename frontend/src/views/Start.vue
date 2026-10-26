@@ -287,7 +287,7 @@ const sub = computed(() => titles[step.value].sub)
           {{ reading ? 'Читаем выписку…' : 'Загрузить выписку' }}
         </Button>
         <Button v-else size="lg" class="w-full" data-start-applepay @click="chooseApplePay">Подключить Apple Pay</Button>
-        <Button variant="ghost" size="md" class="w-full" data-start-later @click="afterSpend">Позже</Button>
+        <Button variant="outline" size="md" class="mx-auto flex w-fit" data-start-later @click="afterSpend">Позже</Button>
       </div>
     </template>
 

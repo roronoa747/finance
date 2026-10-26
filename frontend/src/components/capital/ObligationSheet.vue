@@ -16,7 +16,6 @@ import {
   yearShare,
 } from '@/lib/finance'
 import type { Currency, Obligation, PersonId } from '@/types/finance'
-import { CURRENCY_SIGN } from '@/lib/fx'
 import { cn } from '@/lib/utils'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
@@ -181,7 +180,7 @@ function planObligation() {
           <Input :default-value="activeObligation.name" @blur="onObligationNameBlur" />
         </Field>
 
-        <Field :label="`Сумма сейчас, ${CURRENCY_SIGN[obOwn.currency]}`">
+        <Field label="Сумма сейчас">
           <NumFieldBlur :initial="plain(obOwn.amount)" :currency="obOwn.currency" class="mb-1" @commit="onObligationAmount" />
         </Field>
         <p class="-mt-1 mb-3 flex items-center gap-1 text-[12px] text-ink-2 num">
@@ -246,7 +245,7 @@ function planObligation() {
         </label>
 
         <div v-if="!obPlanning" class="mb-3">
-          <Button variant="outline" class="w-full bg-surface-2" @click="startPlanning">
+          <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="startPlanning">
             <PhCalendarPlus :size="16" /> Запланировать изменение
           </Button>
         </div>
@@ -254,7 +253,7 @@ function planObligation() {
           <Field label="Валюта" group>
             <CurrencyChips v-model="obCurrency" />
           </Field>
-          <Field :label="`Новая сумма, ${CURRENCY_SIGN[obCurrency]}`" name="newAmount">
+          <Field label="Новая сумма" name="newAmount">
             <NumField v-model="obNewAmount" :currency="obCurrency" :placeholder="plain(obCurrency === obOwn.currency ? obOwn.amount : 0)" />
           </Field>
           <NbRateLine :amount="parseMoney(obNewAmount)" :currency="obCurrency" :nb="nb" />

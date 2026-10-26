@@ -266,7 +266,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
           </div>
           <p v-if="!giftsFor.length" class="py-2 type-meta">Пока ни одного сюрприза.</p>
         </div>
-        <Button variant="secondary" class="mt-2 w-full" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
+        <Button variant="outline" size="md" class="mt-2 mx-auto flex w-fit" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
       </Card>
       <GiftSheet :open="openGift" :for-slot="person.id" :for-name="person.name" @close="openGift = false" />
       <GiftSheet :open="!!editGiftId" :gift-id="editGiftId" :for-slot="person.id" :for-name="person.name" @close="editGiftId = null" />
@@ -338,7 +338,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <Field label="Что покупаем" name="wishName">
         <Input v-model="wishName" placeholder="Например, сковорода" />
       </Field>
-      <Field label="Цена, ₸">
+      <Field label="Цена">
         <NumField v-model="wishPrice" placeholder="18 000" />
       </Field>
       <Field v-if="tab === 'all' && people.length > 1" label="Кто добавил" group>

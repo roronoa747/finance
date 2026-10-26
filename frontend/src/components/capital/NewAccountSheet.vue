@@ -4,7 +4,6 @@ import { useFinanceStore } from '@/stores/finance'
 import { plain, parseMoney } from '@/lib/money'
 import type { Account, Currency } from '@/types/finance'
 import { cn } from '@/lib/utils'
-import { CURRENCY_SIGN } from '@/lib/fx'
 
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
 import NbRateLine from '@/components/kit/NbRateLine.vue'
@@ -110,7 +109,7 @@ function createAccount() {
       <CurrencyChips v-model="newAccountCurrency" />
     </Field>
 
-    <Field :label="`Сумма, ${CURRENCY_SIGN[newAccountCurrency]}`" name="amount">
+    <Field label="Сумма" name="amount">
       <NumField v-model="newAccountAmount" :currency="newAccountCurrency" />
     </Field>
 

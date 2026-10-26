@@ -180,7 +180,7 @@ const accountRemoveWarning = computed(() => {
         </Field>
 
         <template v-if="activeAccount.currency">
-          <Field :label="`Сумма, ${CURRENCY_SIGN[activeAccount.currency]}`">
+          <Field label="Сумма">
             <NumFieldBlur :initial="plain(activeAccount.foreignAmount ?? 0)" :currency="activeAccount.currency" @commit="onForeignAmount" />
           </Field>
           <p v-if="nbRate" class="-mt-2.5 mb-3 text-[12px] text-ink-2 num">
@@ -199,7 +199,7 @@ const accountRemoveWarning = computed(() => {
             </p>
           </template>
         </template>
-        <Field v-else label="Сумма, ₸">
+        <Field v-else label="Сумма">
           <NumFieldBlur
             :initial="plain(activeAccount.amount)"
             @commit="(text) => financeStore.setAccountAmount(activeAccount!.id, parseMoney(text))"
@@ -240,7 +240,7 @@ const accountRemoveWarning = computed(() => {
           <Field label="Ставка, % годовых">
             <NumFieldBlur :initial="rateField(depositData.annualRate)" kind="rate" @commit="onDepositRate" />
           </Field>
-          <Field label="Пополнение в месяц, ₸">
+          <Field label="Пополнение в месяц">
             <NumFieldBlur :initial="plain(depositData.monthlyTopUp)" @commit="(t) => setDeposit({ monthlyTopUp: parseMoney(t) })" />
           </Field>
           <Field label="Срок, месяцев">

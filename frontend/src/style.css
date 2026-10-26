@@ -31,6 +31,8 @@
   --brand: #b4562f;
   --brand-ink: #fffdf9;
   --brand-soft: #f6e6dd;
+  /* Окантовка главной кнопки 1 px внутрь (пачка 2 «Figma», FG-19). */
+  --brand-edge: rgb(0 0 0 / 0.18);
   /* Подсказка у предмета (`Tip`, бэклог «первый» FR-05): спокойный синий — не бренд, не спорит с главной кнопкой. */
   --tip: #4a6d93;
   --tip-soft: #eaeef3;
@@ -98,6 +100,7 @@
   --brand: #e58a62;
   --brand-ink: #2a1208;
   --brand-soft: #3a2418;
+  --brand-edge: rgb(255 255 255 / 0.12);
   --tip: #8fb0da;
   --tip-soft: #2b2f37;
   --tip-line: #3e4857;
@@ -175,6 +178,7 @@
   --color-brand: var(--brand);
   --color-brand-ink: var(--brand-ink);
   --color-brand-soft: var(--brand-soft);
+  --color-brand-edge: var(--brand-edge);
   --color-tip: var(--tip);
   --color-tip-soft: var(--tip-soft);
   --color-tip-line: var(--tip-line);

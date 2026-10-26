@@ -162,7 +162,7 @@ const prepayCount = computed(
         <span>✓ Отдал в {{ MONTHS_PRE[parseMonthKey(key).month] }}</span>
         <span class="num">{{ money(given.amount) }}</span>
       </component>
-      <Field v-else-if="!authStore.isViewer && activeCredit.principal > 0" label="Отдаю сейчас, ₸">
+      <Field v-else-if="!authStore.isViewer && activeCredit.principal > 0" label="Отдаю сейчас">
         <span class="flex items-center gap-2">
           <NumField v-model="giveText" class="min-w-0 flex-1" />
           <Button class="shrink-0" data-person-give @click="give">Отдал</Button>
@@ -184,10 +184,10 @@ const prepayCount = computed(
           <Input :default-value="activeCredit.name" @blur="onCreditNameBlur" />
         </Field>
         <div class="grid grid-cols-2 gap-2.5">
-          <Field label="Осталось, ₸">
+          <Field label="Осталось">
             <NumFieldBlur :initial="plain(activeCredit.principal)" @commit="onCreditPrincipal" />
           </Field>
-          <Field label="В месяц, ₸">
+          <Field label="В месяц">
             <NumFieldBlur :initial="plain(activeCredit.payment)" @commit="onCreditPayment" />
           </Field>
         </div>
@@ -226,7 +226,7 @@ const prepayCount = computed(
       </div>
       <template v-else>
         <!-- «Внёс досрочно» — у остатка, своего предмета (Р-3, правило 12); без ставки досрочка врала бы «экономия 0» (B2C-19). -->
-        <Field label="Остаток долга, ₸">
+        <Field label="Остаток долга">
           <span class="flex items-center gap-2">
             <NumFieldBlur :initial="plain(activeCredit.principal)" class="min-w-0 flex-1" @commit="onCreditPrincipal" />
             <Button
@@ -242,7 +242,7 @@ const prepayCount = computed(
           </span>
         </Field>
         <p v-if="reconcile" class="-mt-2 mb-3.5 text-[13px] text-warn" data-credit-reconcile>Сверьте остаток с банком</p>
-        <Field label="Платёж в месяц, ₸">
+        <Field label="Платёж в месяц">
           <NumFieldBlur :initial="plain(activeCredit.payment)" @commit="onCreditPayment" />
         </Field>
         <div class="grid grid-cols-2 gap-2.5">

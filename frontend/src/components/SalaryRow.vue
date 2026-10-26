@@ -82,7 +82,7 @@ const toAccount = computed(() => {
       Пришла зарплата
     </Button>
     <!-- Тихая 44, как «Другая сумма или снять» и «Изменить оклад» в том же листе (/ux Блока 1: один размер на уровень). -->
-    <Button v-if="canMark" variant="ghost" size="md" class="mt-2 w-full" @click="openMore">
+    <Button v-if="canMark" variant="outline" size="md" class="mt-2 mx-auto flex w-fit" @click="openMore">
       Другая сумма или счёт
     </Button>
   </template>

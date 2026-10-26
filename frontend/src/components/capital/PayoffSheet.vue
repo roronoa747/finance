@@ -143,7 +143,7 @@ function prepayUndoNote(p: Payment): string {
         />
       </Field>
 
-      <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу, ₸' : 'Сколько внесёте разом, ₸'">
+      <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу' : 'Сколько внесёте разом'">
         <NumField v-model="payoffAmount" :placeholder="plain(chips[0] ?? 5000)" class="mb-2" />
       </Field>
 
@@ -184,9 +184,9 @@ function prepayUndoNote(p: Payment): string {
 
       <Button
         v-if="canPrepay"
-        variant="ghost"
+        variant="outline"
         size="md"
-        class="-mt-1 mb-3 w-full"
+        class="-mt-1 mb-3 mx-auto flex w-fit"
         data-payoff-prepay
         @click="openPrepay"
       >

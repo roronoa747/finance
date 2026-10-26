@@ -156,7 +156,7 @@ function save() {
   </Sheet>
 
   <Sheet :open="open" title="Обменял" :z="60" @close="open = false">
-    <Field :label="`Сколько, ${sign}`" name="amount">
+    <Field label="Сколько" name="amount">
       <NumField v-model="amountText" :currency="currency ?? null" />
     </Field>
     <Field :label="`Курс, ₸ за 1 ${sign}`" name="rate">

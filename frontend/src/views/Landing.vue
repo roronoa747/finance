@@ -58,14 +58,14 @@ function tryDemo() {
           <div class="mt-7 flex flex-col gap-2.5 sm:flex-row">
             <RouterLink
               to="/access"
-              class="press inline-flex h-13 items-center justify-center rounded-pill bg-brand px-7 text-[15.5px] font-semibold text-brand-ink"
+              class="press inline-flex h-11 items-center justify-center rounded-pill bg-brand px-7 text-[15px] font-semibold text-brand-ink shadow-[inset_0_0_0_1px_var(--brand-edge)]"
             >
               Начать с Google
             </RouterLink>
             <button
               v-if="!editsWaitLogin"
               type="button"
-              class="press inline-flex h-13 items-center justify-center rounded-pill bg-surface px-7 text-[15.5px] font-semibold text-ink cursor-pointer"
+              class="press inline-flex h-10 items-center justify-center self-center rounded-pill border border-line-strong bg-surface px-4 text-[14.5px] font-semibold text-ink cursor-pointer"
               @click="tryDemo"
             >
               {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать' }}

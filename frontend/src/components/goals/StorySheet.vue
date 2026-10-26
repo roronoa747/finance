@@ -118,7 +118,7 @@ async function wallpaper() {
       </div>
       <p v-if="result" class="text-[12.5px] text-ink-2" aria-live="polite">{{ result === 'shared' ? 'Отправлено' : 'Сохранено в загрузки' }}</p>
       <!-- Обои — тихо, под главными кнопками; без предпросмотра (одно нажатие). -->
-      <Button v-if="kind === 'goal'" variant="ghost" size="md" class="w-full" :disabled="busy || wallpaperBusy" data-story-wallpaper @click="wallpaper">Сохранить как обои</Button>
+      <Button v-if="kind === 'goal'" variant="outline" size="md" class="mx-auto flex w-fit" :disabled="busy || wallpaperBusy" data-story-wallpaper @click="wallpaper">Сохранить как обои</Button>
       <p v-if="wallpaperNote" class="text-center text-[12.5px] text-ink-2" aria-live="polite" data-story-wallpaper-note>{{ wallpaperNote }}</p>
     </div>
   </Sheet>

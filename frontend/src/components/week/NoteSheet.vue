@@ -68,7 +68,7 @@ function remove() {
         <Field label="Когда" name="date" class="min-w-0 flex-1">
           <Input v-model="date" type="date" data-note-date />
         </Field>
-        <Field label="Сумма, ₸" class="min-w-0 flex-1">
+        <Field label="Сумма" class="min-w-0 flex-1">
           <NumField v-model="amount" placeholder="60 000" data-note-amount />
         </Field>
       </div>

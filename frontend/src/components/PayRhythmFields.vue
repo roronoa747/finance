@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { moneyIn, parseMoney, plain } from '@/lib/money'
-import { CURRENCY_SIGN } from '@/lib/fx'
 import { advanceRest, rhythmDefaults } from '@/lib/finance'
 import type { Currency, PayRhythm, Person } from '@/types/finance'
 import Chip from '@/components/kit/Chip.vue'
@@ -39,7 +38,6 @@ const RHYTHMS: { value: PayRhythm; label: string }[] = [
 ]
 const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
 
-const sign = computed(() => CURRENCY_SIGN[props.currency])
 const rest = computed(() => advanceRest(props.salary, props.salary2))
 
 function pickRhythm(r: PayRhythm) {
@@ -98,7 +96,7 @@ function onSalary2(text: string) {
         <Field label="День аванса" :error="clash === 'payday2' ? CLASH : undefined" @focusin="clash = null">
           <NumFieldBlur :key="`d2-${rev.payday2}`" :class="fieldClass" :initial="String(payday2 ?? '')" kind="int" data-payday2 @commit="onPayday2" />
         </Field>
-        <Field :label="`Аванс, ${sign}`">
+        <Field label="Аванс">
           <NumFieldBlur :class="fieldClass" :initial="plain(salary2 ?? 0)" :currency="currency" data-salary2 @commit="onSalary2" />
         </Field>
       </div>

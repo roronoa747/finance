@@ -98,7 +98,7 @@ function remove() {
 <template>
   <Sheet :open="open && (!opId || !!editing)" title="Трата" @close="emit('close')">
     <div ref="body" data-hand-sheet>
-      <Field label="Сколько, ₸" name="amount">
+      <Field label="Сколько" name="amount">
         <NumField v-model="amount" placeholder="2 500" data-hand-amount />
       </Field>
       <Field label="Раздел" name="category" group>

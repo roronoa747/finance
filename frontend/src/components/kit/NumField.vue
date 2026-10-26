@@ -68,12 +68,43 @@ function onEnter(e: KeyboardEvent) {
   ;(e.target as HTMLInputElement).blur()
 }
 
+// «₸» внутри поля (FG-19, пачка 2 «Figma»): денежное — «₸», валютное — знак валюты; число и ставка — без знака.
+const suffix = computed(() => (numKind.value === 'money' ? '₸' : numKind.value === 'fx' && props.currency ? CURRENCY_SIGN[props.currency] : null))
+// Со знаком поле в обёртке `relative`: раскладка экрана (отступы, flex, ширина) — на обёртку, вид (подложка) — на поле.
+const LAYOUT = /^(-?m[trblxy]?-|flex-|min-w-|max-w-|w-|shrink|grow|self-|basis-)/
+const outer = computed(() => classesOf(props.class, props.className).filter((c) => LAYOUT.test(c)).join(' '))
+const inner = computed(() => classesOf(props.class, props.className).filter((c) => !LAYOUT.test(c)).join(' '))
+function classesOf(...v: unknown[]): string[] {
+  return cn(...(v as Parameters<typeof cn>)).split(/s+/).filter(Boolean)
+}
+
 // Поле внутри `kit/Field` с ошибкой — неверное (рамка `--destructive`, строка под полем).
 const invalid = useFieldInvalid()
+const BASE =
+  'flex h-11 w-full min-w-0 rounded-inner border border-transparent bg-surface-2 px-3.5 py-1 text-[16px] text-ink transition-[color,background-color,border-color] outline-none selection:bg-brand selection:text-brand-ink placeholder:text-ink-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-brand focus-visible:bg-surface aria-invalid:border-destructive aria-invalid:focus-visible:border-destructive num'
 </script>
 
 <template>
+  <span v-if="suffix" :class="cn('relative block w-full min-w-0', outer)">
+    <input
+      ref="inputRef"
+      type="text"
+      :value="modelValue"
+      :inputmode="numKind === 'fx' ? 'decimal' : 'numeric'"
+      enterkeyhint="done"
+      :placeholder="placeholder"
+      :disabled="disabled"
+      v-bind="{ ...$attrs, ...invalid }"
+      data-slot="input"
+      :class="cn(BASE, 'pr-9', inner)"
+      @input="onInput"
+      @keydown.enter="onEnter"
+      @blur="emit('blur')"
+    />
+    <span data-num-suffix aria-hidden="true" class="pointer-events-none absolute inset-y-0 right-3.5 grid place-items-center text-[16px] font-medium text-ink-3 num">{{ suffix }}</span>
+  </span>
   <input
+    v-else
     ref="inputRef"
     type="text"
     :value="modelValue"
@@ -83,13 +114,7 @@ const invalid = useFieldInvalid()
     :disabled="disabled"
     v-bind="{ ...$attrs, ...invalid }"
     data-slot="input"
-    :class="
-      cn(
-        'flex h-12 w-full min-w-0 rounded-inner border border-transparent bg-surface-2 px-3.5 py-1 text-[16px] text-ink transition-[color,background-color,border-color] outline-none selection:bg-brand selection:text-brand-ink placeholder:text-ink-3 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 focus-visible:border-brand focus-visible:bg-surface aria-invalid:border-destructive aria-invalid:focus-visible:border-destructive num',
-        props.class,
-        props.className,
-      )
-    "
+    :class="cn(BASE, props.class, props.className)"
     @input="onInput"
     @keydown.enter="onEnter"
     @blur="emit('blur')"

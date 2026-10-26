@@ -593,7 +593,7 @@ function share() {
           <div class="-mb-3.5 flex justify-end">
             <SavedMark :on="monthlySaved" />
           </div>
-          <Field label="Откладывать в месяц, ₸">
+          <Field label="Откладывать в месяц">
             <NumFieldBlur :initial="plain(goal.monthly)" @commit="onMonthly" />
           </Field>
           <Button
@@ -695,7 +695,7 @@ function share() {
       @close="openDepositModal = false"
     >
       <div ref="depositAmountRef">
-        <Field label="Сумма, ₸" name="amount">
+        <Field label="Сумма" name="amount">
           <NumField
             v-model="depositAmount"
             :placeholder="depositOperation === 'deposit' ? plain(goal.monthly) : '10 000'"

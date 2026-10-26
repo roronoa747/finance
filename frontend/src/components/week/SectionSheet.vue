@@ -51,7 +51,7 @@ const payFor = ref<string | null>(null)
   <Sheet :open="!!row" :title="row?.name ?? ''" @close="emit('close')">
     <template v-if="row && detail">
       <p class="font-num text-[32px] font-bold leading-tight num text-ink" data-section-total>{{ money(row.amount) }}</p>
-      <p class="mb-3 type-meta num" data-section-meta>
+      <p class="mb-3 text-right type-meta num" data-section-meta>
         {{ weekRangeLabel(weekRange(week)) }}
         <template v-if="row.prev > 0 && row.delta !== 0">
           · <span :class="row.delta > 0 ? 'text-warn' : 'text-ok'">{{ row.delta > 0 ? '↑' : '↓' }} {{ money(Math.abs(row.delta)) }}</span> к прошлой

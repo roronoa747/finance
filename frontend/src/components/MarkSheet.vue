@@ -4,7 +4,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
-import { CURRENCY_SIGN, FX_ACCOUNT_NAME } from '@/lib/fx'
+import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { addMonths, atLabel, dayLabel } from '@/lib/dates'
 import {
   afterAnchor,
@@ -93,7 +93,6 @@ const dueLabel = computed(() =>
   event.value?.kind === 'advance' ? 'Аванс' : event.value?.kind === 'week' ? 'За неделю' : props.period.length > 7 ? 'Зарплата' : 'Оклад месяца',
 )
 const fxSalary = computed(() => !!own.value && own.value.currency !== 'KZT')
-const sign = computed(() => (own.value ? CURRENCY_SIGN[own.value.currency] : '₸'))
 /**
  * Своя зарплата, отмеченная по выписке, без записи месяца и с чем отложить по плану — «К плану месяца» (возврат
  * приёмки п. 2; ревью frontend Б14 Н-1: то же условие, что у карточки «Недели» и кнопки плана).
@@ -258,13 +257,13 @@ const unmarkNote = computed(() => {
       <div v-else class="flex flex-col gap-2">
         <Button v-if="canAllocate" class="w-full" @click="emit('close'); emit('allocate')">К плану месяца</Button>
         <!-- Валютная зарплата правится снятием и новой отметкой: сумма в валюте, тенге — по курсу дня -->
-        <Button v-if="!record.foreign" variant="secondary" class="w-full" @click="editFromRecord">Другая сумма или счёт</Button>
-        <Button variant="secondary" class="w-full" @click="confirmUnmark = true">Снять отметку</Button>
+        <Button v-if="!record.foreign" variant="outline" size="md" class="mx-auto flex w-fit" @click="editFromRecord">Другая сумма или счёт</Button>
+        <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="confirmUnmark = true">Снять отметку</Button>
       </div>
     </template>
 
     <template v-else-if="mode === 'mark'">
-      <Field :label="`Сумма, ${salary ? sign : '₸'}`" name="amount">
+      <Field label="Сумма" name="amount">
         <NumField v-model="amountText" :currency="own?.currency ?? null" />
         <span v-if="salary && amountNote" class="text-[12px] leading-relaxed text-ink-2" data-amount-note>{{ amountNote }}</span>
         <span v-else-if="salary && !floating" class="text-[12px] leading-relaxed text-ink-2">
@@ -272,7 +271,7 @@ const unmarkNote = computed(() => {
         </span>
       </Field>
 
-      <Button v-if="fxSalary && !choices.length" variant="secondary" class="mb-3.5 w-full" @click="createFxAccount">
+      <Button v-if="fxSalary && !choices.length" variant="outline" size="md" class="mb-3.5 mx-auto flex w-fit" @click="createFxAccount">
         {{ FX_ACCOUNT_NAME[own!.currency] }}
       </Button>
 

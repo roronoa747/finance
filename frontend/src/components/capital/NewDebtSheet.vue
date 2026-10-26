@@ -130,10 +130,10 @@ function createDebt() {
       <Field label="Кому" name="name">
         <Input v-model="debtName" placeholder="Например, брату" />
       </Field>
-      <Field label="Сколько осталось, ₸" name="principal">
+      <Field label="Сколько осталось" name="principal">
         <NumField v-model="debtPrincipal" placeholder="500 000" />
       </Field>
-      <Field label="Сколько в месяц, ₸" name="payment">
+      <Field label="Сколько в месяц" name="payment">
         <template #hint>
           <Hint label="Сколько в месяц">
             Без процентов<template v-if="plainMonths"> — закроется за {{ plainMonths }}
@@ -151,10 +151,10 @@ function createDebt() {
       <Field label="Название">
         <Input v-model="debtName" placeholder="Например, рассрочка на телефон" />
       </Field>
-      <Field ref="principalField" label="Остаток долга, ₸" name="principal">
+      <Field ref="principalField" label="Остаток долга" name="principal">
         <NumField v-model="debtPrincipal" placeholder="600 000" />
       </Field>
-      <Field label="Платёж в месяц, ₸" name="payment">
+      <Field label="Платёж в месяц" name="payment">
         <NumField v-model="debtPayment" placeholder="55 000" />
       </Field>
 

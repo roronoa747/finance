@@ -54,7 +54,7 @@ function applyExtraIncome() {
     <!-- Три строки пояснения → одна (макет Б17). -->
     <p class="-mt-1 mb-3.5 text-[14px] text-ink-2">Премия, подарок, возврат налога</p>
 
-    <Field label="Сумма, ₸" name="amount">
+    <Field label="Сумма" name="amount">
       <NumField v-model="extraIncomeAmount" placeholder="50 000" />
     </Field>
 

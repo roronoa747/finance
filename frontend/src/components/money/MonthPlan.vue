@@ -1149,10 +1149,10 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="paySheet.paid">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>{{ givenDue(paySheet) ? '✓ Отдал' : '✓ Оплачено' }}</p>
-            <Button variant="ghost" size="md" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
+            <Button variant="outline" size="md" class="mx-auto flex w-fit" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
           </template>
           <Button v-else class="w-full" data-pay @click="pay(paySheet)">{{ givenDue(paySheet) ? 'Отдал' : 'Оплатил' }}</Button>
-          <Button variant="ghost" size="md" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
+          <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="editDue(paySheet)">Изменить платёж</Button>
         </div>
       </template>
     </Sheet>
@@ -1177,13 +1177,13 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="putSheet.done">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-put>✓ Отложено</p>
-            <Button v-if="putSheet.undo > 0" variant="ghost" size="md" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
+            <Button v-if="putSheet.undo > 0" variant="outline" size="md" class="mx-auto flex w-fit" data-unput @click="onUnput(putSheet)">Не отложено</Button>
           </template>
           <template v-else>
             <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ money(putSheet.put) }}</p>
             <Button class="w-full" data-put-one @click="onPut(putSheet)">Отложил{{ putSheet.put > 0 ? ` · ${money(putSheet.left)}` : '' }}</Button>
           </template>
-          <Button variant="ghost" size="md" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
+          <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
         </div>
       </template>
     </Sheet>
@@ -1262,7 +1262,7 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Field v-if="spendEdit.fresh && people.length > 1" label="Чей" name="by">
           <Select v-model="spendEdit.by" :options="people.map((p) => ({ value: p.id, label: p.name }))" class="mb-3" data-spend-by />
         </Field>
-        <Field :label="spendEdit.fresh && people.length > 1 ? '₸ в месяц' : `${personName(spendEdit.by)}, ₸ в месяц`">
+        <Field :label="spendEdit.fresh && people.length > 1 ? 'В месяц' : `${personName(spendEdit.by)} — в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
@@ -1272,7 +1272,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Сумма карточки «закрыть кредит» -->
     <Sheet :open="debtEdit !== null" :title="debtName || 'Закрыть кредит'" @close="debtEdit = null">
       <template v-if="debtEdit !== null">
-        <Field label="Сверх графика, ₸ в месяц">
+        <Field label="Сверх графика в месяц">
           <NumField v-model="debtEdit" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="saveDebt">Готово</Button>

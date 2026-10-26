@@ -248,7 +248,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <Button size="lg" class="w-full" @click="form.submit(next)">Дальше</Button>
         <!-- В первом запуске — «Пропустить» в шапке шага (FR-03); вне его «Пока без мечты» ведёт на главный. -->
-        <Button v-if="!props.next" variant="ghost" size="md" class="w-full" @click="skip">Пока без мечты</Button>
+        <Button v-if="!props.next" variant="outline" size="md" class="mx-auto flex w-fit" @click="skip">Пока без мечты</Button>
       </div>
     </template>
 
@@ -280,7 +280,7 @@ const inShell = inject<boolean>('ff-shell-actions', false)
       <div class="mt-auto flex flex-col gap-2 pt-2">
         <!-- В первом запуске дальше — зарплата, а не мечта (`/ux` Блока 1 «первый»): кнопка называет следующий шаг. -->
         <Button size="lg" class="w-full" @click="form.submit(create)">{{ props.next ? 'Дальше' : 'Готово — к мечте' }}</Button>
-        <Button variant="ghost" size="md" class="w-full" @click="step = 'pick'">Назад</Button>
+        <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="step = 'pick'">Назад</Button>
       </div>
     </template>
   </div>

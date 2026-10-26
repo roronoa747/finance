@@ -5,8 +5,9 @@ import { cva, type VariantProps } from 'class-variance-authority'
  * (бренд), вторичные — `secondary` (`--surface-3`) и `ghost` (текстом), действие в строке у своего
  * предмета — `soft` (бренд тихо) или `secondary`.
  *
- * Размер — по уровню (Р-117, макет Блока 17), не по месту: главная (подтверждение листа, пустой экран)
- * — `default` 52 px (`lg` — то же); вторая — `md` 44 px; в строке — `sm` 32 px; маленькая брендовая в строке списка
+ * Размер — по уровню (Р-117, макет Блока 17; пачка 2 «Figma», FG-19), не по месту: главная (подтверждение листа, пустой
+ * экран) — `default` 44 px (`lg` — то же), у брендовой окантовка `--brand-edge`; вторая — `md` 40 px (компактная `outline` по
+ * центру, не во всю ширину); в строке — `sm` 32 px; маленькая брендовая в строке списка
  * («Пришла», «Поставить план», «В платежи» — Блок 5 «Фидбек», Р-30, владелец: ≈ 26 px, текст 12.5) — `xs`. `icon*` — значки.
  */
 export const buttonVariants = cva(
@@ -14,7 +15,7 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-brand text-brand-ink hover:bg-brand/90',
+        default: 'bg-brand text-brand-ink shadow-[inset_0_0_0_1px_var(--brand-edge)] hover:bg-brand/90',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
         outline: 'border border-line-strong bg-surface text-ink hover:bg-surface-2',
         secondary: 'bg-surface-3 text-ink hover:bg-surface-3/80',
@@ -23,9 +24,9 @@ export const buttonVariants = cva(
         link: 'text-brand underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-13 px-6 text-[15.5px]',
-        lg: 'h-13 px-6 text-[15.5px]',
-        md: 'h-11 px-4 text-[15px]',
+        default: 'h-11 px-6 text-[15px]',
+        lg: 'h-11 px-6 text-[15px]',
+        md: 'h-10 px-4 text-[14.5px]',
         sm: 'h-8 gap-1 px-3 text-[13.5px] [&_svg:not([class*=\'size-\'])]:size-[15px]',
         xs: 'h-[26px] gap-1 px-2.5 text-[12.5px] [&_svg:not([class*=\'size-\'])]:size-3',
         icon: 'size-12',

@@ -112,10 +112,10 @@ function remove() {
       <Field label="Название">
         <Input :default-value="goal.name" @blur="onName" />
       </Field>
-      <Field label="Сколько нужно, ₸">
+      <Field label="Сколько нужно">
         <NumFieldBlur :initial="plain(goal.need)" @commit="onNeed" />
       </Field>
-      <Field label="Уже накоплено, ₸">
+      <Field label="Уже накоплено">
         <NumFieldBlur :initial="plain(goal.have)" @commit="onHave" />
       </Field>
       <p v-if="goal.movements?.length" class="-mt-1 mb-3 text-[12px] leading-relaxed text-ink-2">

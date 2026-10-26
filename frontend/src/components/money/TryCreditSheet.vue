@@ -68,7 +68,7 @@ const overpayLine = computed(() => {
 
 <template>
   <Sheet :open="open" title="Прикинуть кредит" @close="emit('close')">
-    <Field label="Сколько, ₸">
+    <Field label="Сколько">
       <NumField v-model="sum" placeholder="1 000 000" data-try-sum />
     </Field>
 
