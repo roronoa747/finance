@@ -24,8 +24,7 @@
   `dpl_JCbkCXM1js2HyMuhZdQYjkWW7ABJ` (Блок 4 «Хвостов»), `dpl_ECwuRY64tQzAvP5oUnqu2DBPaush` (Блок 3 + доки), `dpl_95u5k2pispc2RSmavEeyuxg6v7LL` (Блок 3), `dpl_6457kBLaAaSmWmGpxuN5kATH6u91` (Блок 2 + доки), `dpl_962mKtZYgd6A62PwT21XJmaMBE6g` (Блок 2), `dpl_3jf6GrUEg273Hmtg8C2Sxh51NanG` (Блок 1 + доки), `dpl_2Kh5kgUAWE2iC4RgLCR847Gvye2L` (Блок 1 «Хвостов»), `dpl_EqCkVpa2dGRNceK7b1LpgS8xMiJx` (Блок 5 «Фидбека» + доки),
   `dpl_FzEAgExD1VN2iQqmDYRDoq4kbsB6` (Блок 5), `dpl_E6hHoP94a6W6LaYaHhDSryzQtSZj` (Блок 4б), `dpl_HrrPdXzhQmn15bT4f7y5XqrNQNM8` (FB-22), `dpl_4d5sGsdohGvddAvci7HEJeKTFe8G` (Блок 3), `dpl_7p25nczX3JAgS2fvREazhjC2Xvzi` (Блоки 1–2), `dpl_3m76gC8eApxRDtdpgDJ7B51muteM` (FB-13), `dpl_6biorhMaPXgaXVqpTXxhWfWhAjTF` (ручная трата).
   Миграций нет.
-- **Следующее (2026-10-26):** владелец — (1) телефон: закрыть вкладку/PWA, открыть заново, пополнить мечту с карты →
-  «На карте»; (2) приёмка ленты Блока 0 глазами (https://www.figma.com/design/qBsIBtTRI4MIaRa6b8Eli9?node-id=46-2) и
+- **Следующее (2026-10-26):** смоук владельца на телефоне ✅ (2026-10-26; рантайм Vercel без ошибок). Владелец — (2) приёмка ленты Блока 0 глазами (https://www.figma.com/design/qBsIBtTRI4MIaRa6b8Eli9?node-id=46-2) и
   5 вариантов составителя (ответы в комментариях К-1, К-3, К-5, К-11, К-12); (3) судьбы хвостов FG-Х1…FG-Х4 (§4 бэклога);
   правки — комментариями в Figma → `/backlog Figma` дописать пачку. Ниже — как шла ночь.
 - **Ранее:** **бэклог «Figma» построен 2026-10-25** (`memory/backlog/Figma/00-backlog.md`, FG-01…FG-15, Р-1…Р-15):
