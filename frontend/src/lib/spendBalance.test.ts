@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { accountBalance, shiftedBase, spendAccountOf, spendOwners, spentSince } from '@/lib/finance'
-import type { Account, AccountSpent } from '@/types/finance'
+import type { Account, AccountShift, AccountSpent } from '@/types/finance'
 import type { Operation } from '@/lib/statements/types'
+import { shiftedOps } from '@/lib/statements/matching'
+import { spendTotals } from '@/lib/statements/model'
 
 /** F2-06 (Р-5): счёт для трат — явная отметка или единственная тенговая карта («оба»). */
 
@@ -170,5 +172,32 @@ describe('F2-07: accountBalance с тратами', () => {
     const c = ctx([spent({ amount: 45_000 })])
     const fresh = { ...card, amount: 199_000, amountSetAt: '2026-10-20T08:00:00.000Z' }
     expect(accountBalance(fresh, [], { ...c, accounts: [fresh] })).toBe(199_000)
+  })
+})
+
+/** FG-15 (F2-Х1): пара «сдвиг рукой ↔ строка выписки» не попадает в потраченное, но остаётся в итогах разделов. */
+describe('FG-15: spentSince с парой сдвига', () => {
+  const sh = (id: string, amount: number, kind: AccountShift['kind'], date = '2026-10-11'): AccountShift => ({
+    id, accountId: 'k1', amount, date, by: 'a', kind, updatedAt: T0,
+  })
+
+  it('взнос 50 000 с карты + строка «На депозит −50 000» — нетто без неё; другая трата считается', () => {
+    const ops = [op('dep', -50_000, { kind: 'transfer-out', internal: true, merchant: 'На депозит' }), op('shop', -12_500)]
+    expect(spentSince(ops, none, ANCHOR)).toBe(62_500)
+    const shifted = shiftedOps(ops, [sh('s1', -50_000, 'goal-in')], 'a')
+    expect(spentSince(ops, new Set([...none, ...shifted]), ANCHOR)).toBe(12_500)
+  })
+
+  it('внеплановый доход +30 000 + приход +30 000 в выписке — один раз (сдвигом)', () => {
+    const ops = [op('in', 30_000)]
+    expect(spentSince(ops, shiftedOps(ops, [sh('s1', 30_000, 'income')], 'a'), ANCHOR)).toBe(0)
+  })
+
+  it('покупка мечты done −120 000 + трата −120 000: в spentSince её нет, раздел трат её считает', () => {
+    const ops = [op('trip', -120_000, { categoryId: 'travel' }), op('cafe', -3_000, { categoryId: 'travel' })]
+    const shifted = shiftedOps(ops, [sh('s1', -120_000, 'done')], 'a')
+    expect(spentSince(ops, shifted, ANCHOR)).toBe(3_000)
+    const totals = spendTotals(ops, 'a', 'month', '2026-10', T0, { marked: none, categories: [] })
+    expect(totals.find((t) => t.categoryId === 'travel')?.amount).toBe(123_000)
   })
 })

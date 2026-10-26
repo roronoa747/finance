@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { markedOps, matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit } from './matching'
+import { markedOps, matchCandidates, matchCategory, matchKey, nearestPeriod, operationAt, paymentFits, recentOperations, releasedOps, ruleHit, shiftedOps } from './matching'
 import { assignIds, normalizeMerchant } from './model'
 import type { MerchantRule, Operation } from './types'
-import type { Credit, Obligation, Payment, Person } from '@/types/finance'
+import type { AccountShift, Credit, Obligation, Payment, Person } from '@/types/finance'
 import { money } from '@/lib/money'
 
 /** Сопоставление строк выписки с отметками (Р-6, B2C-15). */
@@ -234,5 +234,54 @@ describe('matchCandidates', () => {
     expect(matchCategory('salary', people[0])).toBeNull()
     const list = ops(op('2026-07-31', -1, 'old'), op('2026-08-01', -1, 'prev'), op('2026-09-20', -1, 'now'))
     expect(recentOperations(list, '2026-09').map((o) => o.merchant)).toEqual(['prev', 'now'])
+  })
+})
+
+/** FG-15 (F2-Х1): строка выписки ↔ сдвиг рукой — пара не вычитается из счёта второй раз. */
+describe('shiftedOps', () => {
+  const sh = (id: string, date: string, amount: number, p: Partial<AccountShift> = {}): AccountShift => ({
+    id, accountId: 'card', amount, date, by: 'a', kind: 'goal-in', goalId: 'g1', updatedAt: T, ...p,
+  })
+  const ids = (s: Set<string>) => [...s].sort()
+
+  it('пара — та же сумма со знаком и ±5 дней; через 10 дней, другая сумма или противоположный знак — не пара', () => {
+    const list = ops(
+      op('2026-10-02', -50_000, 'Na depozit', { kind: 'transfer-out', internal: true }),
+      op('2026-10-12', -50_000, 'Na depozit', { kind: 'transfer-out', internal: true }),
+      op('2026-10-02', -50_001, 'SHOP'),
+      op('2026-10-02', 50_000, 'Vozvrat'),
+    )
+    expect(ids(shiftedOps(list, [sh('s1', '2026-09-30', -50_000)], 'a'))).toEqual([list[0].id])
+    expect(shiftedOps(list.slice(1), [sh('s1', '2026-09-30', -50_000)], 'a').size).toBe(0)
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-07', -50_000)], 'a'))).toEqual([list[0].id])
+  })
+
+  it('две одинаковые строки и один сдвиг — одна пара, ближайшая по дате; два сдвига — обе', () => {
+    const list = ops(op('2026-10-01', -50_000, 'Na depozit'), op('2026-10-04', -50_000, 'Na depozit'))
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-03', -50_000)], 'a'))).toEqual([list[1].id])
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-03', -50_000), sh('s2', '2026-10-03', -50_000)], 'a'))).toEqual(ids(new Set(list.map((o) => o.id))))
+    // Один сдвиг — одна строка, сколько бы строк ни подходило.
+    expect(shiftedOps(list, [sh('s1', '2026-10-02', -50_000)], 'a').size).toBe(1)
+  })
+
+  it('строка из markedOps не берётся — пара уходит следующей; чужой сдвиг и надгробие не берутся', () => {
+    const list = ops(op('2026-10-03', -50_000, 'A'), op('2026-10-05', -50_000, 'B'))
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-03', -50_000)], 'a', new Set([list[0].id])))).toEqual([list[1].id])
+    expect(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { by: 'b' })], 'a').size).toBe(0)
+    expect(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { deletedAt: T })], 'a').size).toBe(0)
+  })
+
+  it('приход +x ↔ сдвиг income +x; покупка мечты −x ↔ done −x; валютная строка — в допуске по тенге', () => {
+    const list = ops(
+      op('2026-10-06', 30_000, 'Premiya'),
+      op('2026-10-08', -120_000, 'TRAVEL'),
+      op('2026-10-08', -99_000, 'AIRLINE', { fx: { currency: 'USD', amount: 20_000 } }),
+      op('2026-10-08', 0, 'HOTEL', { fx: { currency: 'USD', amount: 20_000 } }),
+    )
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-05', 30_000, { kind: 'income', goalId: undefined })], 'a'))).toEqual([list[0].id])
+    expect(ids(shiftedOps(list, [sh('s2', '2026-10-07', -120_000, { kind: 'done' })], 'a'))).toEqual([list[1].id])
+    // 99 000 в пределах 2 % от 100 000; непересчитанная (amount 0) — нет.
+    expect(ids(shiftedOps(list.slice(2), [sh('s3', '2026-10-07', -100_000, { kind: 'done' })], 'a'))).toEqual([list[2].id])
+    expect(shiftedOps(list.slice(3), [sh('s3', '2026-10-07', -100_000, { kind: 'done' })], 'a').size).toBe(0)
   })
 })

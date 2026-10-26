@@ -1,4 +1,4 @@
-import type { Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
+import type { AccountShift, Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
 import { dayNumber, isHand, ruleFor, type PaymentAmount } from './model'
 import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
@@ -187,6 +187,34 @@ export function markedOps(
   const linked = (state.payments ?? []).filter((p) => !p.deletedAt && p.opId)
   const out = new Set(linked.map((p) => p.opId!))
   for (const c of matchCandidates(ops, { ...state, payments: linked }, rules, me)) if (!isDeclined(c, declined)) out.add(c.opId)
+  return out
+}
+
+/**
+ * Строки выписки, уже вычтенные из счёта сдвигом рукой (FG-15, F2-Х1): взнос в цель с карты, снятие, внеплановый доход,
+ * «Сбылось» двигают остаток сами, и тот же перевод в выписке не должен списаться второй раз (`spentSince`). Каждому
+ * живому сдвигу `me` (по дате) — ближайшая по дате свободная строка той же суммы со знаком (тенге — точно; покупка в валюте
+ * — в допуске `AMOUNT_TOLERANCE` по пересчитанным тенге), не дальше `DAY_WINDOW` дней; одна строка — одному сдвигу.
+ * Вид строки не важен (перевод на депозит, покупка, приход). Строки `skip` (`markedOps`) не берутся. Только для потраченного
+ * со счёта: итоги разделов (`SpendTotal`) пару считают — покупка мечты остаётся тратой раздела.
+ */
+export function shiftedOps(ops: Operation[], shifts: AccountShift[], me: PersonId, skip: ReadonlySet<string> = new Set()): Set<string> {
+  const out = new Set<string>()
+  const fits = (o: Operation, s: AccountShift) =>
+    o.fx ? Math.sign(o.amount) === Math.sign(s.amount) && within(Math.abs(o.amount), Math.abs(s.amount), AMOUNT_TOLERANCE) : o.amount === s.amount
+  const mine = shifts
+    .filter((s) => !s.deletedAt && s.by === me && s.amount !== 0)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+  for (const s of mine) {
+    let best: { id: string; gap: number; date: string } | null = null
+    for (const o of ops) {
+      if (out.has(o.id) || skip.has(o.id) || !fits(o, s)) continue
+      const gap = Math.abs(dayNumber(o.date) - dayNumber(s.date))
+      if (gap > DAY_WINDOW) continue
+      if (!best || gap < best.gap || (gap === best.gap && (o.date < best.date || (o.date === best.date && o.id < best.id)))) best = { id: o.id, gap, date: o.date }
+    }
+    if (best) out.add(best.id)
+  }
   return out
 }
 

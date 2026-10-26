@@ -23,7 +23,7 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { declineKey, isDeclined, markedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentAmount, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, shiftedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentAmount, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { recurringOf, type RecurringPrefill } from '@/lib/statements/firstRun'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacementPairs } from '@/lib/statements/phone'
@@ -484,7 +484,10 @@ export const useOperationsStore = defineStore('operations', () => {
     if (acc) {
       const id = `${acc.id}:${by}`
       const since = acc.amountSetAt ?? null
-      const amount = spentSince(all.value, marked, since)
+      // Строки, которые уже двинули остаток сдвигом рукой этого счёта (FG-15), — только здесь, не в итогах разделов.
+      const shifts = finance.accountShifts.filter((s) => s.accountId === acc.id)
+      const counted = new Set([...marked, ...shiftedOps(all.value, shifts, by, marked)])
+      const amount = spentSince(all.value, counted, since)
       const prev = list.find((s) => s.id === id)
       const same = prev ? prev.deletedAt || (prev.amount === amount && (prev.since ?? null) === since) : amount === 0
       if (!same) writes.push({ id, accountId: acc.id, by, since, amount, updatedAt: at })
@@ -1139,12 +1142,13 @@ export const useOperationsStore = defineStore('operations', () => {
   /*
    * Счёт для трат (F2-07): сверка остатка (новый якорь), смена хозяина или счёта — у себя или синком партнёра — своя
    * запись пересчитывается от нового якоря. Пустая копия (ещё не загружена) не пишет: ноль затёр бы запись второго
-   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`.
+   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`. Новый или снятый сдвиг рукой (FG-15) — тоже.
    */
   watch(
     () => {
       const a = spendAccountOf(finance.householdDoc.accounts || [], me())
-      return a ? `${a.id}:${a.amountSetAt ?? ''}` : ''
+      const shifts = a ? finance.accountShifts.filter((s) => s.accountId === a.id).map((s) => s.id).join(',') : ''
+      return a ? `${a.id}:${a.amountSetAt ?? ''}:${shifts}` : ''
     },
     () => {
       if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
