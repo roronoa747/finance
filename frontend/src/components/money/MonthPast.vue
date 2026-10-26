@@ -5,7 +5,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { useFxStore } from '@/stores/fx'
 import { money } from '@/lib/money'
-import { liveSpendCategories, monthPlan, monthPlanPast, rkShare, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
+import { liveSpendCategories, monthPlan, monthPlanPast, sectionMonth, spendCompare, spendPlansBy } from '@/lib/finance'
 import { plannedElsewhere } from '@/lib/statements/dictionary'
 import type { PersonId } from '@/types/finance'
 import Card from '@/components/kit/Card.vue'
@@ -50,7 +50,6 @@ const catNone = computed(() => {
   const c = catFor.value && !auth.isViewer && !catRow.value && !plannedElsewhere(catFor.value, all) ? liveSpendCategories(all).find((x) => x.id === catFor.value) : null
   return c?.name ?? null
 })
-const catRk = computed(() => (catRow.value?.group ? rkShare(input.value.state, input.value.ctx, catRow.value.group, me.value) : null))
 const catPlans = computed(() =>
   catRow.value ? spendPlansBy(monthPlan(input.value.state, input.value.ctx), finance.people.filter((p) => !p.deletedAt && p.id === me.value), catRow.value.categoryId) : [],
 )
@@ -104,7 +103,6 @@ function openCatHand(id: string) {
 
     <SpendCategorySheet
       :row="catRow"
-      :rk="catRk"
       :plans="catPlans"
       :can-edit="false"
       :month="monthKey"

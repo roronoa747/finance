@@ -57,8 +57,9 @@ const amountAt = (html: string, attr: string) => {
 const hintsOpen = () => screenMixin({ at: { left: 0, top: 0, width: 300 } })
 /** Формула под числом капитала «счета N − долги M» (понятность Р-2; Р-116 держал эти итоги в подсказке «Что такое капитал»). */
 const worthParts = (html: string) => {
-  const m = text(html).match(/счета\s([\d\s]+?)\s−\sдолги\s([\d\s]+\d)/)
-  if (!m) throw new Error('нет формулы «счета − долги»')
+  // FG-25 (19:2): две рамки под суммой — «счета N ₸» и «долги M ₸».
+  const m = text(html).match(/счета\s([\d\s]+?)\s₸\sдолги\s([\d\s]+\d)/)
+  if (!m) throw new Error('нет рамок «счета» и «долги»')
   return { assets: Number(m[1].replace(/\D/g, '')), debt: Number(m[2].replace(/\D/g, '')) }
 }
 const mark = (kind: Payment['kind'], targetId: string, period: string, amount: number, extra: Partial<Payment> = {}): Payment => ({

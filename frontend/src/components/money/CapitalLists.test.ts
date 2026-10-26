@@ -528,18 +528,20 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(ro).not.toContain('Удалить кредит')
   })
 
-  it('калькулятор: «долг не закрывается» в шапке и подсказка без суммы', async () => {
+  it('калькулятор: «долг не закрывается» в шапке; пояснение поля — в «?» у подписи (FG-25)', async () => {
     await family()
     const html = await render('/capital?payoff=card-debt')
     expect(html).toContain('Переплата, если не трогать')
     expect(html).toContain('долг не закрывается')
-    expect(html).toContain('Впишите сумму, которую действительно можете внести. Приложение не станет предлагать больше — считать по деньгам, которых нет, смысла нет.')
+    expect(html).not.toContain('Впишите сумму')
+    expect(html).toContain('aria-label="Какую сумму вписать"')
     expect(html).not.toContain('Отдача падает')
 
     // Добавка, с которой долг закрылся бы, выводов не даёт: «сейчас» — бесконечность
     // (было «Закроется на Infinity мес. раньше», ревью Н-1).
     const withSum = await render('/capital?payoff=card-debt', { payoffAmount: '10 000' })
-    expect(withSum).toContain('Впишите сумму, которую действительно можете внести.')
+    // Итога нет — ни «−N мес.», ни строки переплаты (пояснение — в «?» у поля).
+    expect(withSum).not.toContain('data-payoff-result')
     expect(withSum).not.toContain('Infinity')
   })
 
@@ -595,7 +597,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
 
   })
 
-  it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
+  it('калькулятор: подсказка поля — первый чип, чип «половина переплаты»; лесенка «Отдача падает» — под свёрнутым «Подробнее» (FG-25)', async () => {
     const { money, plain } = await import('@/lib/money')
     const { halfOverpayExtra } = await import('@/lib/finance')
     await family()
@@ -606,16 +608,20 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('половина переплаты')
     expect(html).not.toContain('½')
     expect(html).toMatch(/>\s*Отдача падает\s*</)
+    // Лесенка — внутри <details> «Подробнее», по умолчанию закрыта; пояснение «половину переплаты…» — в «?» у итога.
+    const ladder = html.slice(html.indexOf('<details'), html.indexOf('</details>'))
+    expect(ladder).toContain('Отдача падает')
+    expect(ladder).toMatch(/<summary[^>]*>\s*Подробнее/)
+    expect(html).not.toMatch(/<details[^>]*open/)
     // Добавка в строке лесенки — без «₸», как React `+{plain(r.extra)}` (критик).
     expect(html).toContain(`+${money(29_000)}</span>`)
-    expect(html).toContain(
-      `Половину переплаты снимает уже добавка в ${money(half)} — дальше каждая следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.`,
-    )
 
-    // С суммой — результат React: «экономия …», «Останется N платежей вместо M».
+    // С суммой (FG-25, 51:873): одна крупная «−N мес.» и «переплата меньше на N ₸»; «осталось N платежей» — в «?» у итога.
     const withSum = await render('/capital?payoff=loan', { payoffAmount: plain(half) })
-    expect(withSum).toMatch(/экономия \d/)
-    expect(withSum).toMatch(/Останется \d+ платеж(а|ей)? вместо \d+\./)
+    expect(withSum).toMatch(/data-payoff-months[^>]*>−\d+ мес\.</)
+    expect(withSum).toMatch(/data-payoff-saved[^>]*>переплата меньше на \d/)
+    expect(withSum).toContain('aria-label="Что меняется"')
+    expect(withSum).not.toContain('экономия')
     expect(withSum).not.toContain('Впишите сумму')
   })
 

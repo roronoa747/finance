@@ -111,7 +111,8 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(q('[data-credits-total]')).toBeNull()
     expect(num(q('[data-goals-total]'))).toBe(goals.total)
     expect(q('button[aria-label="Что такое капитал"]')).toBeNull()
-    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(money(1_540_000))}`)
+    expect(txt(q('[data-worth-assets]'))).toBe(`счета ${norm(money(2_250_000))}`)
+    expect(txt(q('[data-worth-debts]'))).toBe(`долги ${norm(money(1_540_000))}`)
     expect(2_250_000 - 1_540_000).toBe(num(q('[data-worth]')))
     expect(num(q('[data-worth]'))).toBe(710_000)
     // Брендовой кнопки на экране нет (правило 12).

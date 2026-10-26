@@ -17,7 +17,7 @@ import { spendTotals, unknownGroups } from '@/lib/statements/model'
 import type { SpendTotal } from '@/lib/statements/types'
 import { monthKey, todayIso, weekKey, weekRange, weekRangeLabel } from '@/lib/dates'
 import { amountTotal, capitalGoals, capitalStats, closerThisMonth, liveAccounts, liveCredits, liveGoals, myWeek, netWorth, openDebt, spendRows, tripOps, tripSpent, tripStatus, tripTotal } from '@/lib/finance'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { useAuthStore } from '@/stores/auth'
 import { demoPhotoUrl, photoUrl } from '@/lib/photos/store'
 
@@ -272,7 +272,9 @@ describe('PN-06 (понятность Р-2, Р-3): демо — плашка К�
     expect(debt).toBeGreaterThan(0)
     expect(assets - debt).toBe(worth)
     const raw = await renderScreen(Money, '/money')
-    expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${money(debt)}<`)
+    // FG-25 (19:2): две рамки «счета N ₸» и «долги N ₸» вместо формулы.
+    expect(raw).toContain(`data-worth-assets><span class="text-ink-2">счета</span> <span class="text-ink">${money(assets)}</span>`)
+    expect(raw).toContain(`data-worth-debts><span class="text-ink-2">долги</span> <span class="text-ink">${money(debt)}</span>`)
     expect(raw).not.toContain('Что такое капитал')
     expect(raw).not.toContain('data-stat-row')
     const opened = text(await renderScreen(Money, '/money', undefined, [screenMixin({ statsOpen: true })]))

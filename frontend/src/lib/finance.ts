@@ -4301,27 +4301,6 @@ export function spendCompare(
 }
 
 /**
- * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца
- * по разделам с группой — и разделам платежей с группой целиком (коммуналка, аренда, связь). Знаменатель — те же
- * разделы с группой (потребительские траты, как три группы статистики — 97,2 % денежных расходов): кредиты, переводы
- * людям, наличные и «не разобрано» долю не размывают; разовые (FB-07) — тоже. Целые %; выписок или трат с группой нет —
- * null. С `by` — доля в тратах одного участника (лист своего раздела, FB-11).
- */
-export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup, by?: PersonId): number | null {
-  const people = peopleOf(state.people ?? [], by).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
-  const ids = new Set(people.map((p) => p.id))
-  const live = ctx.spendCategories.filter(alive)
-  const mine = ctx.totals.filter(
-    (t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0 && RK_GROUP_BY_CATEGORY[t.categoryId],
-  )
-  const amountOf = (t: SpendTotal) => t.amount - oneOffOf(t, live)
-  const total = mine.reduce((s, t) => s + amountOf(t), 0)
-  if (total <= 0) return null
-  const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + amountOf(t), 0)
-  return Math.round((part * 100) / total)
-}
-
-/**
  * «План каждого» листа раздела (Р-81): строка раздела в `monthPlan().spend` каждого участника; у кого плана нет — 0.
  * Один расчёт для листа «Месяца» и листа сводки прошлого месяца (RZ-13).
  */

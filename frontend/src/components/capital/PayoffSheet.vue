@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { PhCaretRight } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { money, plain, parseMoney } from '@/lib/money'
@@ -18,6 +19,7 @@ import type { Payment } from '@/types/finance'
 import { cn, plural } from '@/lib/utils'
 
 import Field from '@/components/kit/Field.vue'
+import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -144,6 +146,8 @@ function prepayUndoNote(p: Payment): string {
       </Field>
 
       <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу' : 'Сколько внесёте разом'">
+        <!-- Пояснение — в «?» у подписи, а не абзацем под полем (FG-25, 51:873). -->
+        <template #hint><Hint label="Какую сумму вписать">Сумма, которую действительно можете добавлять каждый месяц — больше приложение не предложит</Hint></template>
         <NumField v-model="payoffAmount" :placeholder="plain(chips[0] ?? 5000)" class="mb-2" />
       </Field>
 
@@ -160,27 +164,18 @@ function prepayUndoNote(p: Payment): string {
         </button>
       </div>
 
-      <div v-if="payoffResult" class="mb-3 rounded-xl border border-brand bg-brand-soft p-3.5">
-        <div class="font-display text-[18px] font-semibold text-brand">
-          {{
-            payoffResult.sooner
-              ? `Закроется на ${payoffResult.monthsSaved} мес. раньше`
-              : 'Срок почти не изменится'
-          }}
+      <!-- Итог — одна крупная цифра без коробки (FG-25): «−N мес.» и строка переплаты; «осталось N платежей» и пояснение — в «?». -->
+      <div v-if="payoffResult" class="mb-3" data-payoff-result>
+        <div class="flex items-center gap-1.5">
+          <span v-if="payoffResult.sooner" class="font-num text-[28px] font-bold leading-tight num text-ink" data-payoff-months>−{{ payoffResult.monthsSaved }} мес.</span>
+          <span v-else class="text-[15px] text-ink-2" data-payoff-months>Срок почти не изменится</span>
+          <Hint label="Что меняется">
+            Останется {{ payoffResult.monthsAfter }} {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }} вместо {{ payoffResult.monthsNow }}.<template v-if="payoffHalf">
+            Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая следующая тысяча даёт меньше предыдущей.</template>
+          </Hint>
         </div>
-        <div class="mt-0.5 text-[13px] font-medium text-ink num">
-          экономия {{ money(payoffResult.saved) }}
-        </div>
-        <div class="mt-1 text-[12px] text-ink-2">
-          Останется {{ payoffResult.monthsAfter }}
-          {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }}
-          вместо {{ payoffResult.monthsNow }}.
-        </div>
+        <div class="text-[14px] text-ok num" data-payoff-saved>переплата меньше на {{ money(payoffResult.saved) }}</div>
       </div>
-      <p v-else class="mb-3 text-[12.5px] leading-relaxed text-ink-2">
-        Впишите сумму, которую действительно можете внести. Приложение не станет предлагать
-        больше — считать по деньгам, которых нет, смысла нет.
-      </p>
 
       <Button
         v-if="canPrepay"
@@ -238,9 +233,12 @@ function prepayUndoNote(p: Payment): string {
         </div>
       </div>
 
-      <!-- Лесенка отдачи -->
-      <div v-if="ladder.length > 0" class="mb-3">
-        <div class="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
+      <!-- Лесенка отдачи — свёрнута под «Подробнее ›» (FG-25: сложное скрыто); пояснение — в «?» у итога. -->
+      <details v-if="ladder.length > 0" class="group mb-3" data-payoff-ladder>
+        <summary class="flex cursor-pointer list-none items-center gap-1 py-1 text-[14px] text-ink-2 [&::-webkit-details-marker]:hidden">
+          Подробнее <PhCaretRight :size="13" class="text-ink-3 transition-transform group-open:rotate-90" />
+        </summary>
+        <div class="mb-1.5 mt-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-2">
           Отдача падает
         </div>
         <div class="flex flex-col gap-1 text-[12.5px]">
@@ -254,11 +252,7 @@ function prepayUndoNote(p: Payment): string {
             <span class="num font-medium text-brand">{{ money(item.saved) }}</span>
           </div>
         </div>
-        <p v-if="payoffHalf" class="mt-2 text-[12.5px] leading-relaxed text-ink-2">
-          Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая
-          следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.
-        </p>
-      </div>
+      </details>
 
       <Button class="w-full" @click="emit('close')">Закрыть</Button>
     </template>

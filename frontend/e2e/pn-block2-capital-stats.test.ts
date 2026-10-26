@@ -63,16 +63,19 @@ describe('e2e / понятность Блок 2 — плашка Капитал�
     if (!m) throw new Error(`нет ${attr}`)
     return (/[−-]/.test(m[1]) ? -1 : 1) * digits(m[1])
   }
-  /** Формула под числом: «счета N − долги M» → числа; без долгов — «счета N · долгов нет». */
+  /** Две рамки под числом (FG-25, 19:2): «счета N ₸» и «долги M ₸»; без долгов — «счета N ₸» и «долгов нет». */
   const formulaOf = (html: string) => {
-    const m = html.match(/data-worth-formula[^>]*>([^<]*)</)
-    if (!m) throw new Error('нет data-worth-formula')
-    const t = text(m[1])
-    const two = t.match(/счета ([\d ]+?) − долги ([\d ]+)/)
-    if (two) return { assets: digits(two[1]), debt: digits(two[2]), noDebt: false }
-    const one = t.match(/счета ([\d ]+?) ₸ · долгов нет/)
-    if (!one) throw new Error(`формула не разобрана: ${t}`)
-    return { assets: digits(one[1]), debt: 0, noDebt: true }
+    const frame = (attr: string) => {
+      const at = html.indexOf(attr)
+      if (at < 0) return null
+      return text(html.slice(at, html.indexOf('</span></span>', at)).replace(/<[^>]*>/g, ' '))
+    }
+    const assets = frame('data-worth-assets')
+    if (!assets) throw new Error('нет data-worth-assets')
+    const debt = frame('data-worth-debts')
+    if (debt) return { assets: digits(assets), debt: digits(debt), noDebt: false }
+    if (!html.includes('data-worth-no-debts')) throw new Error('нет ни «долги», ни «долгов нет»')
+    return { assets: digits(assets), debt: 0, noDebt: true }
   }
   /** Строка доли `data-stat-row="key"` — её сумма и проценты. */
   const rowOf = (html: string, key: string) => {

@@ -35,7 +35,6 @@ import {
   planPuts,
   putsLeft,
   queueStatus,
-  rkShare,
   spendCompare,
   spendFact,
   participantLines,
@@ -485,7 +484,6 @@ const sheetCompare = computed(() =>
 const catRow = computed(() => sheetCompare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 /** Раздел семьи, где у меня нет ни трат, ни плана (`?cat=` из отчёта): лист «нет трат», цифр партнёра нет (FB-12). */
 const catNone = computed(() => (canEdit.value && catFor.value && !catRow.value ? (categories.value.find((c) => c.id === catFor.value)?.name ?? null) : null))
-const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group, me.value) : null))
 /** Свой план раздела — строка `monthPlan().spend`; плана нет — 0. План партнёра — его раздел (Р-18). */
 const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value.filter((p) => p.id === me.value), catFor.value) : []))
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
@@ -1221,7 +1219,6 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Прошлый месяц (план до отложенной зарплаты) — без «Изменить»: план раздела общий на будущее (Х-9, RZ-13). -->
     <SpendCategorySheet
       :row="catRow"
-      :rk="catRk"
       :plans="catPlans"
       :can-edit="canEdit && sheetMonth >= monthNow()"
       :image="catImage"

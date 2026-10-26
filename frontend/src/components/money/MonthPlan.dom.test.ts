@@ -1172,7 +1172,8 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${money(30_000)}`))
     expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${money(20_000)}`))
     expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${money(10_000)} в мечту «${cafe.advice!.goalName}»`))
-    expect(q('[role="dialog"] [data-cat-rk]')).not.toBeNull()
+    // FG-25: строки «в Алматы» нет.
+    expect(q('[role="dialog"] [data-cat-rk]')).toBeNull()
     await press(q('[role="dialog"] [data-cat-person="a"] [data-cat-edit]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Сколько в месяц')
     expect(q<HTMLInputElement>('[role="dialog"] input[inputmode]')!.value).toBe(plain(20_000))

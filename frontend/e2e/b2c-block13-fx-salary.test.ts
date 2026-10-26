@@ -11,7 +11,7 @@ import { planFamilyDoc } from '../src/test/planFamily'
 import Money from '../src/views/Money.vue'
 import Week from '../src/views/Week.vue'
 import Month from '../src/views/Month.vue'
-import SalaryRow from '../src/components/SalaryRow.vue'
+import SalaryExchange from '../src/components/SalaryExchange.vue'
 import type { Currency } from '../src/types/finance'
 import { screenMixin } from '../src/test/screenState'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
@@ -294,8 +294,8 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
     A.store.unmarkPaid('salary', 'a', '2026-10')
     expect(A.store.fxExchanges.find((x) => x.id === second.id)!.deletedAt).toBeFalsy()
     expect(salaryTenge(ilyas(A), '2026-10', ctx(A)).tenge).toBe(739_626)
-    // Строка зарплаты — как в листе «До зарплаты» (`PaydaySummary`).
-    const unmarked = text(await screen(A.pinia, SalaryRow, '/money', { personId: 'a', period: '2026-10' }))
+    // Строка обменов — та, что в листе зарплаты (`SalaryExchange part="line"`); строка `SalaryRow` без экрана снята (FG-25, FG-Х6).
+    const unmarked = text(await screen(A.pinia, SalaryExchange, '/month', { personId: 'a', period: '2026-10', part: 'line' }))
     expect(unmarked).toContain('обменяно 300 € · ≈ 739 626 ₸')
     expect(unmarked).not.toContain('Обменял')
     // Отмена работает и без отметки: всё возвращается — евро-счёт 0 €, Kaspi 2 000 000 ₸, у второго телефона тоже.
@@ -307,6 +307,6 @@ describe('e2e / B2C Блок 13 — зарплата в валюте на дву
       expect(p.store.accounts.find((a) => a.id === eur)).toMatchObject({ foreignAmount: 0, amount: 0 })
       expect(p.store.accounts.find((a) => a.id === 'card')!.amount).toBe(2_000_000)
     }
-    expect(text(await screen(A.pinia, SalaryRow, '/money', { personId: 'a', period: '2026-10' }))).not.toContain('обменяно')
+    expect(text(await screen(A.pinia, SalaryExchange, '/month', { personId: 'a', period: '2026-10', part: 'line' }))).not.toContain('обменяно')
   })
 })

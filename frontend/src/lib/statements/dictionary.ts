@@ -44,17 +44,6 @@ export const SPEND_ARTICLE_CATEGORIES = ['sc_cafe', 'sc_shopping', 'sc_fun', 'sc
 /** Группа справки РК (Р-5): продукты, непродовольственные товары, платные услуги. */
 export type RkGroup = 'food' | 'goods' | 'services'
 
-/**
- * Справка РК (Р-5, AU-01): доля группы в денежных расходах населения г. Алматы, целые % — данные, обновляются руками
- * раз в квартал. Источник — «Расходы и доходы населения Республики Казахстан (II квартал 2025г.)», таблица «Структура
- * денежных расходов населения», строка «г.Алматы» (опубликовано 18.09.2025): 53,8 / 19,1 / 24,3 → 54 / 19 / 24.
- */
-export const RK_SPEND_GROUPS: Record<RkGroup, { share: number; name: string; label: string; source: string; period: string; checkedAt: string }> = {
-  food: { share: 54, name: 'продукты', label: 'продуктов', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
-  goods: { share: 19, name: 'покупки', label: 'покупок', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
-  services: { share: 24, name: 'услуги', label: 'услуг', source: 'stat.gov.kz', period: 'II кв. 2025', checkedAt: '2026-10-16' },
-}
-
 /** Сведение разделов словаря к группам РК (Р-5); прочие и свои разделы семьи — без группы (справки нет). */
 export const RK_GROUP_BY_CATEGORY: Record<string, RkGroup> = {
   sc_food: 'food',

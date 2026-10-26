@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { SPEND_LAST, earlierLabel, type HabitImage, type ImageAction, type SectionMonth, type SpendCompareRow } from '@/lib/finance'
-import { RK_SPEND_GROUPS } from '@/lib/statements/dictionary'
 import { money } from '@/lib/money'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import type { PersonId } from '@/types/finance'
-import Hint from '@/components/kit/Hint.vue'
 import HabitImageRow from '@/components/money/HabitImageRow.vue'
 import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -13,17 +11,15 @@ import Button from '@/components/ui/Button.vue'
 
 /**
  * Лист раздела трат на «Месяце» (Р-5, AU-02): крупно — свой факт месяца (FB-12, Р-18), под ним коротко — % дохода,
- * «обычно у вас», план, «до плана» в мечту, справка РК мелко с `Hint`; свой план — строкой с тихим «Изменить» (member).
+ * «обычно у вас», план, «до плана» в мечту; свой план — строкой с тихим «Изменить» (member). Строку «в Алматы» владелец убрал (FG-25).
  * Брендовой кнопки нет (правило 12: действия плана — тихие). Под цифрами — свои операции раздела за месяц (FB-05, Р-14):
  * первые пять по дням и тихое «Ещё N · сумма»; строка выписки — лист операции (`open`), ручная — «Трата» (`hand`); своих
- * операций нет (партнёр, viewer) — блока нет. Все числа — из `spendCompare` / `rkShare` / `sectionMonth`, лист не считает.
+ * операций нет (партнёр, viewer) — блока нет. Все числа — из `spendCompare` / `sectionMonth`, лист не считает.
  * «Наличные» и «Переводы людям» (`SPEND_LAST`, Х-14, Р-9) — только крупная сумма и операции: без доли дохода, «обычно»,
  * плана и «до плана» (план этих разделов в данных остаётся — его видно в листе «План трат»).
  */
 const props = defineProps<{
   row: SpendCompareRow | null
-  /** Доля группы раздела в моих тратах за месяц (`rkShare` с `by`); нет группы или выписок — null. */
-  rk: number | null
   /** План участников по разделу (траты плана месяца, `PlanSpend.rows`); без плана — 0. */
   plans: { by: PersonId; name: string; amount: number }[]
   canEdit: boolean
@@ -108,10 +104,6 @@ const imageLabel = computed(() => (props.canEdit && props.image?.action ? IMAGE_
       <!-- Свои операции раздела за месяц (FB-05, Р-14): строка — лист операции или «Трата»; «Ещё N» — тихая строка. -->
       <SectionOpsList v-if="opsShown" :ops="opsShown" @more="emit('more')" @open="(id) => emit('open', id)" @hand="(id) => emit('hand', id)" />
       <template v-if="!opsOnly">
-        <p v-if="row.group && rk !== null" class="mt-2 flex items-center gap-1 text-[12.5px] text-ink-2 num" data-cat-rk>
-          {{ RK_SPEND_GROUPS[row.group].name }}: у вас {{ rk }} % · в Алматы {{ RK_SPEND_GROUPS[row.group].share }} %
-          <Hint label="Справка">Доля {{ RK_SPEND_GROUPS[row.group].label }} в тратах семей Алматы, {{ RK_SPEND_GROUPS[row.group].source }}, {{ RK_SPEND_GROUPS[row.group].period }}</Hint>
-        </p>
         <p v-if="plans.length" class="mt-4 text-[13px] font-semibold text-ink-2" data-cat-plans-title>{{ plans.length > 1 ? 'План каждого' : 'План' }}</p>
         <div class="mt-1.5 flex flex-col border-t border-line">
           <div v-for="p in plans" :key="p.by" class="flex items-center gap-2 border-b border-line py-2" :data-cat-person="p.by">

@@ -53,51 +53,48 @@ describe('RP-10: «Пришла зарплата» (SSR)', () => {
   }
 
   /**
-   * Строка зарплаты участника за сентябрь — та же, что в листе «До зарплаты» и на «Неделе» (список
-   * Бюджета ушёл с пивотом 3, B2C-45).
+   * Два режима (FG-25, хвост FG-Х6: строка без экрана снята): `button small` — «Пришла» у своей строки «Месяца»; `button` —
+   * «Пришла зарплата» и «Другая сумма или счёт» в листе зарплаты.
    */
-  const row = (id: 'a' | 'b') => renderToString(createSSRApp(SalaryRow, { personId: id, period: '2026-09', note: '10 сентября' }))
-  const hasMark = (chunk: string) => />\s*Пришла\s*<\/button>/.test(chunk)
+  const small = (id: 'a' | 'b') => renderToString(createSSRApp(SalaryRow, { personId: id, period: '2026-09', button: true, small: true }))
+  const big = (id: 'a' | 'b') => renderToString(createSSRApp(SalaryRow, { personId: id, period: '2026-09', button: true }))
+  const bare = (chunk: string) => chunk.replace(/<!--[^>]*-->/g, '')
+  const hasSmall = (chunk: string) => /data-salary-came-btn[^>]*>\s*Пришла\s*</.test(bare(chunk))
+  const hasBig = (chunk: string) => />\s*Пришла зарплата\s*<\/button>/.test(bare(chunk))
 
-  it('строка зарплаты: «Пришла» — только в строке своей зарплаты; viewer не видит ни одной', async () => {
+  it('«Пришла» — только у своей зарплаты, в обоих режимах; viewer не видит ни одной', async () => {
     family('member', 'a')
-    expect(hasMark(await row('a'))).toBe(true)
-    expect(hasMark(await row('b'))).toBe(false)
-
-    setActivePinia(createPinia())
-    family('member', 'b')
-    expect(hasMark(await row('a'))).toBe(false)
-    expect(hasMark(await row('b'))).toBe(true)
+    expect(hasSmall(await small('a'))).toBe(true)
+    expect(hasBig(await big('a'))).toBe(true)
+    expect(await big('a')).toContain('Другая сумма или счёт')
+    expect(hasSmall(await small('b'))).toBe(false)
+    expect(hasBig(await big('b'))).toBe(false)
 
     setActivePinia(createPinia())
     family('viewer', 'a')
-    expect(hasMark(await row('a'))).toBe(false)
-    expect(hasMark(await row('b'))).toBe(false)
+    for (const id of ['a', 'b'] as const) {
+      expect(hasSmall(await small(id))).toBe(false)
+      expect(hasBig(await big(id))).toBe(false)
+    }
   })
 
-  it('строка зарплаты: до окна кнопки нет; в окне за 3 дня — есть', async () => {
+  it('до окна кнопки нет; в окне за 3 дня — есть', async () => {
     vi.setSystemTime(new Date('2026-09-06T07:00:00Z'))
     family('member', 'a')
-    expect(hasMark(await row('a'))).toBe(false)
+    expect(hasSmall(await small('a'))).toBe(false)
+    expect(hasBig(await big('a'))).toBe(false)
     vi.setSystemTime(new Date('2026-09-07T07:00:00Z'))
-    expect(hasMark(await row('a'))).toBe(true)
+    expect(hasSmall(await small('a'))).toBe(true)
+    expect(hasBig(await big('a'))).toBe(true)
   })
 
-  it('строка зарплаты: отмеченная — сумма пришедшего, день и счёт; партнёру — отметка без кнопок', async () => {
-    const bonus = salary({ amount: 900_000 })
-    family('member', 'a', [bonus])
-    const mine = await row('a')
-    expect(mine).toContain('пришла 10 сентября · Kaspi Gold')
-    expect(mine).toContain(`+${money(900_000)}`)
-    expect(hasMark(mine)).toBe(false)
-    expect(mine).toContain('aria-label="Пришла — подробнее"')
-
-    setActivePinia(createPinia())
-    family('member', 'b', [bonus])
-    const theirs = await row('a')
-    expect(theirs).toContain('пришла 10 сентября · Kaspi Gold')
-    expect(theirs).toContain('aria-label="Пришла"')
-    expect(theirs).not.toContain('подробнее')
+  it('отмеченная — без кнопки в обоих режимах; строки «пришла … · счёт» больше нет', async () => {
+    family('member', 'a', [salary({ amount: 900_000 })])
+    const mine = await small('a')
+    expect(hasSmall(mine)).toBe(false)
+    expect(hasBig(await big('a'))).toBe(false)
+    expect(mine).not.toContain('пришла 10 сентября')
+    expect(mine).not.toContain(`+${money(900_000)}`)
   })
 
   /** Разбор зарплаты Ильяса за сентябрь — те же числа, что у экрана (`finance.ts`). */
