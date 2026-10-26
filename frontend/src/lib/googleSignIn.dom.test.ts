@@ -40,12 +40,12 @@ describe('googleSignIn', () => {
     await expect(c).resolves.toBe(win.google.accounts!.id)
   })
 
-  it('кнопка: по-русски, «Продолжить с Google»; ширина 200…400, скрытый контейнер — 320', async () => {
+  it('кнопка: по-русски, «Войти через Google» (FG-20); ширина 200…400, скрытый контейнер — 320', async () => {
     const renderButton = vi.fn()
     window.google = { accounts: { id: { initialize: vi.fn(), renderButton } } }
     const el = document.createElement('div')
     await mod.renderGoogleButton(el, () => {})
-    expect(renderButton).toHaveBeenCalledWith(el, expect.objectContaining({ locale: 'ru', text: 'continue_with', width: 320 }))
+    expect(renderButton).toHaveBeenCalledWith(el, expect.objectContaining({ locale: 'ru', text: 'signin_with', width: 320 }))
 
     Object.defineProperty(el, 'clientWidth', { value: 600 })
     await mod.renderGoogleButton(el, () => {})

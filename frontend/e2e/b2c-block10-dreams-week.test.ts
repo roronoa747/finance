@@ -234,9 +234,9 @@ describe('e2e / B2C Блок 10 — «Мечты и Неделя» на двух
     expect(html).toContain('Похоже, это платёж по Яндекс Плюс')
     // «История» демо — те же операции недели.
     expect(text(await screen(pinia, Money, '/money/history'))).toContain('ИП Абенова')
-    // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания обоих и общее.
+    // «Мечты» демо «как в макете» (приёмка Б10): главная, 2 цели, желания (FG-21: без подписи «чьё»).
     const dreams = text(await screen(pinia, Dreams, '/'))
-    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Желания 3', 'общие', 'Вы', 'Партнёр']) expect(dreams).toContain(w)
+    for (const w of ['Поездка в Японию', 'Машина', 'Новый диван', 'Желания 3']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
   })
 

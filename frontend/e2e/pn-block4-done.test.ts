@@ -95,9 +95,12 @@ describe('e2e / понятность Блок 4 — «Сбылось»', () => {
     const dreams = text(await screen(a.pinia, Dreams, '/'))
     expect(dreams).toContain('Сбылось · 1')
     expect(dreams).not.toContain('Отпуск')
-    const album = text(await screen(a.pinia, Dreams, '/', undefined, [screenMixin({ albumOpen: true })]))
-    expect(album).toContain('Отпуск')
-    expect(album).toContain('окт 2026 · за 14 мес.')
+    // Лист «Сбылось» (FG-21: ссылка у «Целей», лист телепортом — в SSR его нет): строки листа — из состояния экрана.
+    let album: string[] = []
+    await screen(a.pinia, Dreams, '/', undefined, [
+      screenMixin({}, (s) => (album = (s.done as Goal[]).map((g) => `${g.name} ${(s.doneMeta as (g: Goal) => string)(g)}`))),
+    ])
+    expect(album).toEqual(['Отпуск окт 2026 · за 14 мес.'])
   })
 
   it('(б) цель на счёте: Kaspi Gold −3 000 000, «Вернуть в мечты» — счёт, капитал и очередь назад', async () => {

@@ -21,11 +21,15 @@ import Card from '@/components/kit/Card.vue'
 import Callout from '@/components/kit/Callout.vue'
 import Chip from '@/components/kit/Chip.vue'
 import DreamCenter from '@/components/kit/DreamCenter.vue'
+import DreamHero from '@/components/kit/DreamHero.vue'
+import Sheet from '@/components/kit/Sheet.vue'
+import AdviceMark from '@/components/ai/AdviceMark.vue'
+import ShellPeople from '@/components/ShellPeople.vue'
+import { useShellHero } from '@/components/shellHero'
 import ProgressBar from '@/components/kit/ProgressBar.vue'
 import SortableList from '@/components/kit/SortableList.vue'
 import ThumbRow from '@/components/kit/ThumbRow.vue'
 import Tip from '@/components/kit/Tip.vue'
-import { useHistoryFlag } from '@/components/useHistoryFlag'
 
 /**
  * «Мечты» (пивот 3, Р-42; макет dreams-week.html «А · Строки»; тишина Б17 — Р-116): мечта по центру,
@@ -47,7 +51,6 @@ const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
 /** Подсказка у главной мечты (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9: «Нажмите на…, чтобы…»); viewer — без призыва. */
 const tipText = computed(() => (canEdit.value ? 'Нажмите на мечту, чтобы посмотреть подробнее' : 'Главная мечта семьи'))
-const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 /* ---------- мечта по центру и цели ---------- */
 const main = computed(() => financeStore.heroGoal)
@@ -72,7 +75,8 @@ function termOf(g: Goal) {
 }
 /**
  * Метка «мечта сдвинулась» (AU-06, Р-6): сдвиг срока к снимку начала месяца и причина — `dreamShift`; снимка нет или
- * сдвиг меньше недели — ничего. Тот же расчёт, что у экрана цели.
+ * сдвиг меньше недели — ничего. Тот же расчёт, что у экрана цели. У главной мечты на обложке метки нет (пачка 2 «Figma»,
+ * FG-21, поверх FG-12): срок и причина — в карточке цели; у строк целей — как была.
  */
 const snap = computed(() => financeStore.termSnapFor(key.value))
 function shiftOf(g: Goal) {
@@ -81,7 +85,6 @@ function shiftOf(g: Goal) {
   const s = dreamShift(state, ctx, snap.value, g.id, authStore.isViewer ? undefined : authStore.slot ?? undefined)
   return s ? { text: shiftShort(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
 }
-const heroShift = computed(() => (main.value ? shiftOf(main.value) : null))
 /**
  * Подпись цели в строке — «на паузе» или метка сдвига с точкой тона, как у героя; срок цели — на её экране (Р-116).
  * Один расчёт на отрисовку (`dreamShift` гоняет план месяца).
@@ -91,6 +94,8 @@ const rowNotes = computed(
 )
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
+// Обложка с шапкой на фото (FG-21): пока есть главная мечта, шапки оболочки нет.
+useShellHero(() => !!main.value)
 /* ---------- фото (B2C-17) ---------- */
 const heroSrc = usePhoto(() => main.value?.photoId)
 const goalSrc = usePhotos(() => others.value.map((g) => g.photoId))
@@ -111,9 +116,13 @@ async function onFile(file: File) {
   photoNote.value = ok ? null : 'Фото не загрузилось — попробуйте при сети.'
 }
 
-/* ---------- альбом «Сбылось» (PN-14, Р-13; ворота done.html): свёрнут при новом заходе ---------- */
+/* ---------- «Сбылось» (PN-14; пачка 2 «Figma», FG-21): тихая ссылка у «Целей» → лист со сбывшимися ---------- */
 const done = computed(() => doneGoals(financeStore.goals))
-const { open: albumOpen, toggle: toggleAlbum } = useHistoryFlag('doneAlbum')
+const doneOpen = ref(false)
+function openDone(id: string) {
+  doneOpen.value = false
+  void router.push(`/goals/${id}`)
+}
 const doneSrc = usePhotos(() => done.value.map((g) => g.photoId))
 const doneSrcOf = (g: Goal) => (g.photoId ? doneSrc.value[g.photoId] : null)
 const doneMeta = (g: Goal) => `${monthShort(monthKey(new Date(g.doneAt!)))} · за ${doneTerm(g)} мес.`
@@ -122,12 +131,8 @@ const doneMeta = (g: Goal) => `${monthShort(monthKey(new Date(g.doneAt!)))} · �
 const openWishes = computed(() => wishQueue({ wishlist: financeStore.wishlist, wishOrder: financeStore.wishOrder }).filter((w) => !w.bought))
 const firstWishes = computed(() => openWishes.value.slice(0, 3))
 const wishSrc = usePhotos(() => firstWishes.value.map((w) => w.photoId))
+// Строки желаний — без подписи «чьё» (FG-21): кто добавил — в листе желания.
 const editWishId = ref<string | null>(null)
-/** Чьё желание: список участника по имени, общий — «общие» (записи до Блока 3 — список добавившего). */
-function wishOwner(w: { list?: string; by: string }) {
-  const list = w.list ?? w.by
-  return list === 'all' ? 'общие' : (people.value.find((p) => p.id === list)?.name ?? '')
-}
 // Участник открывает лист желания здесь; viewer листа правки не видит — список желаний.
 function openWish(id: string) {
   if (canEdit.value) editWishId.value = id
@@ -145,24 +150,39 @@ onMounted(refresh)
 
 <template>
   <div class="flex flex-col gap-3 pt-1 text-left">
-    <!-- Мечта по центру; подсказка — под ней (пустой экран «Новая мечта» — сам первый шаг, без подсказки) -->
+    <!--
+      Обложка-журнал (пачка 2 «Figma», 47:2): главная мечта во всю ширину, 480; сверху на фото — «Мечты» и шапка оболочки
+      (`ShellPeople`), снизу — процент, название, полоса. Нажатие — экран цели: кнопка — название, растянутое на обложку
+      (`row-open`); ✦ совета, шапка и «Добавить фото» — над ней своими кнопками. Подсказка — под обложкой.
+    -->
     <Tip v-if="main" id="tab-dreams" :text="tipText">
-      <DreamCenter
-        :title="main.name"
+      <DreamHero
+        size="cover"
+        class="-mx-4 -mt-1"
         :percent="heroPercent"
         :src="heroSrc"
         :author="main.photoCredit?.author"
-        :note="heroShift?.text"
-        :note-tone="heroShift?.tone"
-        :mark="ai.markFor('goal', main.id)"
-        @open="router.push(`/goals/${main.id}`)"
+        data-dreams-cover
       >
-        <template v-if="canEdit && !main.photoId" #actions>
-          <Chip quiet @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
+        <template #top="{ onPhoto }">
+          <!-- Шапка экрана — здесь, на фото: оболочка свою не рисует (`useShellHero`). -->
+          <header class="flex items-center justify-between gap-3">
+            <h1 class="truncate text-[25px] font-semibold tracking-[-0.01em]" :class="onPhoto ? 'text-on-photo' : 'text-ink'">Мечты</h1>
+            <ShellPeople photo />
+          </header>
         </template>
-      </DreamCenter>
+        <template #title>
+          <button type="button" class="row-open min-w-0 truncate text-left" :aria-label="`${main.name}: ${heroPercent} %`" data-hero-line @click="router.push(`/goals/${main.id}`)">
+            {{ main.name }}
+          </button>
+          <AdviceMark :n="ai.markFor('goal', main.id)" />
+        </template>
+        <template v-if="canEdit && !main.photoId" #actions>
+          <Chip quiet class="relative z-10" @click="pickerOpen = true"><PhCamera /> Добавить фото</Chip>
+        </template>
+      </DreamHero>
     </Tip>
-    <DreamCenter v-else empty :can-pick="canEdit" @pick="router.push('/goals/new')" />
+    <DreamCenter v-else :can-pick="canEdit" @pick="router.push('/goals/new')" />
     <Callout v-if="photoNote" tone="neutral" icon="info">{{ photoNote }}</Callout>
 
     <PhotoPicker
@@ -176,15 +196,20 @@ onMounted(refresh)
       @file="onFile"
     />
 
-    <!-- Цели: остальные мечты строками -->
-    <template v-if="main">
-      <div class="flex items-center justify-between px-1 pt-1.5">
-        <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Цели</h2>
+    <!-- Цели: остальные мечты строками; «Сбылось · N ›» — тихой ссылкой у «+», сбывшиеся — листом (FG-21) -->
+    <div v-if="main || done.length" class="flex items-center justify-between gap-3 px-1 pt-1.5">
+      <h2 class="text-[20px] font-bold tracking-[-0.01em] text-ink">Цели</h2>
+      <div class="flex items-center gap-3">
+        <button v-if="done.length" type="button" class="press flex cursor-pointer items-center gap-0.5 text-[13px] text-ink-2" data-done-link @click="doneOpen = true">
+          Сбылось · {{ done.length }}<PhCaretRight :size="13" class="text-ink-3" />
+        </button>
         <!-- Новая цель — круглым «+» у заголовка, без слова (владелец, 2026-10-15, FR-09). -->
-        <RouterLink v-if="canEdit" to="/goals/new" class="press grid size-8 place-items-center rounded-full bg-brand-soft text-brand" aria-label="Новая цель" data-new-goal>
+        <RouterLink v-if="main && canEdit" to="/goals/new" class="press grid size-8 place-items-center rounded-full bg-brand-soft text-brand" aria-label="Новая цель" data-new-goal>
           <PhPlus :size="16" weight="bold" />
         </RouterLink>
       </div>
+    </div>
+    <template v-if="main">
       <Card v-if="others.length" flush class="px-3.5 py-1">
         <SortableList :ids="otherIds" :label="nameOf" :disabled="!canEdit" @move="moveOther">
           <template #default="{ id, index }">
@@ -214,30 +239,8 @@ onMounted(refresh)
       </Card>
     </template>
 
-    <!-- Альбом «Сбылось» (PN-14): одна свёрнутая строка — фото, «Сбылось · N», шеврон; раскрыта — строки сбывшихся. -->
-    <Card v-if="done.length" flush class="px-3.5 py-1" data-done-album-card>
-      <button
-        type="button"
-        class="press flex w-full cursor-pointer items-center gap-3 py-[11px] text-left"
-        :aria-expanded="albumOpen"
-        data-done-album
-        @click="toggleAlbum"
-      >
-        <span class="flex shrink-0">
-          <span
-            v-for="(g, i) in done.slice(0, 3)"
-            :key="g.id"
-            class="block size-[30px] overflow-hidden rounded-full border-2 border-surface bg-surface-3"
-            :class="i > 0 && '-ml-2.5'"
-            :style="!doneSrcOf(g) ? { background: hueColor(g.hue, isDark) } : undefined"
-          >
-            <img v-if="doneSrcOf(g)" :src="doneSrcOf(g)!" alt="" class="size-full object-cover" />
-          </span>
-        </span>
-        <span class="min-w-0 flex-1 truncate text-[16px] font-semibold text-ink">Сбылось · {{ done.length }}</span>
-        <PhCaretRight :size="14" class="shrink-0 text-ink-3 transition-transform" :class="albumOpen && 'rotate-90'" />
-      </button>
-      <template v-if="albumOpen">
+    <Sheet :open="doneOpen" :title="`Сбылось · ${done.length}`" @close="doneOpen = false">
+      <div class="flex flex-col" data-done-sheet>
         <ThumbRow
           v-for="(g, i) in done"
           :key="g.id"
@@ -247,15 +250,15 @@ onMounted(refresh)
           :index="i + 1"
           clickable
           data-done-row
-          @click="router.push(`/goals/${g.id}`)"
+          @click="openDone(g.id)"
         >
           <span class="truncate type-meta num">{{ doneMeta(g) }}</span>
           <template #end>
             <PhCheck :size="16" weight="bold" class="text-ok" />
           </template>
         </ThumbRow>
-      </template>
-    </Card>
+      </div>
+    </Sheet>
 
     <!-- Желания: первые три, «›» — путь к списку есть всегда -->
     <div class="flex items-center justify-between px-1 pt-1.5">
@@ -268,18 +271,18 @@ onMounted(refresh)
       </RouterLink>
     </div>
     <Card v-if="firstWishes.length" flush class="px-3.5 py-1">
-      <!-- Желание — нажатием на всю строку (без «Открыть»), цена — справа, чьё — подписью (Б17). -->
+      <!-- Желание — нажатием на всю строку (без «Открыть»), фото 56, цена — справа; подписи «чьё» нет (FG-21). -->
       <ThumbRow
         v-for="(w, i) in firstWishes"
         :key="w.id"
         :title="w.name"
         :src="w.photoId ? wishSrc[w.photoId] : null"
         :index="i + 1"
+        :photo="56"
         fit
         clickable
         @click="openWish(w.id)"
       >
-        <span v-if="wishOwner(w)" class="truncate type-meta">{{ wishOwner(w) }}</span>
         <template v-if="w.price > 0" #end>
           <span class="font-num text-[15px] font-bold num whitespace-nowrap text-ink">{{ money(w.price) }}</span>
         </template>

@@ -177,7 +177,7 @@ describe('e2e / понятность Блок 9 — поездка с бюдже
     // Герой «Мечт» — первая цель очереди; под фото — «название · N %» (FR-09), траты поездки — только на её экране.
     on(a).store.makeMain('trip')
     const hero = text(await screen(a.pinia, Dreams, '/'))
-    expect(hero).toMatch(/Отпуск ·\s+[0-9]+ %/)
+    expect(hero).toMatch(/[0-9]+ %\s+Отпуск/)
     expect(hero).not.toContain('потрачено')
   })
 

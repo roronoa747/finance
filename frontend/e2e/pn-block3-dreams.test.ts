@@ -173,7 +173,7 @@ describe('e2e / понятность Блок 3 — мечты наряднее'
     expect(closerThisMonth(trip(), KEY)).toBe(76)
 
     const dreams = await screen(A.pinia, Dreams, '/')
-    expect(text(dreams)).toMatch(/Отпуск · [0-9]+ %/)
+    expect(text(dreams)).toMatch(/[0-9]+ %\s+Отпуск/)
     expect(text(dreams)).not.toContain('ближе')
 
     // Снятие — тоста нет.
@@ -203,12 +203,12 @@ describe('e2e / понятность Блок 3 — мечты наряднее'
     expect(B.store.goals.find((g) => g.id === 'car')).toMatchObject({ photoId: 'ph-link-car', template: null, photoCredit: null })
     expect(B.store.goals.find((g) => g.id === 'trip')!.movements.map((m) => m.amount)).toEqual([100_000])
     const dreams = await screen(B.pinia, Dreams, '/')
-    expect(text(dreams)).toMatch(/Отпуск · [0-9]+ %/)
+    expect(text(dreams)).toMatch(/[0-9]+ %\s+Отпуск/)
     expect(text(dreams)).not.toContain('ближе')
 
     const V = await as('viewer', 'b')
     const viewer = await screen(V.pinia, Dreams, '/')
-    expect(text(viewer)).toContain(text(dreams).match(/Отпуск · [0-9]+ %/)![0])
+    expect(text(viewer)).toContain(text(dreams).match(/[0-9]+ %\s+Отпуск/)![0])
     expect(viewer).not.toContain('Добавить фото')
   })
 

@@ -207,14 +207,15 @@ describe('RZ-11: ✦ на мечтах, экране цели, долгах и �
     expect(described(trip.querySelector('[data-row-open]'), trip)).toContain(txt(trip.querySelector('[data-given]')))
   })
 
-  it('герой «Мечт» с ✦ — слева пустое место шириной ✦: строка «название · %» по центру фото (`/ux` Блока 3)', async () => {
+  it('обложка «Мечт» (FG-21): ✦ — сразу после названия на фото, своей кнопкой; без совета — ✦ нет', async () => {
     await mount('/', { ready: '[data-hero-line]' })
     const line = q('[data-hero-line]')!.parentElement!
-    expect(line.firstElementChild!.hasAttribute('data-hero-mark-pad')).toBe(true)
+    expect(line.hasAttribute('data-hero-title')).toBe(true)
     expect(line.lastElementChild!.hasAttribute('data-advice-mark')).toBe(true)
+    expect(q('[data-hero-mark-pad]')).toBeNull()
     app!.unmount()
     document.body.innerHTML = ''
     await mount('/', { ready: '[data-hero-line]', doc: familyDoc([]) })
-    expect(q('[data-hero-mark-pad]')).toBeNull()
+    expect(q('[data-hero-title] [data-advice-mark]')).toBeNull()
   })
 })

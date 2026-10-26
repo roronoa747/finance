@@ -100,10 +100,11 @@ async function settle() {
 }
 
 describe('AU-06: метка на «Мечтах»', () => {
-  it('у героя и у строки цели при сдвиге от недели', async () => {
+  it('у строки цели при сдвиге от недели; на обложке главной — нет (FG-21: срок и причина — в карточке цели)', async () => {
     await open(Dreams, '/dreams')
-    // F2-Х4 (FG-12): на «Мечтах» — только срок, причина — в карточке цели.
-    expect(txt(q('[data-hero-note]'))).toBe('+4 недели')
+    // F2-Х4 (FG-12): на «Мечтах» — только срок, причина — в карточке цели; FG-21 — у обложки метки нет вовсе.
+    expect(q('[data-hero-note]')).toBeNull()
+    expect(q('[data-dreams-cover]')).not.toBeNull()
     expect(txt(document.body)).not.toContain('выше плана')
     expect(txt(document.body)).not.toContain(' · платёж')
     const rows = [...document.querySelectorAll('[data-id]')].map((el) => txt(el))
@@ -114,11 +115,11 @@ describe('AU-06: метка на «Мечтах»', () => {
   })
   it('нет снимка — метки нет', async () => {
     await open(Dreams, '/dreams', 'member', familyDoc({ snap: false }))
-    expect(q('[data-hero-note]')).toBeNull()
+    expect(document.querySelector('[data-row-note]')).toBeNull()
   })
   it('viewer — метка есть', async () => {
     await open(Dreams, '/dreams', 'viewer')
-    expect(q('[data-hero-note]')).not.toBeNull()
+    expect([...document.querySelectorAll('[data-row-note]')].some((el) => txt(el).startsWith('+4'))).toBe(true)
   })
 })
 

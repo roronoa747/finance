@@ -157,11 +157,11 @@ describe('B2C-52: демо — итоги из демо-операций той 
     // Блок 11: плюс копилка разбора «Подушка» (Р-66); Блок 14 — фонды «Подушка» и «Запас» в очереди (Р-82, Р-84),
     // главная — первая в очереди, `main` не пишется.
     expect(finance.queue.map((x) => x.goal?.name ?? x.id)).toEqual(['Поездка в Японию', 'Запас', 'debt', 'Машина', 'Подушка', 'Новый диван'])
-    // PN-15: «Велосипед» сбылся «за 4 месяца» — не в очереди, в альбоме «Сбылось · 1» (свёрнут).
+    // PN-15: «Велосипед» сбылся «за 4 месяца» — не в очереди, в листе «Сбылось · 1» (FG-21: ссылка у «Целей»). Строки желаний — без «чьё».
     expect(finance.householdDoc.goals.find((g) => g.id === 'g-bike')).toMatchObject({ doneAt: expect.any(String), have: 230_000 })
     expect(dreams).toContain('Сбылось · 1')
     expect(finance.householdDoc.goals.some((g) => g.main)).toBe(false)
-    for (const w of ['Машина', 'Новый диван', 'Желания 3', 'Кофемашина', 'общие', 'Велосипед', 'Вы', 'Сапоги', 'Партнёр']) expect(dreams).toContain(w)
+    for (const w of ['Машина', 'Новый диван', 'Желания 3', 'Кофемашина', 'Велосипед', 'Сапоги']) expect(dreams).toContain(w)
     expect(dreams).not.toContain('+ Желание')
     // Разделы демо-операций — те, что дают словарь и правила: ответ на одного продавца раскладывает
     // операции заново (`reapply`), и остальные не возвращаются в «не разобрано» (стенд B2C-52).
@@ -205,7 +205,7 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     // Цель из шаблона — с автором фото (Р-28), как заведённая из шаблона.
     expect(doc.goals.find((g) => g.id === 'g-trip')?.photoCredit?.author).toBe('Roméo A.')
     // Блок 3 «понятность» (PN-11): «Новый диван» — новая тема «Мебель» (PN-07), картинка — демо-файл; у героя — взнос этого
-    // месяца 50 000 при 100 000 в месяц → «ближе на 15 дней» (PN-09); под героем его больше нет — «название · N %» (FR-09),
+    // месяца 50 000 при 100 000 в месяц → «ближе на 15 дней» (PN-09); на обложке его нет — «N % · название» на фото (FR-09, FG-21),
     // на экране цели — только тост после взноса (куда переезжает число месяца — хвост §4 бэклога «первый»).
     expect(doc.goals.find((g) => g.id === 'g-sofa')).toMatchObject({ template: 'furniture', photoId: 'demo:sofa' })
     const trip = doc.goals.find((g) => g.id === 'g-trip')!
@@ -214,7 +214,7 @@ describe('B2C-110 (Р-118): демо — фото из приложения, л�
     expect(closerThisMonth(trip, monthKey())).toBe(15)
     const hero = await renderScreen(Dreams, '/')
     expect(hero).not.toContain('ближе')
-    expect(text(hero)).toMatch(/Поездка в Японию\s·\s+[0-9]+\s%/)
+    expect(text(hero)).toMatch(/[0-9]+\s%\s+Поездка в Японию/)
 
     const auth = useAuthStore()
     const all = JSON.stringify({ doc, user: auth.user, household: auth.household, member: auth.member })
@@ -327,9 +327,9 @@ describe('PN-32 (понятность Р-14): демо — прошедшая п
     // Поездка прошла (решение владельца Б): «Съездили?» вместо срока и «Пополнить».
     expect(screen).toContain('Съездили?')
     expect(screen).not.toContain('Пополнить')
-    // Герой «Мечт» — «название · N %» (FR-09), не «потрачено».
+    // Обложка «Мечт» — «N %» и название на фото (FR-09, FG-21), не «потрачено».
     const hero = text(await renderScreen(Dreams, '/'))
-    expect(hero).toMatch(/Поездка в Японию\s·\s+[0-9]+\s%/)
+    expect(hero).toMatch(/[0-9]+\s%\s+Поездка в Японию/)
     expect(hero).not.toContain('потрачено')
   })
 })

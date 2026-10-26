@@ -5,12 +5,11 @@ let freshFor: string | null = null
 
 <script setup lang="ts">
 import { ref, computed, provide, onMounted, watch } from 'vue'
-import { useRoute, useRouter, RouterLink, RouterView } from 'vue-router'
+import { useRoute, useRouter, RouterView } from 'vue-router'
 import {
   PhHeart,
   PhCalendarBlank,
   PhWallet,
-  PhGearSix,
   PhFileArrowUp,
   PhNote,
   PhReceipt,
@@ -29,9 +28,8 @@ import { readPlanView } from '@/lib/storage'
 import { liveGoals } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { useScrollMemory } from './useScrollMemory'
-import SyncBadge from '@/components/SyncBadge.vue'
-import Avatar from '@/components/kit/Avatar.vue'
-import IconBox from '@/components/kit/IconBox.vue'
+import ShellPeople from '@/components/ShellPeople.vue'
+import { provideShellHero } from '@/components/shellHero'
 import Row from '@/components/kit/Row.vue'
 import Sheet from '@/components/kit/Sheet.vue'
 import AiConsentSheet from '@/components/ai/AiConsentSheet.vue'
@@ -57,6 +55,8 @@ const authStore = useAuthStore()
 
 const addOpen = ref(false)
 provide('ff-shell-actions', true)
+// «Мечты» с главной мечтой рисуют шапку на своей обложке (FG-21) — тогда шапки оболочки нет.
+const heroHeader = provideShellHero()
 
 /*
  * Флаг ИИ и роль — свежие с сервера при старте оболочки (хвост §4 критика Блока 1 «ИИ», AI-09): раньше `/auth/me`
@@ -70,7 +70,6 @@ onMounted(() => {
   void authStore.fetchMe().catch(() => {})
 })
 
-const people = computed(() => financeStore.people.filter((p) => !p.deletedAt))
 
 /*
  * Разбор сам после своей «Пришла» (AU-13, Р-20): первая отметка зарплаты участника в месяце — повод `salary`. Стор
@@ -184,7 +183,7 @@ function navigateAndClose(to: string) {
   <div
     class="relative mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
   >
-    <header class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4">
+    <header v-if="!heroHeader" class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4" data-shell-header>
       <div class="flex min-w-0 items-center gap-2.5">
         <button
           v-if="!isRoot"
@@ -203,21 +202,8 @@ function navigateAndClose(to: string) {
       <div class="flex shrink-0 items-center gap-2.5">
         <!-- Действия вложенного экрана (карандаш цели, «+» желаний) — сюда их переносит HeaderActions. -->
         <div id="shell-actions" class="flex items-center gap-2.5 empty:hidden" />
-        <template v-if="isRoot">
-          <!-- Место под бейдж зарезервировано: в покое он пуст, но аватары не прыгают на каждой записи. -->
-          <div class="size-[38px] shrink-0"><SyncBadge compact /></div>
-          <!-- Аватары — свой и партнёра одинаково — ведут в Настройки, раздел «С кем» (Р-1 «понятность»; было —
-               желания участника, B2C-18: они теперь с «Мечт»). На «Неделе» аватаров нет (g2). -->
-          <div v-if="people.length && route.path !== '/week'" class="flex">
-            <RouterLink v-for="(p, i) in people" :key="p.id" to="/settings" :aria-label="`Настройки · ${p.name}`" class="rounded-full" :class="i ? '-ml-2' : ''">
-              <Avatar :id="p.id" :name="p.name" />
-            </RouterLink>
-          </div>
-          <!-- Настройки — иконка в шапке главного (DESIGN.md §2). -->
-          <RouterLink v-if="route.path === '/'" to="/settings" aria-label="Настройки" class="rounded-[12px]">
-            <IconBox><PhGearSix :size="20" /></IconBox>
-          </RouterLink>
-        </template>
+        <!-- Бейдж синка, аватары и настройки — `ShellPeople` (тот же на обложке «Мечт», FG-21). -->
+        <ShellPeople v-if="isRoot" />
       </div>
     </header>
 

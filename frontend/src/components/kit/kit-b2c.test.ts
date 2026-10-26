@@ -83,25 +83,34 @@ describe('DreamHero', () => {
 })
 
 describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
-  it('мечта по центру: фото 236 со скруглением 32, под ним одна строка «название · N %» средним размером (FR-09), без крупной цифры', async () => {
-    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
-    expect(html).toContain('size-[236px]')
-    expect(html).toContain('rounded-[32px]')
-    expect(html).not.toContain('type-percent')
-    expect(html).toContain('text-[20px]')
-    expect(html.replace(/<[^>]*>/g, '')).toContain(`Япония${NBSP}·${NBSP}${pctText(62)}`)
+  it('обложка «Мечт» (FG-21): DreamHero cover — 480 без скругления, процент 34 перед названием 28, полоса; автор на фото', async () => {
+    const html = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
+    expect(html).toContain('min-h-[480px]')
+    expect(html).not.toContain('rounded-hero')
+    expect(html).toContain('type-percent')
+    expect(html).toContain('text-[28px]')
+    const text = html.replace(/<[^>]*>/g, '')
+    expect(text.indexOf(pctText(62))).toBeLessThan(text.indexOf('Япония'))
     expect(html).toContain('Фото: Matthew Skinner')
-    expect(html).not.toContain('Выбрать мечту')
-    expect(await render(DreamCenter, { title: 'Х', percent: 140 })).toContain(pctText(100))
+    expect(html).toContain('photo-scrim')
+    // Экран цели и превью — со скруглением, как были.
+    expect(await render(DreamHero, { line: 'Х', size: 'goal' })).toContain('rounded-hero')
     noLiterals(html)
   })
 
-  it('empty — «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
-    const html = await render(DreamCenter, { empty: true })
+  it('DreamCenter — только пустой: «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
+    const html = await render(DreamCenter, {})
     expect(html).toContain('На что копим?')
     expect(html).toContain('Выбрать мечту')
     expect(html).toContain('bg-brand')
-    expect(await render(DreamCenter, { empty: true, canPick: false })).not.toContain('Выбрать мечту')
+    expect(await render(DreamCenter, { canPick: false })).not.toContain('Выбрать мечту')
+  })
+
+  it('ThumbRow `photo` 56 — фото size-14 и строка py-3 (желания, FG-21); по умолчанию 48', async () => {
+    const wish = await render(ThumbRow, { title: 'Кофемашина', photo: 56 })
+    expect(wish).toContain('size-14')
+    expect(wish).toContain('py-3')
+    expect(await render(ThumbRow, { title: 'Цель' })).toContain('size-12')
   })
 
   it('строка: мини-фото 48 со скруглением 14, без фото — плашка оттенка; кнопкой — только `clickable`', async () => {
