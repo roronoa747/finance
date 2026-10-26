@@ -77,9 +77,10 @@ const activeById = computed(() => new Map(activeWish.value.map((w) => [w.id, w])
 // Перестановка внутри видимой вкладки: прочие желания семьи стоят на своих местах.
 const moveActive = (id: string, index: number) => financeStore.moveWish(id, index, activeIds.value)
 const boughtSum = computed(() => wishTotal(boughtWish.value))
-// «Уже купили» свёрнуто при новом заходе (PN-34, как альбом «Сбылось» на «Мечтах»).
+// «Уже купили» свёрнуто при новом заходе (PN-34).
 const { open: boughtOpen, toggle: toggleBoughtOpen } = useHistoryFlag('boughtOpen')
 
+// Подпись купленной плитки галереи — «кто · куплено когда»; строки списка её не несут (FG-22).
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
 }
@@ -184,10 +185,14 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <button
         type="button"
         :aria-label="view === 'grid' ? 'Списком' : 'Галереей'"
-        class="grid size-10 shrink-0 place-items-center rounded-pill bg-surface-3 text-ink-2 cursor-pointer hover:text-ink"
+        :aria-pressed="view === 'list'"
+        class="grid size-10 shrink-0 place-items-center rounded-pill cursor-pointer"
+        :class="view === 'list' ? 'bg-brand-soft text-brand' : 'bg-surface-3 text-ink-2 hover:text-ink'"
+        data-view-toggle
         @click="setView(view === 'grid' ? 'list' : 'grid')"
       >
-        <PhListBullets v-if="view === 'grid'" :size="18" />
+        <!-- Значок — текущий вид; список подсвечен брендовым тоном (FG-22, 90:19) -->
+        <PhListBullets v-if="view === 'list'" :size="18" />
         <PhSquaresFour v-else :size="18" />
       </button>
     </div>
@@ -215,7 +220,6 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
             :wish="activeById.get(id)!"
             :src="activeById.get(id)!.photoId ? (wishSrc[activeById.get(id)!.photoId!] ?? null) : null"
             :can-edit="canEdit"
-            :meta="`${nameOf(activeById.get(id)!.by)} · ${addedLabel(activeById.get(id)!.addedOn)}`"
             @open="editWishId = id"
             @toggle="markBought(id, activeById.get(id)!.name)"
           />
@@ -318,7 +322,6 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
         :can-edit="canEdit"
         bought
-        :meta="`${nameOf(w.by)} · куплено ${addedLabel(w.boughtOn)}`"
         @open="editWishId = w.id"
         @toggle="financeStore.toggleBought(w.id)"
       />
