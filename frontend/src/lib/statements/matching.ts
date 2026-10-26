@@ -190,6 +190,9 @@ export function markedOps(
   return out
 }
 
+/** То, что `shiftedOps` берёт от сдвига: запись `AccountShift` или досрочка со счёта (`prepaidShifts`, FG-18). */
+export type ShiftLike = Pick<AccountShift, 'id' | 'amount' | 'date' | 'by' | 'deletedAt'>
+
 /**
  * Строки выписки, уже вычтенные из счёта сдвигом рукой (FG-15, F2-Х1): взнос в цель с карты, снятие, внеплановый доход,
  * «Сбылось» двигают остаток сами, и тот же перевод в выписке не должен списаться второй раз (`spentSince`). Каждому
@@ -219,12 +222,10 @@ export function shiftedOps(ops: Operation[], shifts: ShiftLike[], me: PersonId |
   return out
 }
 
-/** То, что `shiftedOps` берёт от сдвига: запись `AccountShift` или досрочка со счёта (`prepaidShifts`, FG-18). */
-export type ShiftLike = Pick<AccountShift, 'id' | 'amount' | 'date' | 'by' | 'deletedAt'>
-
 /**
  * Досрочки со счёта как сдвиги для `shiftedOps` (FG-18, FG-Х5): запись досрочки уже уменьшила остаток (`accountBalance`),
  * и её строка «−сумма» в выписке не вычитается второй раз. Живые `prepay` этого счёта; `accountId: null` и чужой счёт — нет.
+ * День — по Алматы (`todayIso`), как даты строк выписки и записей сдвига.
  */
 export function prepaidShifts(payments: Payment[], accountId: string): ShiftLike[] {
   return payments

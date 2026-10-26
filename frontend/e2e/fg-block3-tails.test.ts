@@ -73,32 +73,33 @@ async function planWithLump(a: Phone) {
   await sync(a)
 }
 
+// Оба describe — одна семья и одни часы.
+const storage = new Map<string, string>()
+let server: FakeServer
+let st: FakeStatements
+
+beforeEach(() => {
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => storage.set(k, String(v)),
+    removeItem: (k: string) => storage.delete(k),
+    clear: () => storage.clear(),
+  })
+  storage.clear()
+  vi.useFakeTimers()
+  at('2026-10-15T07:00:00Z')
+  server = fakeServer(planFamilyDoc())
+  st = fakeStatements()
+  seq = 0
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
 describe('e2e / Блок 3 «Figma» — досрочка из целей ↔ выписка (FG-17)', () => {
-  const storage = new Map<string, string>()
-  let server: FakeServer
-  let st: FakeStatements
-
-  beforeEach(() => {
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => storage.get(k) ?? null,
-      setItem: (k: string, v: string) => storage.set(k, String(v)),
-      removeItem: (k: string) => storage.delete(k),
-      clear: () => storage.clear(),
-    })
-    storage.clear()
-    vi.useFakeTimers()
-    at('2026-10-15T07:00:00Z')
-    server = fakeServer(planFamilyDoc())
-    st = fakeStatements()
-    seq = 0
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
-  })
-
   it('«Отложил» шаг в «Месяце» → карта −250 000 +150 000; приход «с депозита» в выписке — тот же 1 900 000; вторая такая строка — доход; партнёр видит то же', async () => {
     const a = await phone(server, st, 'a')
     const b = await phone(server, st, 'b')
@@ -117,8 +118,8 @@ describe('e2e / Блок 3 «Figma» — досрочка из целей ↔ в
     await sync(b)
     expect(card(b)).toBe(1_900_000)
 
-    // Выписка через 2 дня: приход «с депозита» на ту же сумму, что сняли с целей. Строки самой досрочки банку здесь нет:
-    // досрочка с отметками выписки не сверяется (`markedOps` пропускает `prepay`) — вне FG-17, хвост FG-Х5 в Handoff.
+    // Выписка через 2 дня: приход «с депозита» на ту же сумму, что сняли с целей. Строка самой досрочки банку (−шаг) —
+    // пара FG-18, describe ниже.
     at('2026-10-17T07:00:00Z')
     await statement(a, [fromDeposit('2026-10-16', 150_000)])
     expect(card(a)).toBe(1_900_000) // не 2 050 000: приход уже на карте записью сдвига
@@ -166,31 +167,6 @@ describe('e2e / Блок 3 «Figma» — досрочка из целей ↔ в
  * «Внёс досрочно» 300 000 в «Кредит» стором (лист покрыт `f2-block2-prepay`).
  */
 describe('e2e / Блок 3 «Figma» — досрочка со счёта ↔ строка выписки (FG-18)', () => {
-  const storage = new Map<string, string>()
-  let server: FakeServer
-  let st: FakeStatements
-
-  beforeEach(() => {
-    vi.stubGlobal('localStorage', {
-      getItem: (k: string) => storage.get(k) ?? null,
-      setItem: (k: string, v: string) => storage.set(k, String(v)),
-      removeItem: (k: string) => storage.delete(k),
-      clear: () => storage.clear(),
-    })
-    storage.clear()
-    vi.useFakeTimers()
-    at('2026-10-15T07:00:00Z')
-    server = fakeServer(planFamilyDoc())
-    st = fakeStatements()
-    seq = 0
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
-  })
-
   const bank = (date: string, amount: number) => row(date, amount, 'Погашение кредита', { kind: 'transfer-out' })
   const prepay = async (p: Phone, accountId: string | null) => {
     setActivePinia(p.pinia)
@@ -214,6 +190,9 @@ describe('e2e / Блок 3 «Figma» — досрочка со счёта ↔ с
     await sync(b)
     expect(card(b)).toBe(1_900_000)
     expect(nbsp(String(await onCard(b)))).toBe(nbsp(money(1_900_000)))
+    // Итог раздела месяца — со строкой −шаг: пара исключена только из «На карте» (как покупка мечты в FG-15).
+    const month = (server.data.spendTotals ?? []).filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2026-10' && !t.deletedAt)
+    expect(month.find((t) => t.categoryId === 'sc_credit')).toMatchObject({ amount: 250_000, unmarked: 250_000 })
 
     // Вторая строка −250 000 через 10 дней от досрочки — вне окна: обычное списание.
     at('2026-10-26T07:00:00Z')
@@ -256,6 +235,19 @@ describe('e2e / Блок 3 «Figma» — досрочка со счёта ↔ с
     at('2026-10-17T07:00:00Z')
     await statement(a, [bank('2026-10-16', -300_000)])
     expect(card(a)).toBe(1_700_000)
+  })
+
+  // Критик Блока 3: строка, отданная платежу по графику (`markedOps`), досрочке не достаётся — её пара — вторая строка.
+  it('«Оплатил» кредит и досрочка на ту же сумму 58 000: строка платежа 15-го — отметка, строка 17-го — пара досрочки', async () => {
+    const a = await phone(server, st, 'a')
+    setActivePinia(a.pinia)
+    a.store.markPaid('credit', 'loan', 'a', { accountId: 'card' })
+    a.store.applyPrepayment('loan', 'a', { amount: 58_000, mode: 'term', accountId: 'card' })
+    await sync(a)
+    expect(card(a)).toBe(1_884_000)
+    at('2026-10-18T07:00:00Z')
+    await statement(a, [bank('2026-10-15', -58_000), bank('2026-10-17', -58_000)])
+    expect(card(a)).toBe(1_884_000) // досрочка взяла бы ближайшую строку 15-го — 1 826 000
   })
 
   it('карта только моя: шаг вносит партнёр — строки −шаг и +took в моей выписке, 1 900 000 у обоих', async () => {

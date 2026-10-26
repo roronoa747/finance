@@ -306,6 +306,8 @@ describe('FG-18: prepaidShifts', () => {
 
   it('живая досрочка с этого счёта — сдвиг −сумма в день at; надгробие, «не списывать», чужой счёт, другие платежи — нет', () => {
     expect(prepaidShifts([pp('p1', 250_000)], 'card')).toEqual([{ id: 'p1', amount: -250_000, date: '2026-10-15', by: 'a' }])
+    // День — по Алматы (UTC+5), как даты строк выписки: 20:00 UTC — уже 16-е.
+    expect(prepaidShifts([pp('p1', 250_000, { at: '2026-10-15T20:00:00Z' })], 'card')[0].date).toBe('2026-10-16')
     expect(prepaidShifts([pp('p1', 250_000, { deletedAt: AT })], 'card')).toEqual([])
     expect(prepaidShifts([pp('p1', 250_000, { accountId: null })], 'card')).toEqual([])
     expect(prepaidShifts([pp('p1', 250_000, { accountId: 'other' })], 'card')).toEqual([])
