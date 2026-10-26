@@ -269,6 +269,16 @@ describe('shiftedOps', () => {
     expect(ids(shiftedOps(list, [sh('s1', '2026-10-03', -50_000)], 'a', new Set([list[0].id])))).toEqual([list[1].id])
     expect(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { by: 'b' })], 'a').size).toBe(0)
     expect(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { deletedAt: T })], 'a').size).toBe(0)
+    // me = null (счёт для трат одного хозяина) — сдвиг любого телефона; надгробие — всё равно нет.
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { by: 'b' })], null))).toEqual([list[0].id])
+    expect(shiftedOps(list, [sh('s1', '2026-10-03', -50_000, { by: 'b', deletedAt: T })], null).size).toBe(0)
+  })
+
+  it('окно — ровно DAY_WINDOW дней: 5 — пара, 6 — нет (в обе стороны)', () => {
+    const list = ops(op('2026-10-01', -50_000, 'Na depozit'), op('2026-10-13', -50_000, 'Na depozit'))
+    expect(shiftedOps(list, [sh('s1', '2026-10-07', -50_000)], 'a').size).toBe(0)
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-06', -50_000)], 'a'))).toEqual([list[0].id])
+    expect(ids(shiftedOps(list, [sh('s1', '2026-10-08', -50_000)], 'a'))).toEqual([list[1].id])
   })
 
   it('приход +x ↔ сдвиг income +x; покупка мечты −x ↔ done −x; валютная строка — в допуске по тенге', () => {

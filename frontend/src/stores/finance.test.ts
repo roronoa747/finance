@@ -1169,7 +1169,7 @@ describe('RP-06: отметки оплат в сторе', () => {
       const { store, card, rent } = family()
       store.markPaid('obligation', rent, 'a', { accountId: card })
       at('2026-09-24T09:00:00Z')
-      store.shiftAccountAmount(card, -50_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      store.shiftAccountAmount(card, -50_000, { kind: 'goal-in', goalId: 'g1' })
       expect(store.householdDoc.accountShifts).toHaveLength(1)
       const rec = store.householdDoc.accountShifts![0]
       expect(rec).toMatchObject({ accountId: card, amount: -50_000, date: '2026-09-24', by: 'a', kind: 'goal-in', goalId: 'g1', updatedAt: '2026-09-24T09:00:00.000Z' })
@@ -1181,8 +1181,13 @@ describe('RP-06: отметки оплат в сторе', () => {
       store.shiftAccountAmount(card, 15_000)
       expect(store.householdDoc.accountShifts).toHaveLength(1)
       expect(balance(store, card)).toBe(745_000)
-      // Внеплановый доход без цели — запись без goalId; дата из meta.
-      store.shiftAccountAmount(card, 30_000, { by: 'b', kind: 'income', date: '2026-09-23' })
+      // Внеплановый доход без цели — запись без goalId; дата из meta; `by` — слот этого телефона, не поле вызова.
+      const day = '2026-09-24T00:00:00Z'
+      useAuthStore().setAuthData({
+        token: 't', user: { id: 'u-b', email: 'b@example.com', created_at: day }, household: { id: 'h-1', name: 'Семья', created_by: 'u-a', created_at: day },
+        member: { household_id: 'h-1', user_id: 'u-b', slot: 'b', display_name: 'Аруна', role: 'member', joined_at: day },
+      })
+      store.shiftAccountAmount(card, 30_000, { kind: 'income', date: '2026-09-23' })
       expect(store.householdDoc.accountShifts![1]).toMatchObject({ amount: 30_000, by: 'b', kind: 'income', date: '2026-09-23' })
       expect(store.householdDoc.accountShifts![1]).not.toHaveProperty('goalId')
     })
@@ -1190,11 +1195,11 @@ describe('RP-06: отметки оплат в сторе', () => {
     it('с meta: обрезка у нуля — запись на фактический сдвиг; сдвига нет — записи нет', () => {
       const { store, card, rent } = family()
       store.markPaid('obligation', rent, 'a', { accountId: card })
-      store.shiftAccountAmount(card, -2_000_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      store.shiftAccountAmount(card, -2_000_000, { kind: 'goal-in', goalId: 'g1' })
       expect(store.householdDoc.accountShifts!.map((s) => s.amount)).toEqual([-780_000])
-      store.shiftAccountAmount(card, -10_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
-      store.shiftAccountAmount(card, 0, { by: 'a', kind: 'income' })
-      store.shiftAccountAmount('нет-такого', 10_000, { by: 'a', kind: 'income' })
+      store.shiftAccountAmount(card, -10_000, { kind: 'goal-in', goalId: 'g1' })
+      store.shiftAccountAmount(card, 0, { kind: 'income' })
+      store.shiftAccountAmount('нет-такого', 10_000, { kind: 'income' })
       expect(store.householdDoc.accountShifts).toHaveLength(1)
     })
 
@@ -1202,7 +1207,7 @@ describe('RP-06: отметки оплат в сторе', () => {
       const { store } = family()
       store.addAccount({ name: 'Моя карта', kind: 'card', amount: 300_000 }, true)
       const mine = store.privateAccounts[0].id
-      store.shiftAccountAmount(mine, -50_000, { by: 'a', kind: 'goal-in', goalId: 'g1' })
+      store.shiftAccountAmount(mine, -50_000, { kind: 'goal-in', goalId: 'g1' })
       expect(store.privateDoc.accountShifts).toEqual([expect.objectContaining({ accountId: mine, amount: -50_000, kind: 'goal-in' })])
       expect(store.householdDoc.accountShifts ?? []).toEqual([])
       expect(store.accountShifts.map((s) => s.accountId)).toEqual([mine])

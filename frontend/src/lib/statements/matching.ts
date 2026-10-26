@@ -196,14 +196,15 @@ export function markedOps(
  * живому сдвигу `me` (по дате) — ближайшая по дате свободная строка той же суммы со знаком (тенге — точно; покупка в валюте
  * — в допуске `AMOUNT_TOLERANCE` по пересчитанным тенге), не дальше `DAY_WINDOW` дней; одна строка — одному сдвигу.
  * Вид строки не важен (перевод на депозит, покупка, приход). Строки `skip` (`markedOps`) не берутся. Только для потраченного
- * со счёта: итоги разделов (`SpendTotal`) пару считают — покупка мечты остаётся тратой раздела.
+ * со счёта: итоги разделов (`SpendTotal`) пару считают — покупка мечты остаётся тратой раздела. `me` null — сдвиги любого
+ * телефона (счёт для трат одного хозяина: его выписки — только у него).
  */
-export function shiftedOps(ops: Operation[], shifts: AccountShift[], me: PersonId, skip: ReadonlySet<string> = new Set()): Set<string> {
+export function shiftedOps(ops: Operation[], shifts: AccountShift[], me: PersonId | null, skip: ReadonlySet<string> = new Set()): Set<string> {
   const out = new Set<string>()
   const fits = (o: Operation, s: AccountShift) =>
     o.fx ? Math.sign(o.amount) === Math.sign(s.amount) && within(Math.abs(o.amount), Math.abs(s.amount), AMOUNT_TOLERANCE) : o.amount === s.amount
   const mine = shifts
-    .filter((s) => !s.deletedAt && s.by === me && s.amount !== 0)
+    .filter((s) => !s.deletedAt && (me === null || s.by === me) && s.amount !== 0)
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
   for (const s of mine) {
     let best: { id: string; gap: number; date: string } | null = null

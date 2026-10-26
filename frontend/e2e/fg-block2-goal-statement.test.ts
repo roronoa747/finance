@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
+import { nextTick } from 'vue'
 import type { ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -205,5 +206,79 @@ describe('e2e / Блок 2 «Figma» — взнос ↔ выписка (F2-Х1)'
     const month = (server.data.spendTotals ?? []).filter((t) => t.by === 'a' && t.kind === 'month' && t.period === '2026-10' && !t.deletedAt)
     expect(month.reduce((s, t) => s + t.amount, 0)).toBe(have)
     expect(month.find((t) => t.categoryId === 'sc_credit')).toMatchObject({ amount: have, unmarked: have })
+  })
+
+  // Критик Блока 2: чей сдвиг сверяется с чьей выпиской.
+  it('C: карта только моя — взнос с неё с телефона партнёра в моей выписке один раз; общая («оба») — строка партнёра на ту же сумму — его трата', async () => {
+    const a = await phone(server, st, 'a')
+    const b = await phone(server, st, 'b')
+    setActivePinia(a.pinia)
+    a.store.setAccountAmount('card', 500_000)
+    await sync(a)
+    await sync(b)
+
+    // «Оба»: мой взнос 50 000 — в моей выписке пара; у партнёра перевод на ту же сумму в те же дни — его трата.
+    at('2026-10-15T08:00:00Z')
+    await deposit(a, 'trip', 50_000)
+    await sync(a)
+    at('2026-10-17T07:00:00Z')
+    await statement(b, [row('2026-10-16', -50_000, 'На депозит', { kind: 'transfer-out', internal: true })])
+    await statement(a, [row('2026-10-15', -50_000, 'На депозит', { kind: 'transfer-out', internal: true })])
+    await sync(b)
+    expect(card(a)).toBe(400_000)
+    expect(card(b)).toBe(400_000)
+
+    // Карта только моя (`spendBy` a, новая сверка): партнёр вносит с неё со своего телефона — запись его слота, перевод
+    // приходит моей выпиской и второй раз не вычитается.
+    at('2026-10-18T07:00:00Z')
+    setActivePinia(a.pinia)
+    a.store.setSpendAccount('card', 'a')
+    a.store.setAccountAmount('card', 400_000)
+    await sync(a)
+    await sync(b)
+    at('2026-10-19T08:00:00Z')
+    await deposit(b, 'trip', 30_000)
+    await sync(b)
+    expect(b.store.accountShifts.at(-1)).toMatchObject({ by: 'b', amount: -30_000, kind: 'goal-in' })
+    await sync(a)
+    expect(card(a)).toBe(370_000)
+    at('2026-10-20T07:00:00Z')
+    await statement(a, [row('2026-10-19', -30_000, 'На депозит', { kind: 'transfer-out', internal: true })])
+    expect(card(a)).toBe(370_000) // не 340 000
+    await sync(b)
+    expect(card(b)).toBe(370_000)
+  })
+
+  it('D: выписка раньше взноса — новая запись сдвига сразу пересчитывает «На карте»; «Вернуть в мечты» — покупка снова трата', async () => {
+    const a = await phone(server, st, 'a')
+    setActivePinia(a.pinia)
+    a.store.setAccountAmount('card', 500_000)
+    at('2026-10-16T07:00:00Z')
+    await statement(a, [row('2026-10-16', -50_000, 'На депозит', { kind: 'transfer-out', internal: true })])
+    expect(card(a)).toBe(450_000)
+    // Взнос записан после выписки: база −50 000, строка — пара сдвига, а не трата (иначе 400 000).
+    at('2026-10-16T09:00:00Z')
+    await deposit(a, 'trip', 50_000)
+    expect(card(a)).toBe(450_000)
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(450_000)))
+
+    // «Сбылось» у мечты на карте, покупка пришла выпиской, затем «Вернуть в мечты»: запись «Сбылось» — надгробие, база
+    // назад, а покупка из выписки — снова трата (деньги с карты ушли).
+    setActivePinia(a.pinia)
+    a.store.updateGoal('trip', { accountId: 'card' })
+    const have = a.store.goals.find((g) => g.id === 'trip')!.have
+    at('2026-10-17T08:00:00Z')
+    a.store.markGoalDone('trip')
+    expect(card(a)).toBe(450_000 - have)
+    await statement(a, [row('2026-10-17', -have, 'AVIATA')])
+    expect(card(a)).toBe(450_000 - have)
+    at('2026-10-17T09:00:00Z')
+    setActivePinia(a.pinia)
+    a.store.undoGoalDone('trip')
+    await nextTick()
+    expect(a.store.accountShifts.filter((s) => s.kind === 'done')).toEqual([])
+    expect(card(a)).toBe(450_000 - have) // не 450 000: пересчёт будит снятая запись, не ждёт синка
+    await sync(a)
+    expect(card(a)).toBe(450_000 - have)
   })
 })

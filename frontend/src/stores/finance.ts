@@ -1415,12 +1415,13 @@ export const useFinanceStore = defineStore('finance', () => {
    * партнёра после слияния не списалась бы.
    *
    * `meta` (FG-14) — сдвиг рукой оставляет запись `AccountShift` в том же документе, что и счёт (фактическая дельта
-   * базы со знаком): строка выписки с тем же переводом не вычтется второй раз (FG-15). Без `meta` — без записи.
+   * базы со знаком): строка выписки с тем же переводом не вычтется второй раз (FG-15). Без `meta` — без записи. `by`
+   * записи — этот телефон (как у `PlanShift`): общий счёт «оба» сверяет с выпиской тот, кто записал.
    */
   function shiftAccountAmount(
     id: string,
     delta: number,
-    meta?: { by: PersonId; kind: AccountShift['kind']; goalId?: string; date?: string },
+    meta?: { kind: AccountShift['kind']; goalId?: string; date?: string },
   ) {
     const t = new Date().toISOString()
     const shift = (x: Account) => ({
@@ -1434,7 +1435,7 @@ export const useFinanceStore = defineStore('finance', () => {
     if (!raw || next === raw.amount) return
     const hex = Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0')
     const record: AccountShift | null = meta
-      ? { id: `as_${hex}`, accountId: id, amount: next - raw.amount, date: meta.date ?? todayIso(), by: meta.by, kind: meta.kind, ...(meta.goalId ? { goalId: meta.goalId } : {}), updatedAt: t }
+      ? { id: `as_${hex}`, accountId: id, amount: next - raw.amount, date: meta.date ?? todayIso(), by: (useAuthStore().slot ?? 'a') as PersonId, kind: meta.kind, ...(meta.goalId ? { goalId: meta.goalId } : {}), updatedAt: t }
       : null
     if (priv) {
       mutatePrivateDoc((doc) => {
@@ -2136,7 +2137,7 @@ export const useFinanceStore = defineStore('finance', () => {
     const doneAt = at ?? new Date().toISOString()
     updateGoal(id, { doneAt })
     if (cur.accountId && cur.have > 0) {
-      shiftAccountAmount(cur.accountId, -cur.have, { by: (useAuthStore().slot ?? 'a') as PersonId, kind: 'done', goalId: id, date: todayIso(new Date(doneAt)) })
+      shiftAccountAmount(cur.accountId, -cur.have, { kind: 'done', goalId: id, date: todayIso(new Date(doneAt)) })
     }
   }
 
@@ -2155,7 +2156,7 @@ export const useFinanceStore = defineStore('finance', () => {
       shiftAccountAmount(cur.accountId, cur.have)
       dropAccountShift(done.id)
     } else {
-      shiftAccountAmount(cur.accountId, cur.have, { by: (useAuthStore().slot ?? 'a') as PersonId, kind: 'done', goalId: id })
+      shiftAccountAmount(cur.accountId, cur.have, { kind: 'done', goalId: id })
     }
   }
 

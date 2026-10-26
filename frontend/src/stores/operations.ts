@@ -6,7 +6,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { useEventsStore } from './events'
 import { useFxStore } from '@/stores/fx'
 import { OPERATIONS_STORAGE_KEYS, readStorage, writeStorage } from '@/lib/storage'
-import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, spendAccountOf, spentSince, tripOps, tripStatus, tripTotal } from '@/lib/finance'
+import { creditDueAmount, lastAccountFor, openGoals, phoneOpTenge, spendAccountOf, spendOwners, spentSince, tripOps, tripStatus, tripTotal } from '@/lib/finance'
 import { addDaysIso, todayIso } from '@/lib/dates'
 import {
   applyRules,
@@ -485,8 +485,11 @@ export const useOperationsStore = defineStore('operations', () => {
       const id = `${acc.id}:${by}`
       const since = acc.amountSetAt ?? null
       // Строки, которые уже двинули остаток сдвигом рукой этого счёта (FG-15), — только здесь, не в итогах разделов.
+      // Счёт для трат одного меня — сдвиги любого телефона (партнёр внёс с моей карты — перевод в моей выписке); общий
+      // («оба») — только свои: строка партнёра на ту же сумму — его трата.
       const shifts = finance.accountShifts.filter((s) => s.accountId === acc.id)
-      const counted = new Set([...marked, ...shiftedOps(all.value, shifts, by, marked)])
+      const sole = spendOwners(acc, finance.householdDoc.accounts || []).length === 1
+      const counted = new Set([...marked, ...shiftedOps(all.value, shifts, sole ? null : by, marked)])
       const amount = spentSince(all.value, counted, since)
       const prev = list.find((s) => s.id === id)
       const same = prev ? prev.deletedAt || (prev.amount === amount && (prev.since ?? null) === since) : amount === 0
