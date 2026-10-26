@@ -90,6 +90,8 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
 
 <template>
   <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center px-5 py-8 text-left">
+    <!-- Один левый край (пачка 2 «Figma», 46:44): «‹ Назад» первым, затем имя и «Реально.» -->
+    <RouterLink to="/" class="mb-8 self-start text-[13px] text-brand" data-access-back>‹ Назад</RouterLink>
     <div class="mb-8 flex items-center gap-2.5">
       <span
         class="grid size-9 place-items-center rounded-xl bg-brand font-display text-[15px] font-bold tracking-[0.02em] text-brand-ink"
@@ -101,8 +103,7 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
       </span>
     </div>
 
-    <h1 class="font-display text-[44px] font-semibold leading-none tracking-[-0.03em] text-ink">Реально.</h1>
-    <p class="mt-2 text-[15px] text-ink-2">Фото цели и одна цифра — сколько до неё.</p>
+    <h1 class="font-display text-[48px] font-semibold leading-none tracking-[-0.03em] text-ink">Реально.</h1>
 
     <p
       v-if="expired"
@@ -115,10 +116,11 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
     <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд). -->
     <div class="mt-7 flex flex-col gap-2.5">
       <!-- color-scheme light: iframe Google светлый — при тёмной схеме страницы браузер залил бы его белым (смоук владельца Б4).
-           Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4). -->
+           Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4).
+           Коробка 350 × 52 держит место заранее (FG-20): GIS дорисует кнопку — строки ниже не сдвигаются. -->
       <div
         ref="googleEl"
-        class="flex min-h-[44px] justify-center [color-scheme:light]"
+        class="mx-auto grid h-[52px] w-full max-w-[350px] place-items-center [color-scheme:light]"
         :class="busy && 'pointer-events-none opacity-60'"
         :aria-busy="busy"
         data-testid="google-button"
@@ -143,7 +145,6 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
       Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
     </p>
     <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">Новая семья — спросим, взять ли демо.</p>
-    <RouterLink to="/" class="mt-6 text-center text-[13px] text-brand">‹ Назад к описанию</RouterLink>
 
     <p class="mt-8 text-center text-[11.5px] text-ink-2">
       Бесплатно · выписка остаётся на телефоне ·

@@ -11,6 +11,7 @@ import { readStatementFiles } from '@/lib/statements/read'
 import { liveGoals } from '@/lib/finance'
 import { usePhoto } from '@/lib/photos/usePhoto'
 import { isDark } from '@/lib/theme'
+import { hueColor } from '@/lib/palette'
 import { useInvite } from '@/components/useInvite'
 import type { PersonId } from '@/types/finance'
 import GoalNew from '@/views/GoalNew.vue'
@@ -71,11 +72,12 @@ function go(next: Step) {
 }
 
 /* ------------------ Вступление: три образа (Р-1) ------------------ */
-// Снимки лэндинга в теме экрана (`Landing.vue`); строки — свои, короче лэндинга (Р-9: утверждены владельцем на `/ux`).
+// Снимки лэндинга в теме экрана (`Landing.vue`); подписей нет — образ вместо текста (пачка 2 «Figma», 46:94: владелец убрал
+// строку у «Мечты»; у «Свободно» и «Утечек» — тем же правилом, вариант составителя).
 const INTRO = [
-  { key: 'dream', title: 'Мечта', line: 'Цель с фото — и видно, сколько осталось' },
-  { key: 'free', title: 'Свободно', line: 'Сколько можно тратить до зарплаты' },
-  { key: 'leaks', title: 'Утечки', line: 'Куда тихо уходят деньги' },
+  { key: 'dream', title: 'Мечта' },
+  { key: 'free', title: 'Свободно' },
+  { key: 'leaks', title: 'Утечки' },
 ]
 const introImg = (key: string) => `/landing/${key}-${isDark.value ? 'dark' : 'light'}.webp`
 // Экран вступления — в состоянии: перезагрузка на `/start/intro` начинает с первого (допустимо, FR-02 п. 4).
@@ -217,7 +219,7 @@ const sub = computed(() => titles[step.value].sub)
 
     <!-- Вступление: три образа лентой — листаются свайпом и «Дальше» (Р-1). -->
     <template v-if="step === 'intro'">
-      <div class="-mx-5 overflow-hidden" @touchstart.passive="onTouchStart" @touchend="onTouchEnd">
+      <div class="-mx-5 my-auto overflow-hidden" @touchstart.passive="onTouchStart" @touchend="onTouchEnd">
         <div class="flex transition-transform duration-300" :style="{ transform: `translateX(-${introPage * 100}%)` }">
           <section v-for="(s, i) in INTRO" :key="s.key" class="w-full shrink-0 px-5" :aria-hidden="i !== introPage" data-intro-page>
             <img
@@ -228,12 +230,11 @@ const sub = computed(() => titles[step.value].sub)
               :loading="i === 0 ? undefined : 'lazy'"
               class="aspect-[13/10] w-full rounded-card border border-line bg-surface object-cover object-top"
             />
-            <h1 class="mt-5 type-h2-lg text-ink">{{ s.title }}</h1>
-            <p class="mt-1.5 text-[15px] leading-relaxed text-ink-2">{{ s.line }}</p>
+            <h1 class="mt-5 text-center font-display text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">{{ s.title }}</h1>
           </section>
         </div>
       </div>
-      <div class="mt-auto pt-2">
+      <div class="pt-2">
         <Button size="lg" class="w-full" @click="introNext">Дальше</Button>
       </div>
     </template>
@@ -246,7 +247,7 @@ const sub = computed(() => titles[step.value].sub)
       iPhone с Apple Pay (два пути); с одним путём выбирать нечего (Р-10 «Хвостов»).
     -->
     <template v-else-if="step === 'spend'">
-      <DreamHero v-if="dream" size="preview" :line="dream.name" :src="dreamSrc" data-start-dream />
+      <DreamHero v-if="dream" size="preview" :line="dream.name" :src="dreamSrc" :tone="dreamSrc ? null : hueColor(dream.hue, isDark)" data-start-dream />
       <div v-else class="grid min-h-[180px] place-items-center rounded-card bg-surface-2 text-[15px] font-semibold text-ink-2" data-start-dream>Мечта</div>
       <div>
         <h1 class="type-h2-lg text-ink">{{ title }}</h1>

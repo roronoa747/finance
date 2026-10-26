@@ -116,9 +116,10 @@ async function join() {
 }
 
 const options = [
-  { id: 'alone' as const, icon: PhUser, title: 'Один', meta: 'свои выписки, свои мечты' },
+  // «Один» — без подписи, по центру карточки; «Вход по коду» — текст макета (пачка 2 «Figma», 46:61).
+  { id: 'alone' as const, icon: PhUser, title: 'Один', meta: '' },
   { id: 'family' as const, icon: PhUsers, title: 'Создать семью', meta: 'приглашу партнёра по коду' },
-  { id: 'code' as const, icon: PhKey, title: 'По коду', meta: 'у партнёра уже есть семья' },
+  { id: 'code' as const, icon: PhKey, title: 'Вход по коду', meta: 'у партнёра уже есть семья' },
 ]
 
 function pick(id: Choice) {
@@ -163,7 +164,7 @@ function pick(id: Choice) {
           v-for="o in options"
           :key="o.id"
           type="button"
-          class="press flex items-center gap-3 rounded-card border bg-surface px-4 py-3.5 text-left cursor-pointer disabled:opacity-60"
+          class="press flex min-h-[70px] items-center gap-3 rounded-card border bg-surface px-4 py-3.5 text-left cursor-pointer disabled:opacity-60"
           :class="choice === o.id ? 'border-brand' : 'border-line'"
           :disabled="busy"
           :data-choice="o.id"
@@ -172,7 +173,7 @@ function pick(id: Choice) {
           <component :is="o.icon" :size="22" class="shrink-0 text-brand" />
           <span class="min-w-0 flex-1">
             <span class="block font-medium text-ink">{{ o.title }}</span>
-            <span class="type-meta">{{ o.meta }}</span>
+            <span v-if="o.meta" class="type-meta">{{ o.meta }}</span>
           </span>
           <PhCaretRight :size="16" class="shrink-0 text-ink-3" />
         </button>

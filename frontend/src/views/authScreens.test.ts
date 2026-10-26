@@ -48,17 +48,29 @@ afterEach(() => {
 })
 
 describe('Access (B2C-25)', () => {
-  it('прод-сборка: «Реально.», кнопка Google и «Назад к описанию» — формы почты и пароля нет', async () => {
+  it('прод-сборка: «Реально.», кнопка Google и «‹ Назад» — формы почты и пароля нет', async () => {
     vi.stubEnv('DEV', false)
     const html = await renderScreen(Access, '/access')
     expect(html).toContain('Реально.')
     expect(html).toContain('data-testid="google-button"')
-    expect(html).toContain('Назад к описанию')
+    expect(html).toContain('‹ Назад')
     expect(html).not.toContain('Попробовать')
     expect(html).not.toContain('type="password"')
     expect(html).not.toContain('Вход по почте')
     expect(html).not.toContain('Пароль')
     expect(html).not.toContain('По коду')
+  })
+
+  it('FG-20 (46:44): «‹ Назад» до «Реально.», подзаголовка нет, коробка Google 52 держит место и без кнопки', async () => {
+    const html = await renderScreen(Access, '/access')
+    expect(html.indexOf('‹ Назад')).toBeGreaterThan(-1)
+    expect(html.indexOf('‹ Назад')).toBeLessThan(html.indexOf('Реально.'))
+    expect(html).not.toContain('Фото цели и одна цифра')
+    const box = (h: string) => h.match(/<div[^>]*class="([^"]*)"[^>]*data-testid="google-button"/)![1]
+    expect(box(html)).toContain('h-[52px]')
+    expect(box(html)).toContain('max-w-[350px]')
+    const off = await renderScreen(Access, '/access', undefined, [screenMixin({ googleUnavailable: true })])
+    expect(box(off)).toContain('h-[52px]')
   })
 
   it('вход истёк (401) — строка «Вход истёк, войдите снова»; без него строки нет', async () => {
@@ -102,12 +114,15 @@ describe('Who — «С кем ведём?» (B2C-25)', () => {
     useAuthStore().setAuthData(dana(false))
   })
 
-  it('три пути: один, создать семью, по коду', async () => {
+  it('три пути: один, создать семью, вход по коду', async () => {
     const html = visible(await renderScreen(Who, '/who'))
     expect(html).toContain('С кем ведём?')
     expect(html).toContain('Один')
     expect(html).toContain('Создать семью')
-    expect(html).toContain('По коду')
+    expect(html).toContain('Вход по коду')
+    // «Один» — без подписи (46:61): заголовок по центру карточки, высота — как у соседних.
+    expect(html).not.toContain('свои выписки, свои мечты')
+    expect(html).toContain('у партнёра уже есть семья')
     expect(html).toContain('Выйти или удалить аккаунт')
   })
 

@@ -69,7 +69,7 @@ export async function renderGoogleButton(
     theme: opts.theme === 'dark' ? 'filled_black' : 'outline',
     size: 'large',
     shape: 'pill',
-    text: 'continue_with',
+    text: 'signin_with',
     locale: 'ru',
     // Скрытый контейнер даёт clientWidth 0 — тогда 320, а не край 200.
     width: Math.max(200, Math.min(400, Math.round(opts.width || el.clientWidth || 320))),
