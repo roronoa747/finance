@@ -1897,6 +1897,79 @@ describe('PV-14: план «Сначала долги» в сторе', () => {
       expect(next.applyPlanStep('a', { accountId: 'card' })).toMatchObject({ amount: 100_000 })
       expect(haves(next)).toEqual([400_000, 50_000, 200_000])
     })
+
+    describe('FG-17: запись сдвига goal-out — приход «с депозита» в выписке не вычтется второй раз', () => {
+      it('семья: одна запись на сдвиг (+took, без goalId — целей две), сегодня, слот телефона; в той же мутации, что цели', () => {
+        const store = family()
+        chooseLump(store)
+        // Каждое сохранение документа семьи — одна мутация: движения целей без записи не бывает ни в одной.
+        const saved: { moves: number; shifts: number }[] = []
+        const setItem = localStorage.setItem.bind(localStorage)
+        vi.spyOn(localStorage, 'setItem').mockImplementation((key: string, val: string) => {
+          const doc = JSON.parse(val) as Partial<SyncDoc> | null
+          if (doc && Array.isArray(doc.goals) && Array.isArray(doc.payments)) {
+            saved.push({
+              moves: doc.goals.flatMap((g) => g.movements ?? []).filter((m) => m.note === 'в долги по плану').length,
+              shifts: (doc.accountShifts ?? []).length,
+            })
+          }
+          setItem(key, val)
+        })
+        store.applyPlanStep('a', { accountId: 'card' })
+        expect(store.accountShifts).toEqual([
+          expect.objectContaining({ accountId: 'card', amount: 150_000, kind: 'goal-out', by: 'a', date: '2026-09-24' }),
+        ])
+        expect(store.accountShifts[0]).not.toHaveProperty('goalId')
+        expect(store.householdDoc.accountShifts).toHaveLength(1)
+        // Остаток — как раньше: со счёта ушли только взносы.
+        expect(store.accounts[0].amount).toBe(2_000_000 - 100_000)
+        expect(saved.length).toBeGreaterThan(0)
+        for (const s of saved) expect(s.shifts).toBe(s.moves ? 1 : 0)
+        // «Снять» досрочку запись не хоронит: деньги с целей на карте остались.
+        store.removePrepayment(store.payments.find((p) => p.kind === 'prepay')!.id)
+        expect(store.accountShifts).toHaveLength(1)
+      })
+
+      it('одна цель на паузе — goalId этой цели', () => {
+        const store = family()
+        store.choosePlan({ keptGoalIds: ['car'], cushionGoalId: 'cushion', months: 24, lump: 40_000 }, 'a')
+        store.applyPlanStep('a', { accountId: 'card' })
+        expect(store.accountShifts).toEqual([expect.objectContaining({ amount: 40_000, kind: 'goal-out', goalId: 'trip' })])
+      })
+
+      it('lump 0, «Не списывать» и досрочка без плана (PrepaySheet) — ни сдвига, ни записи', () => {
+        const store = family()
+        choose(store)
+        store.applyPlanStep('a', { accountId: 'card' })
+        expect(store.accountShifts).toEqual([])
+
+        setActivePinia(createPinia())
+        const none = family()
+        chooseLump(none)
+        none.applyPlanStep('a', { accountId: null })
+        expect(none.accountShifts).toEqual([])
+
+        setActivePinia(createPinia())
+        const sheet = family()
+        chooseLump(sheet)
+        sheet.applyPrepayment('cc', 'a', { amount: 50_000, mode: 'term', accountId: 'card' })
+        expect(sheet.accountShifts).toEqual([])
+        expect(sheet.accounts[0].amount).toBe(2_000_000 - 50_000)
+      })
+
+      it('личный счёт — запись в личном документе, в семейном — нет', () => {
+        const store = family()
+        store.addAccount({ name: 'Моя карта', kind: 'card', amount: 300_000 }, true)
+        const mine = store.privateAccounts[0].id
+        chooseLump(store)
+        store.applyPlanStep('a', { accountId: mine })
+        expect(store.privateDoc.accountShifts).toEqual([
+          expect.objectContaining({ accountId: mine, amount: 150_000, kind: 'goal-out', by: 'a', date: '2026-09-24' }),
+        ])
+        expect(store.householdDoc.accountShifts ?? []).toEqual([])
+        expect(store.privateAccounts[0].amount).toBe(300_000 - 100_000)
+      })
+    })
   })
 
   it('applyPlanStep: без истории счёта и без accountId — null (спросить); с прошлой оплатой — её счёт', () => {
