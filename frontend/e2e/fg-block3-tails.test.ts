@@ -159,3 +159,125 @@ describe('e2e / Блок 3 «Figma» — досрочка из целей ↔ в
     expect(card(b)).toBe(1_900_000)
   })
 })
+
+/**
+ * FG-18 (FG-Х5): досрочка со счёта уже уменьшила остаток записью платежа — её строка «−сумма» банку в выписке второй раз из
+ * «На карте» не вычитается (пара тем же `shiftedOps`, что сдвиги рукой). Та же семья: шаг плана 250 000 в «Кредитку» с карты;
+ * «Внёс досрочно» 300 000 в «Кредит» стором (лист покрыт `f2-block2-prepay`).
+ */
+describe('e2e / Блок 3 «Figma» — досрочка со счёта ↔ строка выписки (FG-18)', () => {
+  const storage = new Map<string, string>()
+  let server: FakeServer
+  let st: FakeStatements
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => storage.get(k) ?? null,
+      setItem: (k: string, v: string) => storage.set(k, String(v)),
+      removeItem: (k: string) => storage.delete(k),
+      clear: () => storage.clear(),
+    })
+    storage.clear()
+    vi.useFakeTimers()
+    at('2026-10-15T07:00:00Z')
+    server = fakeServer(planFamilyDoc())
+    st = fakeStatements()
+    seq = 0
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  const bank = (date: string, amount: number) => row(date, amount, 'Погашение кредита', { kind: 'transfer-out' })
+  const prepay = async (p: Phone, accountId: string | null) => {
+    setActivePinia(p.pinia)
+    p.store.applyPrepayment('loan', 'a', { amount: 300_000, mode: 'term', accountId })
+    await sync(p)
+  }
+
+  it('месяц старта плана: выписка с обеими строками (−шаг и +took) — «На карте» 1 900 000 у обоих; −шаг вне окна — трата', async () => {
+    const a = await phone(server, st, 'a')
+    const b = await phone(server, st, 'b')
+    await planWithLump(a)
+    at('2026-10-15T08:00:00Z')
+    await screen(a.pinia, Month, '/month', undefined, [tapPutDebt()])
+    expect(card(a)).toBe(1_900_000)
+    await sync(a)
+
+    at('2026-10-17T07:00:00Z')
+    await statement(a, [bank('2026-10-16', -250_000), fromDeposit('2026-10-16', 150_000)])
+    expect(card(a)).toBe(1_900_000) // без FG-18 — 1 650 000, без FG-17 — 1 800 000
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(1_900_000)))
+    await sync(b)
+    expect(card(b)).toBe(1_900_000)
+    expect(nbsp(String(await onCard(b)))).toBe(nbsp(money(1_900_000)))
+
+    // Вторая строка −250 000 через 10 дней от досрочки — вне окна: обычное списание.
+    at('2026-10-26T07:00:00Z')
+    await statement(a, [bank('2026-10-25', -250_000)])
+    expect(card(a)).toBe(1_650_000)
+    await sync(b)
+    expect(card(b)).toBe(1_650_000)
+  })
+
+  it('«Внёс досрочно» 300 000 → строка −300 000 через день — карта та же; «Снять» — строка снова трата', async () => {
+    const a = await phone(server, st, 'a')
+    await prepay(a, 'card')
+    expect(card(a)).toBe(1_700_000)
+    at('2026-10-17T07:00:00Z')
+    await statement(a, [bank('2026-10-16', -300_000)])
+    expect(card(a)).toBe(1_700_000)
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(1_700_000)))
+
+    setActivePinia(a.pinia)
+    a.store.removePrepayment(a.store.payments.find((p) => p.kind === 'prepay' && !p.deletedAt)!.id)
+    await sync(a)
+    expect(card(a)).toBe(1_700_000) // досрочки нет — остаток вернулся, строка −300 000 — трата
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(1_700_000)))
+  })
+
+  it('обратный порядок: строка −300 000 загружена раньше досрочки — 1 700 000, не 1 400 000', async () => {
+    const a = await phone(server, st, 'a')
+    at('2026-10-16T07:00:00Z')
+    await statement(a, [bank('2026-10-15', -300_000)])
+    expect(card(a)).toBe(1_700_000)
+    await prepay(a, 'card')
+    expect(card(a)).toBe(1_700_000)
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(1_700_000)))
+  })
+
+  it('досрочка «не списывать» (accountId null) при строке −300 000 — строка считается: 1 700 000', async () => {
+    const a = await phone(server, st, 'a')
+    await prepay(a, null)
+    expect(card(a)).toBe(2_000_000)
+    at('2026-10-17T07:00:00Z')
+    await statement(a, [bank('2026-10-16', -300_000)])
+    expect(card(a)).toBe(1_700_000)
+  })
+
+  it('карта только моя: шаг вносит партнёр — строки −шаг и +took в моей выписке, 1 900 000 у обоих', async () => {
+    const a = await phone(server, st, 'a')
+    const b = await phone(server, st, 'b')
+    setActivePinia(a.pinia)
+    a.store.setSpendAccount('card', 'a')
+    await planWithLump(a)
+    await sync(b)
+
+    at('2026-10-15T08:00:00Z')
+    await screen(b.pinia, Month, '/month', undefined, [tapPutDebt()])
+    expect(b.store.payments.find((p) => p.kind === 'prepay' && !p.deletedAt)).toMatchObject({ by: 'b', accountId: 'card', amount: 250_000 })
+    await sync(b)
+    await sync(a)
+    expect(card(a)).toBe(1_900_000)
+
+    at('2026-10-17T07:00:00Z')
+    await statement(a, [bank('2026-10-16', -250_000), fromDeposit('2026-10-16', 150_000)])
+    expect(card(a)).toBe(1_900_000)
+    expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(1_900_000)))
+    await sync(b)
+    expect(card(b)).toBe(1_900_000)
+  })
+})

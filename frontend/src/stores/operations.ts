@@ -23,7 +23,7 @@ import {
   seedSpendCategories,
   spendTotals,
 } from '@/lib/statements/model'
-import { declineKey, isDeclined, markedOps, shiftedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentAmount, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
+import { declineKey, isDeclined, markedOps, prepaidShifts, shiftedOps, matchCandidates, matchCategory, nearestPeriod, operationAt, paymentAmount, paymentFits, recentOperations, releasedOps, type MatchCandidate } from '@/lib/statements/matching'
 import { recurringOf, type RecurringPrefill } from '@/lib/statements/firstRun'
 import { habitKeepFrom, habitTotals } from '@/lib/statements/habits'
 import { replacementPairs } from '@/lib/statements/phone'
@@ -486,8 +486,8 @@ export const useOperationsStore = defineStore('operations', () => {
       const since = acc.amountSetAt ?? null
       // Строки, которые уже двинули остаток сдвигом рукой этого счёта (FG-15), — только здесь, не в итогах разделов.
       // Счёт для трат одного меня — сдвиги любого телефона (партнёр внёс с моей карты — перевод в моей выписке); общий
-      // («оба») — только свои: строка партнёра на ту же сумму — его трата.
-      const shifts = finance.accountShifts.filter((s) => s.accountId === acc.id)
+      // («оба») — только свои: строка партнёра на ту же сумму — его трата. Досрочка с этого счёта — так же (FG-18).
+      const shifts = [...finance.accountShifts.filter((s) => s.accountId === acc.id), ...prepaidShifts(finance.payments ?? [], acc.id)]
       const sole = spendOwners(acc, finance.householdDoc.accounts || []).length === 1
       const counted = new Set([...marked, ...shiftedOps(all.value, shifts, sole ? null : by, marked)])
       const amount = spentSince(all.value, counted, since)
@@ -1145,13 +1145,14 @@ export const useOperationsStore = defineStore('operations', () => {
   /*
    * Счёт для трат (F2-07): сверка остатка (новый якорь), смена хозяина или счёта — у себя или синком партнёра — своя
    * запись пересчитывается от нового якоря. Пустая копия (ещё не загружена) не пишет: ноль затёр бы запись второго
-   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`. Новый или снятый сдвиг рукой (FG-15) — тоже.
+   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`. Новый или снятый сдвиг рукой (FG-15) и досрочка с этого счёта (FG-18) — тоже.
    */
   watch(
     () => {
       const a = spendAccountOf(finance.householdDoc.accounts || [], me())
       const shifts = a ? finance.accountShifts.filter((s) => s.accountId === a.id).map((s) => s.id).join(',') : ''
-      return a ? `${a.id}:${a.amountSetAt ?? ''}:${shifts}` : ''
+      const prepaid = a ? prepaidShifts(finance.payments ?? [], a.id).map((s) => s.id).join(',') : ''
+      return a ? `${a.id}:${a.amountSetAt ?? ''}:${shifts}:${prepaid}` : ''
     },
     () => {
       if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
