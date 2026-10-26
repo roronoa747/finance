@@ -234,4 +234,41 @@ describe('FG-27: второй свой телефон с несвежими оп
     expect(spent()).toEqual([])
     expect(apiClient.listOperations).not.toHaveBeenCalled()
   })
+
+  it('(5) «Оплатил» партнёра (наблюдатель отметок, `writeTotals` по документу) — запись только после pull, по его операциям; итоги — сразу', async () => {
+    const finance = signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    let answer!: (page: OperationsPage) => void
+    vi.mocked(apiClient.listOperations).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+    const now = new Date().toISOString()
+    const paid = { id: 'pm_00000001', kind: 'obligation' as const, targetId: 'rent', period: '2026-10', amount: 100_000, accountId: null, by: 'b' as const, at: now, updatedAt: now }
+    finance.setHouseholdDoc({ ...finance.householdDoc, payments: [...(finance.householdDoc.payments ?? []), paid] }, 2)
+    await nextTick()
+    await Promise.resolve()
+    // Итоги разделов — как были (вне скоупа FG-27), потраченное со счёта старой копией (2 500) не пишется — ждёт pull.
+    expect(finance.householdDoc.spendTotals).toEqual(expect.arrayContaining([expect.objectContaining({ by: 'a', amount: 2_500 })]))
+    expect(spent()).toEqual([])
+    answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })]))
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(6) сервер операций ответил ошибкой после удачного pull — документ не пишет по старой копии; следующий удачный pull — пишет', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    vi.mocked(apiClient.listOperations).mockRejectedValueOnce(new Error('503'))
+    partnerShift('as_00000001')
+    await vi.waitFor(() => expect(apiClient.listOperations).toHaveBeenCalledTimes(1))
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    expect(spent()).toEqual([])
+    vi.setSystemTime(new Date('2026-10-20T07:02:00Z'))
+    await store.pull(client)
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 2_500 })])
+  })
 })

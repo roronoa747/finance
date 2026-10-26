@@ -250,6 +250,9 @@ describe('e2e / Блок 2 «Figma» — взнос ↔ выписка (F2-Х1)'
   })
 
   it('D: выписка раньше взноса — новая запись сдвига сразу пересчитывает «На карте»; «Вернуть в мечты» — покупка снова трата', async () => {
+    // Через час и больше после своего pull наблюдатель счёта сначала тянет свои операции (FG-27) — общим клиентом, ручками
+    // A; без ответа сервера запись ждала бы следующего удачного pull.
+    const ops = vi.spyOn(apiClient, 'listOperations').mockImplementation(statementsFor(st, 'u-a', 'a').listOperations as never)
     const a = await phone(server, st, 'a')
     setActivePinia(a.pinia)
     a.store.setAccountAmount('card', 500_000)
@@ -259,7 +262,7 @@ describe('e2e / Блок 2 «Figma» — взнос ↔ выписка (F2-Х1)'
     // Взнос записан после выписки: база −50 000, строка — пара сдвига, а не трата (иначе 400 000).
     at('2026-10-16T09:00:00Z')
     await deposit(a, 'trip', 50_000)
-    expect(card(a)).toBe(450_000)
+    await vi.waitFor(() => expect(card(a)).toBe(450_000))
     expect(nbsp(String(await onCard(a)))).toBe(nbsp(money(450_000)))
 
     // «Сбылось» у мечты на карте, покупка пришла выпиской, затем «Вернуть в мечты»: запись «Сбылось» — надгробие, база
@@ -273,15 +276,14 @@ describe('e2e / Блок 2 «Figma» — взнос ↔ выписка (F2-Х1)'
     await statement(a, [row('2026-10-17', -have, 'AVIATA')])
     expect(card(a)).toBe(450_000 - have)
     at('2026-10-17T09:00:00Z')
-    // Через час после своего pull наблюдатель счёта сначала тянет свои операции (FG-27) — общим клиентом, ручками A.
-    vi.spyOn(apiClient, 'listOperations').mockImplementation(statementsFor(st, 'u-a', 'a').listOperations as never)
+    ops.mockClear()
     setActivePinia(a.pinia)
     a.store.undoGoalDone('trip')
     await nextTick()
     expect(a.store.accountShifts.filter((s) => s.kind === 'done')).toEqual([])
     // не 450 000: пересчёт будит снятая запись, не ждёт синка документа
     await vi.waitFor(() => expect(card(a)).toBe(450_000 - have))
-    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+    expect(ops).toHaveBeenCalledTimes(1)
     await sync(a)
     expect(card(a)).toBe(450_000 - have)
   })

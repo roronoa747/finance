@@ -172,8 +172,10 @@ export const useOperationsStore = defineStore('operations', () => {
   /** В этом запуске пришли свои операции (удачный `pull`) и записи выписок (`loadUploads`) — вход разбора (FB-HF1). */
   let pulledOk = false
   let uploadsOk = false
-  /** Документ будил запись потраченного со счёта до первого удачного `pull` — её пишет этот `pull` (FG-27). */
+  /** Документ будил запись потраченного со счёта, а копия не подтверждена удачным `pull` — её пишет следующий удачный (FG-27). */
   let spentDue = false
+  /** Последний запрос своих операций ушёл в сеть и не удался (сервер ответил ошибкой): копия могла отстать (FG-27). */
+  let pullFailed = false
 
   const demo = computed(() => auth.isDemo || finance.isDemo)
   const me = (): PersonId => auth.slot ?? 'a'
@@ -303,7 +305,7 @@ export const useOperationsStore = defineStore('operations', () => {
     pending.value = []
     demoUploads.value = []
     serverUploads.value = []
-    pulledOk = uploadsOk = spentDue = false
+    pulledOk = uploadsOk = spentDue = pullFailed = false
     dropHold()
     draft.value = null
     lastAutoMarked.value = 0
@@ -437,8 +439,10 @@ export const useOperationsStore = defineStore('operations', () => {
    * надгробие навсегда закрыло бы этот id. `unmarked` и `oneOff` пишутся всегда, ноль — явно: слияние оставляет поля,
    * которых победитель не знает (правило 3 `lib/merge.ts`), — без нуля снятая «Разовая» и отмеченная строка платежа
    * вернулись бы с сервера прежней суммой (возврат приёмки Блока 2 «Фидбек»).
+   * `byDoc` — пересчёт по сигналу документа (наблюдатели отметок, правок, целей платежей): копия своих операций могла
+   * отстать от второго своего телефона — потраченное со счёта пишется через `spentFresh` (FG-27), итоги — как были.
    */
-  function writeTotals(periods: ReturnType<typeof periodsOf>) {
+  function writeTotals(periods: ReturnType<typeof periodsOf>, byDoc = false) {
     if (!periods.length) return
     const by = me()
     const at = new Date().toISOString()
@@ -459,7 +463,8 @@ export const useOperationsStore = defineStore('operations', () => {
     // Поездка — из тех же операций и отметок (PN-30): где пересчитываются итоги, там и она.
     writeTripTotals()
     // Счёт для трат (F2-07) — тоже: новая трата, отметка или правка меняют потраченное после сверки.
-    writeAccountSpent(marks.marked)
+    if (byDoc) spentFresh()
+    else writeAccountSpent(marks.marked)
     const months = periods.filter((p) => p.kind === 'month').map((p) => p.period)
     writeHabitTotals(months)
     writeReviewFinds(months)
@@ -837,16 +842,16 @@ export const useOperationsStore = defineStore('operations', () => {
    * Снятая отметка из выписки — здесь или у партнёра, пришла синком (B2C-15 п. 3): операция
    * возвращается в траты — раздел без правила платежа, итоги её периодов переписываются, копия на
    * сервере — тоже; месяц отметили снова — обратно в плановый раздел. `ids` — операции, чей признак
-   * мог измениться.
+   * мог измениться. `byDoc` — как у `writeTotals` (зовут наблюдатели документа).
    */
-  async function settleReleased(ids: Set<string>, client: ApiClient = apiClient) {
+  async function settleReleased(ids: Set<string>, client: ApiClient = apiClient, byDoc = false) {
     const list = raw.value.filter((o) => ids.has(o.id))
     if (!list.length) return
     const next = reapply(list)
     const changed = next.filter((o, i) => o !== list[i])
     if (!changed.length) return
     remember(changed)
-    writeTotals(periodsOf(changed))
+    writeTotals(periodsOf(changed), byDoc)
     if (!demo.value) pending.value.push({ key: newKey(), ops: changed })
     save()
     await flush(client)
@@ -947,6 +952,26 @@ export const useOperationsStore = defineStore('operations', () => {
     return pull(client)
   }
 
+  /**
+   * Потраченное со счёта по сигналу документа (FG-27): документ мог прийти фоном на второй свой телефон с несвежей копией
+   * операций — запись только после `pullFresh` (те же операции, что у телефона, грузившего выписку). Удачного `pull` в
+   * запуске не было или последний не удался — не пишется (`spentDue`: её пишет следующий удачный `pull`); без сети после
+   * удачного — по локальной копии. Демо — сразу (сервера нет); viewer не пишет.
+   */
+  function spentFresh() {
+    if (demo.value) return spentNow()
+    if (!auth.isMember) return
+    if (!pulledOk) {
+      spentDue = true
+      return
+    }
+    void pullFresh().then(() => (pulledOk && !pullFailed ? spentNow() : (spentDue = true)))
+  }
+  /** Запись по копии как есть; пустая копия (ещё не загружена) не пишет — ноль затёр бы запись второго своего телефона. */
+  function spentNow() {
+    if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+  }
+
   async function pullOnce(client: ApiClient): Promise<string[]> {
     const got: string[] = []
     if (demo.value || !auth.isMember) return got
@@ -990,11 +1015,13 @@ export const useOperationsStore = defineStore('operations', () => {
       if (stale.size) await settleReleased(stale, client)
       await settlePhone(phone, gone, client)
       pulledOk = true
+      pullFailed = false
       if (spentDue) {
         spentDue = false
-        if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
+        spentNow()
       }
     } catch (err) {
+      pullFailed = true
       lastError.value = err instanceof Error ? err.message : String(err)
     }
     return got
@@ -1094,18 +1121,19 @@ export const useOperationsStore = defineStore('operations', () => {
   // Сразу при старте — и операции, отметку которых сняли до этой правки (или пока телефон спал).
   watch(
     () => [...released.value].sort().join(' '),
-    (now, before) => void settleReleased(new Set([...now.split(' '), ...(before ?? '').split(' ')].filter(Boolean))),
+    (now, before) => void settleReleased(new Set([...now.split(' '), ...(before ?? '').split(' ')].filter(Boolean)), apiClient, true),
     { immediate: true },
   )
 
   /*
    * Отметки по строкам выписки (свои и партнёра — синком): «Да, отметить», ручной «Оплатил», снятие — сумма без
    * отметки у итогов разделов платежей меняется (хвосты 952/967), итоги свежих периодов переписываются (`sameTotal`
-   * не пишет неизменённые). Подпись — строкой: синк документа без новых отметок пересчёт не будит.
+   * не пишет неизменённые). Подпись — строкой: синк документа без новых отметок пересчёт не будит. Потраченное со
+   * счёта — по свежей копии (`byDoc`, FG-27): «Оплатил» партнёра приходит и на второй свой телефон.
    */
   watch(
     () => (finance.payments ?? []).filter((p) => !p.deletedAt && p.kind !== 'prepay').map((p) => p.opId ?? `${p.kind}:${p.targetId}:${p.period}`).sort().join(' '),
-    () => writeTotals(periodsOf(recentOperations(all.value))),
+    () => writeTotals(periodsOf(recentOperations(all.value)), true),
   )
 
   /*
@@ -1120,7 +1148,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const b = new Set((before ?? '').split(' ').filter(Boolean))
       const ids = new Set([...a, ...b].filter((x) => !(a.has(x) && b.has(x))).map((x) => x.split(':')[0]))
       const list = raw.value.filter((o) => ids.has(o.id))
-      if (list.length && !auth.isViewer) writeTotals(periodsOf(list))
+      if (list.length && !auth.isViewer) writeTotals(periodsOf(list), true)
     },
   )
 
@@ -1141,8 +1169,8 @@ export const useOperationsStore = defineStore('operations', () => {
         const rule = ruleFor(o, finance.merchantRules)
         return !!rule && 'payment' in rule.to
       })
-      void settleReleased(new Set(byPayment.map((o) => o.id)))
-      writeTotals(periodsOf(recentOperations(all.value)))
+      void settleReleased(new Set(byPayment.map((o) => o.id)), apiClient, true)
+      writeTotals(periodsOf(recentOperations(all.value)), true)
     },
   )
 
@@ -1161,12 +1189,9 @@ export const useOperationsStore = defineStore('operations', () => {
 
   /*
    * Счёт для трат (F2-07): сверка остатка (новый якорь), смена хозяина или счёта — у себя или синком партнёра — своя
-   * запись пересчитывается от нового якоря. Пустая копия (ещё не загружена) не пишет: ноль затёр бы запись второго
-   * своего телефона; после `pull` итоги и запись пересчитает `writeTotals`. Новый или снятый сдвиг рукой (FG-15) — тоже,
-   * и досрочка с этого счёта (FG-18): выписка могла прийти раньше досрочки; «Снять» — её строка снова трата.
-   * Документ мог прийти фоном на второй свой телефон с несвежей копией операций (FG-27): запись — только после
-   * `pullFresh` (те же операции, что у телефона, грузившего выписку); до первого удачного `pull` в запуске — не пишется,
-   * её пишет этот `pull`. Демо — по локальной копии сразу (сервера нет); viewer не пишет.
+   * запись пересчитывается от нового якоря. Новый или снятый сдвиг рукой (FG-15) — тоже, и досрочка с этого счёта
+   * (FG-18): выписка могла прийти раньше досрочки; «Снять» — её строка снова трата. Сигнал документа — запись через
+   * `spentFresh` (FG-27: только по свежей копии, пустая не пишет; до удачного `pull` — её пишет он, `spentDue`).
    */
   watch(
     () => {
@@ -1175,18 +1200,7 @@ export const useOperationsStore = defineStore('operations', () => {
       const prepaid = a ? prepaidShifts(finance.payments ?? [], a.id).map((s) => s.id).join(',') : ''
       return a ? `${a.id}:${a.amountSetAt ?? ''}:${shifts}:${prepaid}` : ''
     },
-    () => {
-      const write = () => {
-        if (all.value.length) writeAccountSpent(totalMarks(all.value).marked)
-      }
-      if (demo.value) return write()
-      if (!auth.isMember) return
-      if (!pulledOk) {
-        spentDue = true
-        return
-      }
-      void pullFresh().then(() => (pulledOk ? write() : (spentDue = true)))
-    },
+    () => spentFresh(),
     { immediate: true },
   )
 

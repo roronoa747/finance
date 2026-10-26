@@ -13,9 +13,9 @@ import { at, backend, fakeServer, fakeStatements, screen, setOnline, statementsF
 
 /**
  * Блок 5 «Figma» (FG-27, FG-Х7): тот же человек A на двух телефонах (A1, A2 — один слот 'a', один пользователь), партнёр B;
- * карта «Kaspi Gold» — счёт для трат только A. A1 грузит выписку, копия операций A2 остаётся старой; документ с взносом или
- * досрочкой B с карты A приходит на A2 фоном — запись потраченного `card:a` считается по свежей копии (A2 перед записью тянет
- * свои операции) и не откатывается; без удачного `pull` в запуске — A2 не пишет. Наблюдатель счёта зовёт `pull` общим
+ * карта «Kaspi Gold» — счёт для трат только A. A1 грузит выписку, копия операций A2 остаётся старой; документ с взносом,
+ * досрочкой или «Оплатил» B приходит на A2 фоном — запись потраченного `card:a` считается по свежей копии (A2 перед записью
+ * тянет свои операции) и не откатывается; без удачного `pull` в запуске — A2 не пишет. Наблюдатель счёта зовёт `pull` общим
  * `apiClient` — он подменён ручками операций A (оба телефона A — один пользователь).
  */
 type Phone = { pinia: Pinia; client: ApiClient; store: ReturnType<typeof useFinanceStore> }
@@ -243,5 +243,24 @@ describe('e2e / Блок 5 «Figma» — второй свой телефон с
     expect(ops).not.toHaveBeenCalled()
     expect(mine()).toBe(262_500)
     expect(card(a1)).toBe(1_667_500)
+  })
+
+  it('(5) «Оплатил» B (наблюдатель отметок) приходит на A2 после A1 — запись card:a не откатывается и не остаётся старой', async () => {
+    const { a1, a2, b } = await family()
+    at('2026-10-15T08:00:00Z')
+    setActivePinia(b.pinia)
+    b.store.markPaid('obligation', 'rent', 'b', { accountId: null })
+    await sync(b)
+
+    at('2026-10-15T08:01:00Z')
+    await docRound(a1) // свежая копия — та же сумма, новой записи нет
+    await docRound(a2) // без пути `byDoc`: A2 пишет 250 000 по старой копии, и A1 её больше не перепишет
+    expect(spentOnServer(server)).toBe(262_500)
+    for (let round = 0; round < 3; round++) {
+      at(`2026-10-15T08:0${2 + round}:00Z`)
+      for (const p of [a1, a2, b]) await docRound(p)
+      expect(spentOnServer(server)).toBe(262_500)
+    }
+    await sameEverywhere([a1, a2, b], 1_737_500)
   })
 })
