@@ -3,7 +3,7 @@ import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { startDemo } from './demo'
 import { monthKey } from './dates'
-import { affordWhy, affordWhyText, dreamShift, firstDebt, returnTermShift, shiftLabel, untilPayday } from './finance'
+import { dreamShift, firstDebt, returnTermShift, shiftLabel } from './finance'
 import { useFinanceStore } from '@/stores/finance'
 
 afterEach(() => {
@@ -47,13 +47,4 @@ describe('демо — мечта и строки', () => {
       expect(firstDebt(f.planState())).toEqual({ name: 'Автокредит', rate: 19 })
     })
   }
-
-  it('«Хватит?» на всё, что на счетах, — строка «тесно …» (16 октября)', async () => {
-    const f = await demoAt('2026-10-16T06:00:00Z')
-    const state = { ...f.planInput(monthKey()).state, accounts: f.householdAccounts }
-    const up = untilPayday(state)!
-    const why = affordWhy(state, up.onAccounts)
-    expect(why?.kind).toBe('short')
-    expect(affordWhyText(why!)).toMatch(/^тесно .+ — .+$/)
-  })
 })

@@ -4,10 +4,9 @@ import { nextTick } from 'vue'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
 import { startDemo } from '../src/lib/demo'
-import { canAfford, creditOutlook, monthPlan, monthsBetween, tryCredit } from '../src/lib/finance'
+import { creditOutlook, monthPlan, monthsBetween, tryCredit } from '../src/lib/finance'
 import { monthKey } from '../src/lib/dates'
 import { money } from '../src/lib/money'
-import { plural } from '../src/lib/utils'
 import { authAs, planFamilyDoc } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import Money from '../src/views/Money.vue'
@@ -102,27 +101,11 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
     expect(html).toContain(r.hero!.delayMonths ? `Поездка в Японию отодвинется на ${r.hero!.delayMonths}` : "Поездка в Японию не сдвинется")
   })
 
-  it('(б) демо: «Хватит?» — «Да» с остатком до зарплаты; большая сумма — «Нет» с месяцами', async () => {
-    const { pinia, finance } = await demo()
-    const { state, ctx } = finance.planInput(monthKey())
-    const input = { ...state, accounts: finance.householdAccounts }
-    const yes = canAfford(input, ctx, 20_000)
-    expect(yes.ok).toBe(true)
-    if (!yes.ok) return
-    const okHtml = text(await screen(pinia, Month, '/month?afford=1', undefined, [screenMixin({ sum: '20000' })]))
-    expect(okHtml).toContain('Да')
-    expect(okHtml).toContain(`до зарплаты останется ${text(money(yes.left))}`)
-
-    const no = canAfford(input, ctx, 50_000_000)
-    expect(no.ok).toBe(false)
-    if (no.ok) return
-    expect(no.goal).toBe('Поездка в Японию')
-    // Владелец Б5: сдвиг — в месяцах, не в днях; на 50 млн — больше месяца.
-    expect(no.months).toBeGreaterThan(1)
-    const noHtml = text(await screen(pinia, Month, '/month?afford=1', undefined, [screenMixin({ sum: '50000000' })]))
-    expect(noHtml).toContain(`не хватает ${text(money(no.short))}`)
-    expect(noHtml).toContain(`Поездка в Японию отодвинется на ${no.months} ${plural(no.months!, 'месяц', 'месяца', 'месяцев')}`)
-    expect(noHtml).not.toMatch(/отодвинется на \d+ дн/)
+  it('(б) FG-23: «Хватит?» снят владельцем — `?afford=1` на «Месяце» ничего не открывает, чипа нет', async () => {
+    const { pinia } = await demo()
+    const html = await screen(pinia, Month, '/month?afford=1')
+    expect(html).not.toContain('data-afford')
+    expect(html).not.toContain('Хватит?')
   })
 
   it('(д) приёмка Б5: демо 5 000 000 на 12 месяцев — платёж и переплата руками; «Рассрочка 0 %» — без переплаты', async () => {
@@ -159,7 +142,7 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
       const before = { doc: JSON.stringify(A.store.householdDoc), rev: A.store.householdRev, unsent: A.store.hasUnsent, server: server.rev }
       expect(before.unsent).toBe(false)
       await screen(A.pinia, Money, '/money/debts?try=1', undefined, [screenMixin({ sum: '1000000', term: 24, rate: '20' })])
-      await screen(A.pinia, Month, '/month?afford=1', undefined, [screenMixin({ sum: '150000' })])
+      await screen(A.pinia, Month, '/month?afford=1')
       setActivePinia(A.pinia)
       expect(JSON.stringify(A.store.householdDoc)).toBe(before.doc)
       expect(A.store.householdRev).toBe(before.rev)
@@ -178,18 +161,6 @@ describe('e2e / понятность Блок 5 — прикинуть', () => {
       const r = tryCredit(state, ctx, { principal: 1_000_000, months: 24, annualRate: 0.2 })
       expect(html).toContain(text(money(r.payment)))
       expect(html).toContain(`Нагрузка станет ${r.loadPct} % дохода`)
-    })
-
-    it('(г) viewer: «Хватит?» с «Месяца» — тихая кнопка под «Остаётся», лист считает так же (владелец, приёмка Б5)', async () => {
-      const V = await as('viewer')
-      const plain = await screen(V.pinia, Month, '/month')
-      expect(plain).toContain('data-afford-open')
-      // Кнопка открывает тот же лист, что `?afford=1` из «+»: `affordOpen` — его состояние на «Месяце».
-      const html = text(await screen(V.pinia, Month, '/month', undefined, [screenMixin({ affordOpen: true, sum: '150000' })]))
-      setActivePinia(V.pinia)
-      const { state, ctx } = V.store.planInput(monthKey())
-      const r = canAfford({ ...state, accounts: V.store.householdAccounts }, ctx, 150_000)
-      expect(html).toContain(r.ok ? `до зарплаты останется ${text(money(r.left))}` : `не хватает ${text(money(r.short))}`)
     })
   })
 })

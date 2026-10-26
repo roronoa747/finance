@@ -143,7 +143,9 @@ describe('e2e / ИИ Блок 2 — приёмка', () => {
     for (const [role, slot] of [['member', 'a'], ['viewer', 'b']] as const) {
       const p = await as(role, slot, false)
       const html = await screen(p.pinia, Month, '/month')
-      expect(html, role).toContain('data-afford-open')
+      // FG-23: у остатка — «История» месяца (операции личные — у viewer её нет).
+      if (role === 'member') expect(html, role).toContain('data-month-feed')
+      else expect(html, role).not.toContain('data-month-feed')
       expect(html, role).not.toContain('data-review-sparkle')
       if (role === 'member') expect(html, role).toContain('data-review-open')
       else expect(html, role).not.toContain('data-review-open')

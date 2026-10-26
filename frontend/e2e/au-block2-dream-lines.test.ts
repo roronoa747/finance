@@ -9,7 +9,6 @@ import { useOperationsStore } from '../src/stores/operations'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import type { PersonId, SyncDoc } from '../src/types/finance'
-import AffordSheet from '../src/components/money/AffordSheet.vue'
 import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
@@ -166,13 +165,10 @@ describe('e2e / ИИ-польза Блок 2 — мечта и строки', ()
     expect(monthPlan(state, ctx).spend.find((s) => s.by === 'b')!.plan).toBe(300_000)
   })
 
-  it('«Хватит?» и «Долги» — строки у всех ролей', async () => {
+  it('«Долги» — строка «первым» у всех ролей (строка «Хватит?» снята с листом — FG-23)', async () => {
     at('2026-10-12T07:00:00Z')
     const phones = [await phone(server, st, 'a'), await phone(server, st, 'b'), await phone(server, st, 'b', 'viewer')]
     for (const p of phones) {
-      // 12 октября: на счетах 2 000 000, ближайшая зарплата — Аруны 20-го; «Кредит» 15-го (58 000) уводит в минус.
-      const afford = await screen(p.pinia, AffordSheet, '/month', { open: true }, [screenMixin({ sum: '1 950 000' })])
-      expect(part(afford, 'data-afford-why')).toBe('тесно 15–19-го — Кредит')
       const debts = await screen(p.pinia, Money, '/money/debts')
       expect(part(debts, 'data-debts-first')).toBe('первым — Кредитка: ставка 40 % — самая высокая')
     }

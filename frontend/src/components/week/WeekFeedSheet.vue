@@ -14,9 +14,19 @@ import OpSheet from '@/components/OpSheet.vue'
  * Лента трат недели (бэклог «Лента недели», Р-1): свои траты по дням — с телефона (значок) и из выписки вместе.
  * Строка — `OpRow` (продавец коротко, раздел, сумма, «вернули»); нажатие — лист операции (`OpSheet`) поверх ленты, у ручной
  * траты — `edit` (лист «Трата», бэклог «Ручная трата», Р-2: её раздел выбрал человек, правило по продавцу ей не нужно). Только свои
- * операции (стор отдаёт свои, Р-5) — партнёр видит лишь итоги разделов. Ничего не считает: лента — `weekFeed`.
+ * операции (стор отдаёт свои, Р-5) — партнёр видит лишь итоги разделов. Ничего не считает: лента — `weekFeed` (неделя) или
+ * `monthFeed` («История» месяца у остатка «Месяца», FG-23).
  */
-const props = defineProps<{ open: boolean; week: string; feed: { count: number; days: { date: string; ops: WeekFeedOp[] }[] } }>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    week: string
+    feed: { count: number; days: { date: string; ops: WeekFeedOp[] }[] }
+    /** Пустая лента; «История» месяца (FG-23) — «За этот месяц трат нет». */
+    emptyText?: string
+  }>(),
+  { emptyText: 'За эту неделю трат нет' },
+)
 const emit = defineEmits<{ (e: 'close'): void; (e: 'edit', id: string): void }>()
 
 const finance = useFinanceStore()
@@ -58,7 +68,7 @@ const meta = computed(() => `${props.feed.count} ${plural(props.feed.count, 'о�
         </div>
       </template>
     </div>
-    <p v-if="!feed.count" class="py-2 type-meta">За эту неделю трат нет</p>
+    <p v-if="!feed.count" class="py-2 type-meta">{{ emptyText }}</p>
   </Sheet>
   <OpSheet :op-id="opOpen" :z="60" @close="opOpen = null" />
 </template>

@@ -225,7 +225,7 @@ describe('e2e / Фидбек Блок 5 — вид главных экранов
     expect(top).toContain('data-month-ring')
     expect(top).not.toContain('r="110"')
     expect(text(between(top, 'data-rest>', '</span>')).replace(/^.*?>/, '').trim()).toBe(sp(money(plan.rest)))
-    expect(top).toContain('data-afford-open')
+    expect(top).toContain('data-month-feed')
     // Разделы — в той же карточке; второй точки-призыва нет, призыв — подписью брендом.
     expect(between(html, 'data-month-top', 'data-salary=')).toContain('data-sections')
     expect(html).not.toContain('data-section-dot')

@@ -224,14 +224,14 @@ describe('e2e / приёмка Фидбек Блок 5 — нажатиями в
     expect(sp(txt(q('[data-rest]')))).toContain(sp(plain(Math.abs(rest))))
   })
 
-  it('(б) заметка нажатиями: «+» → «Заметка» (сразу после «Траты») → текст и сумма → «Сохранить» → карточка на «Неделе», ✓ — сделано; у Аруны после синка — нет; viewer — без «+»', async () => {
+  it('(б) заметка нажатиями: «+» → «Заметка» (в списке под плитками, FG-23) → текст и сумма → «Сохранить» → карточка на «Неделе», ✓ — сделано; у Аруны после синка — нет; viewer — без «+»', async () => {
     server = fakeServer(planFamilyDoc())
     const A = await phone('a')
     await open(A, '/week')
     expect(router.currentRoute.value.path).toBe('/week')
     await press(plus(), '«+»')
     const items = all('[role="dialog"] a, [role="dialog"] button').map(txt).filter(Boolean)
-    expect(items.findIndex((t) => t.startsWith('Заметка'))).toBe(items.findIndex((t) => t.startsWith('Трата')) + 1)
+    expect(items.findIndex((t) => t.startsWith('Заметка'))).toBe(items.findIndex((t) => t.startsWith('Желание')) + 1)
     await press(all('[role="dialog"] a, [role="dialog"] button').find((b) => txt(b).startsWith('Заметка')), 'пункт «Заметка»')
     expect(router.currentRoute.value.query.note).toBe('1')
     expect(q('[data-note-sheet]')).not.toBeNull()

@@ -24,6 +24,7 @@ import {
   habitImages,
   lastAccountFor,
   liveSpendCategories,
+  monthFeed,
   monthPlan,
   monthSalaries,
   monthSubscriptions,
@@ -68,7 +69,6 @@ import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
-import AffordSheet from '@/components/money/AffordSheet.vue'
 import AiReport from '@/components/ai/AiReport.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
 import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
@@ -81,6 +81,7 @@ import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
 import AddPaymentSheet from '@/components/AddPaymentSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
+import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
 import { templateById } from '@/lib/goalTemplates'
 import { attachTemplate } from '@/lib/photos/goalPhoto'
@@ -284,10 +285,20 @@ watch(
 )
 
 /*
- * ---------- «Хватит?» из «+» (`?afford=1`, PN-17) и тихой кнопкой под «Остаётся» (владелец, приёмка Б5 — вход для
- * всех ролей): ничего не пишет — гарда viewer нет ----------
+ * ---------- «История» месяца у остатка (пачка 2 «Figma», FG-23, 18:105: вместо «Хватит?», лист «Хватит?» снят владельцем):
+ * свои траты месяца по дням — тот же лист, что «История» недели; считает `monthFeed`. Операции личные (Р-5) — у viewer нет.
+ * Строка выписки — лист операции, ручная — «Трата» (`catHand`, как из листа раздела). ----------
  */
-const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
+const monthFeedOpen = ref(false)
+const monthFeedOf = computed(() => {
+  if (!monthFeedOpen.value) return { count: 0, total: 0, days: [] }
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  return monthFeed(ops.shown, { month: props.monthKey, marked, categories })
+})
+function openFeedHand(id: string) {
+  monthFeedOpen.value = false
+  catHand.value = id
+}
 
 /*
  * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13; v3 — «Разбор», RZ-07): у остатка
@@ -730,11 +741,11 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span v-else-if="plan.short > 0" class="font-num text-[29px] font-bold leading-none num text-warn">{{ money(plan.short) }}</span>
             <span v-else class="font-num text-[29px] font-bold leading-none num text-ink" data-rest>{{ money(plan.rest) }}</span>
             <!--
-              Действие у своего предмета (правило 12): «Хватит?» — у остатка; «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
+              Действие у своего предмета (правило 12): «История» месяца — у остатка (FG-23, вместо «Хватит?»); «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
               вход в отчёт, точка — разбор новый на этом телефоне.
             -->
             <span class="mt-0.5 flex flex-wrap items-center gap-1.5">
-              <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
+              <Button v-if="canEdit" variant="secondary" size="sm" data-month-feed @click="monthFeedOpen = true">История</Button>
               <Button
                 v-if="reviewShown"
                 variant="secondary"
@@ -1128,7 +1139,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
-    <AffordSheet :open="affordOpen" @close="closeAfford" />
+    <WeekFeedSheet v-if="canEdit" :open="monthFeedOpen" :week="monthKey" :feed="monthFeedOf" empty-text="За этот месяц трат нет" @close="monthFeedOpen = false" @edit="openFeedHand" />
     <AiReport
       :open="reviewOpen && reviewShown"
       :month-key="monthKey"

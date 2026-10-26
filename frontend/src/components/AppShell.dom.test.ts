@@ -211,13 +211,29 @@ it('«+» открывает лист «Добавить» на Sheet, Escape з
   expect(document.querySelector('[role="dialog"]')).toBeNull()
   ;(document.querySelector('nav button[aria-label="Добавить"]') as HTMLButtonElement).click()
   await nextTick()
-  const dialog = document.querySelector('[role="dialog"]')
-  expect(dialog).not.toBeNull()
-  expect(dialog!.textContent).toContain('Загрузить выписку')
+  const dialog = () => document.querySelector('[role="dialog"]')
+  expect(dialog()).not.toBeNull()
+  // FG-23: плитки «Доход» / «Расход»; «Расход» — вторая страница того же листа, «‹ Добавить» возвращает.
+  expect(dialog()!.textContent).toContain('Доход')
+  ;(document.querySelector('[data-add-expense]') as HTMLButtonElement).click()
+  await nextTick()
+  expect(dialog()!.textContent).toContain('‹ Добавить')
+  expect(dialog()!.textContent).toContain('Выписка')
+  expect(document.querySelector('[data-add-income]')).toBeNull()
+  ;(document.querySelector('[data-add-back]') as HTMLButtonElement).click()
+  await nextTick()
+  expect(document.querySelector('[data-add-income]')).not.toBeNull()
 
+  // Закрыли на «Расходе» — открыли снова: «Добавить».
+  ;(document.querySelector('[data-add-expense]') as HTMLButtonElement).click()
+  await nextTick()
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   await nextTick()
-  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  expect(dialog()).toBeNull()
+  ;(document.querySelector('nav button[aria-label="Добавить"]') as HTMLButtonElement).click()
+  await nextTick()
+  expect(document.querySelector('[data-add-income]')).not.toBeNull()
+  expect(document.querySelector('[data-add-back]')).toBeNull()
 })
 
 // Возврат смоука: шапка по макетам — у вложенного экрана «назад» и его действия справа (HeaderActions →

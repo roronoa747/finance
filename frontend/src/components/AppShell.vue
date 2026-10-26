@@ -14,12 +14,12 @@ import {
   PhNote,
   PhReceipt,
   PhShoppingBag,
-  PhCoins,
   PhRepeat,
   PhCreditCard,
   PhCalculator,
-  PhQuestion,
   PhCaretLeft,
+  PhPlus,
+  PhMinus,
 } from '@phosphor-icons/vue'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
@@ -39,8 +39,9 @@ import Tabs from '@/components/kit/Tabs.vue'
  * Оболочка (DESIGN.md §2, §5; B2C-13): шапка `.topbar` — заголовок экрана 30 (системный, пивот 3) с
  * подписью, аватары участников (точка при «не сошлось» — `SyncBadge` compact) и шестерёнка — оба →
  * `/settings` (Р-1 «понятность»: нажал на лица — видишь лица в «С кем»; желания — с «Мечт»);
- * капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` — «Трата» руками первой (бэклог «Ручная
- * трата», Р-1), шесть действий и две прикидки (PN-17: «Прикинуть кредит», «Хватит ли?»); у viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист
+ * капсула вкладок «Мечты · План · Деньги» и «+»; лист «+» на `Sheet` (пачка 2 «Figma», 47:115 / 74:178, FG-23): две плитки
+ * «Доход» и «Расход» и список без подписей (мечта, желание, заметка, прикидка кредита); «Расход» — вторая страница того же листа
+ * (трата, выписка, платёж, долг) с «‹ Добавить»; «Хватит ли?» владелец убрал. У viewer «+» нет вовсе (ТЗ B2C-13 п. 3: лист
  * без действий правки — а добавить покупку viewer тоже не может, критик Блока 3). «Советника» нет.
  *
  * Шапка — как в макетах (возврат смоука): у вкладок справа аватары (шестерёнка — только на
@@ -153,24 +154,29 @@ const tabs = computed(() => [
 const mainEl = ref<HTMLElement | null>(null)
 useScrollMemory(mainEl, (p) => ROOTS.includes(p), authStore.token)
 
-/** Лист «+» (DESIGN.md §2): порядок действий — как в макете; у viewer кнопки «+» нет. */
-const actions = computed(() => {
-  const edit = !authStore.isViewer
-  return [
-    // «Трата» руками — первой (бэклог «Ручная трата», Р-1): самое частое действие дня, выписка — раз в неделю.
-    edit && { to: '/week?spend=1', title: 'Трата', note: 'сумма и раздел', icon: PhReceipt },
-    // «Заметка» себе с датой (Блок 5 «Фидбек», Р-33): всплывает карточкой на «Неделе» своей даты.
-    edit && { to: '/week?note=1', title: 'Заметка', note: 'себе, с датой', icon: PhNote },
-    edit && { to: '/week?upload=1', title: 'Загрузить выписку', note: 'Kaspi или Freedom — траты недели по разделам', icon: PhFileArrowUp },
-    edit && { to: '/goals/new', title: 'Новая мечта', note: 'фото, сумма и срок', icon: PhHeart },
-    edit && { to: '/wishes', title: 'Покупка в список желаний', note: 'себе, партнёру или сюрприз', icon: PhShoppingBag },
-    edit && { to: '/month?income=1', title: 'Внеплановый доход', note: 'премия, подарок, возврат', icon: PhCoins },
-    edit && { to: '/money?add=payment', title: 'Подписка или платёж', note: 'связь, подписки, страховка', icon: PhRepeat },
-    edit && { to: '/money?add=debt', title: 'Долг', note: 'кредит, рассрочка, человеку', icon: PhCreditCard },
-    // Прикидки ничего не пишут (Р-11), но у viewer «+» нет вовсе — «Прикинуть кредит» ему с «Долгов» (PN-17).
-    edit && { to: '/money/debts?try=1', title: 'Прикинуть кредит', note: 'нагрузка, мечта, переплата', icon: PhCalculator },
-    edit && { to: '/month?afford=1', title: 'Хватит ли?', note: 'покупка до зарплаты', icon: PhQuestion },
-  ].filter((a): a is Exclude<typeof a, false> => Boolean(a))
+/**
+ * Лист «+» (DESIGN.md §2; пачка 2 «Figma», FG-23): у viewer кнопки «+» нет — список пунктов только для участника. Адреса пунктов
+ * прежние; «Доход» — плиткой (`/month?income=1`), «Расход» — страница листа со своими пунктами.
+ */
+const actions = [
+  { to: '/goals/new', title: 'Мечта', icon: PhHeart },
+  { to: '/wishes', title: 'Желание', icon: PhShoppingBag },
+  // «Заметка» себе с датой (Блок 5 «Фидбек», Р-33): всплывает карточкой на «Неделе» своей даты.
+  { to: '/week?note=1', title: 'Заметка', icon: PhNote },
+  // Прикидка ничего не пишет (Р-11); у viewer «+» нет вовсе — «Прикинуть кредит» ему с «Долгов» (PN-17).
+  { to: '/money/debts?try=1', title: 'Прикинуть кредит', icon: PhCalculator },
+]
+const expenses = [
+  // «Трата» руками — первой (бэклог «Ручная трата», Р-1): самое частое действие дня, выписка — раз в неделю.
+  { to: '/week?spend=1', title: 'Трата', icon: PhReceipt },
+  { to: '/week?upload=1', title: 'Выписка', icon: PhFileArrowUp },
+  { to: '/money?add=payment', title: 'Платёж или подписка', icon: PhRepeat },
+  { to: '/money?add=debt', title: 'Долг', icon: PhCreditCard },
+]
+/** Страница листа «+»: «Добавить» или «Расход»; закрытие возвращает к «Добавить». */
+const addPage = ref<'root' | 'expense'>('root')
+watch(addOpen, (open) => {
+  if (!open) addPage.value = 'root'
 })
 
 function navigateAndClose(to: string) {
@@ -224,12 +230,39 @@ function navigateAndClose(to: string) {
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 
-    <Sheet :open="addOpen" title="Добавить" @close="addOpen = false">
-      <div class="flex flex-col">
-        <Row v-for="a in actions" :key="a.to" :title="a.title" :note="a.note" clickable dense @click="navigateAndClose(a.to)">
-          <template #icon><component :is="a.icon" :size="18" /></template>
-        </Row>
-      </div>
+    <!-- Лист «+»: плитки «Доход» / «Расход» и список без подписей; «Расход» — второй страницей того же листа (FG-23). -->
+    <Sheet :open="addOpen && !authStore.isViewer" :title="addPage === 'root' ? 'Добавить' : 'Расход'" :title-hidden="addPage === 'expense'" @close="addOpen = false">
+      <template v-if="addPage === 'root'">
+        <div class="mb-2 grid grid-cols-2 gap-2.5" data-add-tiles>
+          <button type="button" class="press flex cursor-pointer flex-col items-start gap-2 rounded-[16px] bg-ok-soft p-3.5 text-left" data-add-income @click="navigateAndClose('/month?income=1')">
+            <span class="grid size-8 place-items-center rounded-full bg-ok text-on-photo"><PhPlus :size="16" weight="bold" /></span>
+            <span class="text-[17px] font-semibold text-ink">Доход</span>
+            <span class="-mt-1.5 text-[12px] text-ink-2">премия, возврат</span>
+          </button>
+          <button type="button" class="press flex cursor-pointer flex-col items-start gap-2 rounded-[16px] bg-destructive-soft p-3.5 text-left" data-add-expense @click="addPage = 'expense'">
+            <span class="grid size-8 place-items-center rounded-full bg-destructive text-destructive-foreground"><PhMinus :size="16" weight="bold" /></span>
+            <span class="text-[17px] font-semibold text-ink">Расход</span>
+            <span class="-mt-1.5 text-[12px] text-ink-2">трата, выписка, платёж</span>
+          </button>
+        </div>
+        <div class="flex flex-col">
+          <Row v-for="a in actions" :key="a.to" :title="a.title" clickable dense @click="navigateAndClose(a.to)">
+            <template #icon><component :is="a.icon" :size="18" /></template>
+          </Row>
+        </div>
+      </template>
+      <template v-else>
+        <!-- Заголовок страницы — в теле, рядом с крестиком: над ним тихое «‹ Добавить» (у Sheet слота над заголовком нет). -->
+        <div class="-mt-[54px] mb-3 mr-12 flex min-h-[38px] flex-col justify-center">
+          <button type="button" class="self-start cursor-pointer text-[13px] text-brand" data-add-back @click="addPage = 'root'">‹ Добавить</button>
+          <h3 class="type-sheet text-ink" aria-hidden="true">Расход</h3>
+        </div>
+        <div class="flex flex-col">
+          <Row v-for="a in expenses" :key="a.to" :title="a.title" clickable dense @click="navigateAndClose(a.to)">
+            <template #icon><component :is="a.icon" :size="18" /></template>
+          </Row>
+        </div>
+      </template>
     </Sheet>
 
     <!-- Согласие на ИИ (бэклог «ИИ», Р-9): один лист на приложение, открывает `useAiStore().ensureConsent()`. -->

@@ -199,7 +199,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(top.querySelector('[data-rest]'))).toBe(norm(money(plan.rest)))
     expect(top.querySelector('[data-rest]')!.className).toContain('text-[29px]')
     expect(top.querySelector('[data-rest-hint]')).not.toBeNull()
-    expect(top.querySelector('[data-afford-open]')).not.toBeNull()
+    // FG-23 (18:105): у остатка — «История» месяца вместо «Хватит?».
+    expect(top.querySelector('[data-month-feed]')).not.toBeNull()
+    expect(top.querySelector('[data-afford-open]')).toBeNull()
     // Разделы — в той же карточке: одна точка (цвет раздела), второй точки-призыва нет.
     expect(top.querySelector('[data-sections]')).not.toBeNull()
     expect(q('[data-section-dot]')).toBeNull()
