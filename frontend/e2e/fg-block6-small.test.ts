@@ -355,4 +355,23 @@ describe('e2e / Блок 6 «Маленькая пачка» — вид', () => 
     expect(q('[data-shell-header]')!.className).toContain('pt-[max(16px,calc(env(safe-area-inset-top)_+_8px))]')
     expect(q('nav[aria-label="Разделы"]')!.className).toContain('env(safe-area-inset-bottom)')
   })
+
+  it('FG-32: строки целей — процент колонкой одной ширины, без «+N недели» и «на паузе»; пауза — приглушением', async () => {
+    const pinia = await viewPhone({
+      goals: [
+        goal('jp', 'Япония', { seed: 300_000, have: 300_000, main: true }),
+        goal('a3', 'Три', { seed: 30_000, have: 30_000 }),
+        goal('a18', 'Восемнадцать', { seed: 180_000, have: 180_000, pausedAt: T0 }),
+        goal('a100', 'Сто', { seed: 1_000_000, have: 1_000_000 }),
+      ],
+    })
+    await mount(pinia, '/')
+    const pcts = all('[data-row-pct]')
+    expect(pcts.map(txt)).toEqual(['3 %', '18 %', '100 %'])
+    for (const el of pcts) expect(el.className).toMatch(/\bw-\[52px\]/)
+    expect(q('[data-row-note]')).toBeNull()
+    expect(txt(document.body)).not.toContain('на паузе')
+    expect(txt(document.body)).not.toMatch(/\+\d+ недел/)
+    expect(q('[data-id="a18"]')!.matches('.opacity-60') || !!q('[data-id="a18"] .opacity-60')).toBe(true)
+  })
 })

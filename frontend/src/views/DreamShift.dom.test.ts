@@ -99,27 +99,26 @@ async function settle() {
   await Promise.resolve()
 }
 
-describe('AU-06: метка на «Мечтах»', () => {
-  it('у строки цели при сдвиге от недели; на обложке главной — нет (FG-21: срок и причина — в карточке цели)', async () => {
+// FG-32 (Р-18): на «Мечтах» сдвига нет ни у обложки (FG-21), ни у строк целей — число переезжает в предмет: сдвиг с
+// причиной — только на экране цели (`data-goal-shift`).
+describe('AU-06: на «Мечтах» метки нет — сдвиг только на экране цели (FG-32)', () => {
+  it('участник: ни у обложки, ни у строк целей нет «+4 недели»; на экране цели — есть с причиной', async () => {
     await open(Dreams, '/dreams')
-    // F2-Х4 (FG-12): на «Мечтах» — только срок, причина — в карточке цели; FG-21 — у обложки метки нет вовсе.
     expect(q('[data-hero-note]')).toBeNull()
     expect(q('[data-dreams-cover]')).not.toBeNull()
-    expect(txt(document.body)).not.toContain('выше плана')
-    expect(txt(document.body)).not.toContain(' · платёж')
+    expect(q('[data-row-note]')).toBeNull()
     const rows = [...document.querySelectorAll('[data-id]')].map((el) => txt(el))
-    expect(rows.find((t) => t.includes('Отпуск'))).toContain('+4 недели')
-    // `/ux`: в строке цели — та же точка тона, что у героя (дальше — `warn`).
-    const note = [...document.querySelectorAll('[data-row-note]')].find((el) => txt(el).startsWith('+4'))
-    expect(note?.querySelector('i')?.className).toContain('bg-warn')
+    expect(rows.find((t) => t.includes('Отпуск'))).toBeTruthy()
+    expect(txt(document.body)).not.toContain('+4 недели')
+    await open(GoalDetail, '/goals/car')
+    expect(txt(q('[data-goal-shift]'))).toBe('+4 недели · кафе и рестораны выше плана')
   })
-  it('нет снимка — метки нет', async () => {
-    await open(Dreams, '/dreams', 'member', familyDoc({ snap: false }))
-    expect(document.querySelector('[data-row-note]')).toBeNull()
-  })
-  it('viewer — метка есть', async () => {
+  it('viewer — так же: на «Мечтах» нет, на экране цели — есть', async () => {
     await open(Dreams, '/dreams', 'viewer')
-    expect([...document.querySelectorAll('[data-row-note]')].some((el) => txt(el).startsWith('+4'))).toBe(true)
+    expect(q('[data-row-note]')).toBeNull()
+    expect(txt(document.body)).not.toContain('+4 недели')
+    await open(GoalDetail, '/goals/car', 'viewer')
+    expect(txt(q('[data-goal-shift]'))).toContain('+4 недели')
   })
 })
 

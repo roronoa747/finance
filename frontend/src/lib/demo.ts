@@ -317,7 +317,7 @@ export function startDemo(): boolean {
         // Тема «Мебель» (PN-07) — новая тема видна в демо; картинка остаётся демо-файлом.
         template: 'furniture',
         photoId: DEMO_PHOTO + 'sofa',
-        // Выключена в плане месяца (Р-83): на «Мечтах» — «на паузе».
+        // Выключена в плане месяца (Р-83): на «Мечтах» строка приглушена, «на паузе» — на экране цели (FG-32).
         pausedAt: new Date().toISOString(),
         payer: 'b',
         updatedAt: new Date().toISOString(),

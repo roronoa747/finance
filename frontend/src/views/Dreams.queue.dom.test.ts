@@ -124,7 +124,7 @@ describe('B2C-87: «Мечты» — очередь и «главная = пер
     expect(rows()).toEqual(['trip', 'car'])
   })
 
-  it('пауза из меню — «на паузе» на «Мечтах»', async () => {
+  it('пауза из меню — на «Мечтах» строка приглушена, слова «на паузе» в ней нет (FG-32: слово — на экране цели)', async () => {
     const finance = await open(GoalDetail, '/goals/car')
     ;[...document.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.getAttribute('aria-label') === 'Меню цели')!.click()
     await nextTick()
@@ -135,7 +135,9 @@ describe('B2C-87: «Мечты» — очередь и «главная = пер
     app = null
     document.body.innerHTML = ''
     await open(Dreams, '/', 'member', finance.householdDoc as SyncDoc)
-    expect(document.querySelector('[data-id="car"]')?.textContent).toContain('на паузе')
+    const row = document.querySelector('[data-id="car"]')!
+    expect(row.textContent).not.toContain('на паузе')
+    expect(row.matches('.opacity-60') || !!row.querySelector('.opacity-60')).toBe(true)
   })
 
   it('viewer — без ⋮⋮', async () => {

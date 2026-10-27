@@ -197,7 +197,7 @@ describe('e2e / «Figma» Блок 1 — пачка 1', () => {
     expect(q('[data-tip]')).toBeNull()
   })
 
-  it('(д) сдвиг мечты на «Мечтах» — только срок, без «платёж»; причина — в карточке цели', async () => {
+  it('(д) сдвиг мечты — на «Мечтах» его нет (FG-32), на экране цели — срок и причина', async () => {
     const A = await phone('a')
     A.store.ensureTermSnap()
     // Новый платёж 900 000 после снимка месяца: 1 200 000 − 323 000 − 900 000 < взносов очереди — мечты сдвигаются.
@@ -210,10 +210,9 @@ describe('e2e / «Figma» Блок 1 — пачка 1', () => {
     const shifted = A.store.householdDoc.goals.map((g) => [g.id, dreamShift(state, ctx, snap, g.id, 'a')] as const).filter(([, s]) => s)
     expect(shifted.length).toBeGreaterThan(0)
     await mount(A, '/')
-    const notes = [...all('[data-hero-note]'), ...all('[data-row-note]')].map(txt)
-    expect(notes.length).toBeGreaterThan(0)
-    for (const n of notes) expect(n).not.toMatch(/платёж|·/)
-    for (const [, s] of shifted) expect(notes).toContain(txt({ textContent: shiftShort(s!) } as Element))
+    // Строка цели = фото, имя, полоса, % (Р-18): сдвиг переехал в предмет.
+    expect([...all('[data-hero-note]'), ...all('[data-row-note]')]).toHaveLength(0)
+    for (const [, s] of shifted) expect(txt(document.body)).not.toContain(txt({ textContent: shiftShort(s!) } as Element))
     const [goalId, s] = shifted[0]!
     await mount(A, `/goals/${goalId}`)
     expect(txt(q('[data-goal-shift]'))).toContain(`${txt({ textContent: shiftShort(s!) } as Element)} · платёж «Спортзал» с этого месяца`)

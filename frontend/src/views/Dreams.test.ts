@@ -108,6 +108,12 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('font-semibold text-ink">Машина</span>')
     // У строк целей срока «к <месяц>» нет (Р-116).
     expect(html).not.toMatch(/>к [а-я]+/)
+    // FG-32 (Р-18): строка цели = фото, имя, полоса, % — процент колонкой одной ширины (полосы ровные), подписи сдвига нет.
+    const pcts = html.match(/<span[^>]*data-row-pct[^>]*>/g) ?? []
+    expect(pcts.length).toBeGreaterThan(1)
+    for (const s of pcts) expect(s).toMatch(/w-\[52px\][^"]*text-right|text-right[^"]*w-\[52px\]/)
+    expect(html).not.toContain('data-row-note')
+    expect(html).not.toContain('на паузе')
     // Ни одной брендовой кнопки: «+» и «›» — ссылки, желания — строки целиком.
     expect(brandButtons(html)).toEqual([])
     for (const w of WEEKLY) expect(html).not.toContain(w)
@@ -260,6 +266,9 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('Открыть')
     expect(html).not.toContain('До зарплаты')
     for (const w of WEEKLY) expect(html).not.toContain(w)
+    // FG-32: строки целей у viewer те же — процент колонкой, без подписи.
+    expect(html).toMatch(/data-row-pct/)
+    expect(html).not.toContain('data-row-note')
   })
 
   it('недельного нет и при незнакомых продавцах, решениях и выписках обоих (всё это — «Неделя»)', async () => {
