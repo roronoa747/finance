@@ -7,7 +7,7 @@ import ProgressBar from './ProgressBar.vue'
  * готовая строка `line`. Без фото — `--surface-3` и ink-текст (слот `actions` — чип «Добавить фото»).
  * `goal` — обложка-карточка экрана цели (пачка 2 «Figma», FG-24, 78:50: 400, радиус 24; с `title` — название 26 над
  * процентом; слот `footer` — нижняя строка под полосой: срок и «Пополнить»), `preview` — превью новой цели (180, без процента
- * и полосы), `cover` — обложка «Мечт» во всю ширину (FG-21: 480, без скругления, процент 34 → название 28 → полоса; слот `top`
+ * и полосы), `cover` — обложка «Мечт» во всю ширину (FG-21: 480, скруглён только низ — 28, как в макете 47:2; процент 34 → название 28 → полоса; слот `top`
  * — верхняя строка поверх фото, слот `title` — своя разметка названия, напр. кнопка с ✦). Пустой «Мечт» — `DreamCenter`.
  * Процент считает `finance.ts`.
  */
@@ -30,7 +30,7 @@ const props = withDefaults(
   { line: '', percent: 0, size: 'goal', src: null, author: null, authorUrl: null, eyebrow: '', tone: null, title: '' },
 )
 
-const HEIGHT = { goal: 'min-h-[400px] rounded-card', preview: 'min-h-[180px] rounded-hero', cover: 'min-h-[480px]' } as const
+const HEIGHT = { goal: 'min-h-[400px] rounded-card', preview: 'min-h-[180px] rounded-hero', cover: 'min-h-[480px] rounded-b-hero' } as const
 
 const pct = computed(() => Math.max(0, Math.min(100, Math.round(props.percent))))
 // Фото или оттенок — текст белым на тени; иначе — `--surface-3` и ink.

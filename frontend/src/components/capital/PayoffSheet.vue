@@ -164,17 +164,18 @@ function prepayUndoNote(p: Payment): string {
         </button>
       </div>
 
-      <!-- Итог — одна крупная цифра без коробки (FG-25): «−N мес.» и строка переплаты; «осталось N платежей» и пояснение — в «?». -->
+      <!-- Итог — одна крупная цифра без коробки (FG-25): «−N мес.» и строка переплаты; «осталось N платежей» и пояснение — в «?»
+           у строки переплаты (макет 51:873). -->
       <div v-if="payoffResult" class="mb-3" data-payoff-result>
+        <div v-if="payoffResult.sooner" class="font-num text-[28px] font-bold leading-tight num text-ink" data-payoff-months>−{{ payoffResult.monthsSaved }} мес.</div>
+        <div v-else class="text-[15px] text-ink-2" data-payoff-months>Срок почти не изменится</div>
         <div class="flex items-center gap-1.5">
-          <span v-if="payoffResult.sooner" class="font-num text-[28px] font-bold leading-tight num text-ink" data-payoff-months>−{{ payoffResult.monthsSaved }} мес.</span>
-          <span v-else class="text-[15px] text-ink-2" data-payoff-months>Срок почти не изменится</span>
+          <span class="text-[14px] text-ok num" data-payoff-saved>переплата меньше на {{ money(payoffResult.saved) }}</span>
           <Hint label="Что меняется">
             Останется {{ payoffResult.monthsAfter }} {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }} вместо {{ payoffResult.monthsNow }}.<template v-if="payoffHalf && payoffMode === 'monthly'">
             Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая следующая тысяча даёт меньше предыдущей.</template>
           </Hint>
         </div>
-        <div class="text-[14px] text-ok num" data-payoff-saved>переплата меньше на {{ money(payoffResult.saved) }}</div>
       </div>
 
       <Button

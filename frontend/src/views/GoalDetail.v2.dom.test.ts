@@ -63,6 +63,10 @@ describe('FG-24: экран цели v2', () => {
     expect(q('[data-goal-left]')!.textContent).toContain('Осталось')
     expect(q('details')).toBeNull()
     expect(document.body.textContent).not.toContain('Ритм цели')
+    // Взносы: пусто — одна строка без карточки (макет 78:50), есть — строки со знаком и «₸».
+    const moved = (trip.movements ?? []).length
+    expect(!!q('[data-goal-no-movements]')).toBe(moved === 0)
+    expect(document.querySelectorAll('[data-goal-movement]')).toHaveLength(moved)
   })
 
   it('«В месяц» → лист: поле пишет взнос (`setGoalMonthly`), «Осталось N взносов» подписью', async () => {

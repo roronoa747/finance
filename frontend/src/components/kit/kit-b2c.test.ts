@@ -84,10 +84,11 @@ describe('DreamHero', () => {
 })
 
 describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
-  it('обложка «Мечт» (FG-21): DreamHero cover — 480 без скругления, процент 34 перед названием 28, полоса; автор на фото', async () => {
+  it('обложка «Мечт» (FG-21): DreamHero cover — 480, скруглён только низ (28, макет 47:2), процент 34 перед названием 28, полоса; автор на фото', async () => {
     const html = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
     expect(html).toContain('min-h-[480px]')
     expect(html).not.toContain('rounded-hero')
+    expect(html).toContain('rounded-b-hero')
     expect(html).toContain('type-percent')
     expect(html).toContain('text-[28px]')
     const text = html.replace(/<[^>]*>/g, '')

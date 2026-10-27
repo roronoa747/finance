@@ -539,7 +539,8 @@ function share() {
           <span class="flex items-center gap-0.5 text-[13px] text-ink-2">В месяц<PhCaretRight v-if="canEdit" :size="12" class="text-ink-3" /></span>
           <span class="text-[17px] font-semibold num text-ink" data-goal-monthly-value>{{ goal.monthly > 0 ? money(goal.monthly) : '—' }}</span>
         </component>
-        <div class="flex min-w-0 flex-col items-start" data-goal-left>
+        <!-- Разделитель между ячейками — как в макете 78:50. -->
+        <div class="flex min-w-0 flex-col items-start border-l border-line pl-3" data-goal-left>
           <span class="text-[13px] text-ink-2">Осталось</span>
           <span class="text-[17px] font-semibold num text-ink">{{ money(Math.max(0, remaining)) }}</span>
         </div>
@@ -565,9 +566,9 @@ function share() {
       <PhCaretRight :size="16" class="shrink-0 text-ink-3" />
     </RouterLink>
 
-    <!-- Взносы — прямо на экране (FG-24) -->
+    <!-- Взносы — прямо на экране (FG-24); пусто — одной строкой без карточки (макет 78:50) -->
     <Section title="Взносы" />
-    <Card flush>
+    <Card v-if="history.length" flush>
       <div
         v-for="m in history"
         :key="m.id"
@@ -591,10 +592,8 @@ function share() {
           data-goal-movement
         >{{ m.amount > 0 ? '+' : '−' }}{{ money(Math.abs(m.amount)) }}</span>
       </div>
-      <div v-if="!(goal.movements && goal.movements.length)" class="px-4 py-6 text-center text-[13px] text-ink-2">
-        Пока нет — появятся после первого пополнения
-      </div>
     </Card>
+    <p v-else class="-mt-1 px-1 text-[13px] text-ink-2" data-goal-no-movements>Пока нет — появятся после первого пополнения</p>
 
     <!-- Лист «Взнос в месяц» (FG-24): поле взноса, у фонда — месяцев трат; «осталось N взносов» подписью; тихая «Снять». -->
     <Sheet v-if="canEdit" :open="monthlyOpen" title="Взнос в месяц" @close="monthlyOpen = false">

@@ -168,7 +168,7 @@ onMounted(refresh)
           <!-- Шапка экрана — здесь, на фото: оболочка свою не рисует (`useShellHero`). -->
           <header class="flex items-center justify-between gap-3">
             <h1 class="truncate text-[25px] font-semibold tracking-[-0.01em]" :class="onPhoto ? 'text-on-photo' : 'text-ink'">Мечты</h1>
-            <ShellPeople photo />
+            <ShellPeople />
           </header>
         </template>
         <template #title>

@@ -235,13 +235,13 @@ function navigateAndClose(to: string) {
       <template v-if="addPage === 'root'">
         <div class="mb-2 grid grid-cols-2 gap-2.5" data-add-tiles>
           <button type="button" class="press flex cursor-pointer flex-col items-start gap-2 rounded-[16px] bg-ok-soft p-3.5 text-left" data-add-income @click="navigateAndClose('/month?income=1')">
-            <span class="grid size-8 place-items-center rounded-full bg-ok text-on-photo"><PhPlus :size="16" weight="bold" /></span>
-            <span class="text-[17px] font-semibold text-ink">Доход</span>
+            <span class="grid size-8 place-items-center rounded-full bg-ok text-surface"><PhPlus :size="16" weight="bold" /></span>
+            <span class="text-[17px] font-semibold text-ok">Доход</span>
             <span class="-mt-1.5 text-[12px] text-ink-2">премия, возврат</span>
           </button>
           <button type="button" class="press flex cursor-pointer flex-col items-start gap-2 rounded-[16px] bg-destructive-soft p-3.5 text-left" data-add-expense @click="addPage = 'expense'">
             <span class="grid size-8 place-items-center rounded-full bg-destructive text-destructive-foreground"><PhMinus :size="16" weight="bold" /></span>
-            <span class="text-[17px] font-semibold text-ink">Расход</span>
+            <span class="text-[17px] font-semibold text-destructive">Расход</span>
             <span class="-mt-1.5 text-[12px] text-ink-2">трата, выписка, платёж</span>
           </button>
         </div>
