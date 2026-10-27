@@ -269,7 +269,8 @@
   зелёный → юнит FG-28 (5) красный), M6 «В платежи» без своей записи (зелёный — объяснено выше), M7 «копия с нуля пересчитывает»
   (красный `b2c-block3-screens`), P1 `/privacy` с `py-8` (красный `Privacy.test`). Откат — копией файла.
 - **Верификация:** до правок — `npm run build` ✓, `npx vitest run` 333 файла / 3234 passed / 1 skipped; `go build ./... && go test ./...`
-  ✓. После правок — см. строку ниже. Стенд критика — Go-моки `ffserver6.exe` (`PORT=8306`) + Vite 5306 (`vite.stand-fg6.mjs` из
+  ✓. После правок (`d686ab5d`) — `npm run build` ✓, `npx vitest run` 333 файла / **3238 passed** / 1 skipped (+4 теста критика);
+  CI `ci-frontend` на `d686ab5d` — run 40491278013 (итог — в отчёте оркестратору). Стенд критика — Go-моки `ffserver6.exe` (`PORT=8306`) + Vite 5306 (`vite.stand-fg6.mjs` из
   `…\scratchpad\fg6\` скопировать во `frontend/`, `npx vite --config vite.stand-fg6.mjs --configLoader native`; скрипты playwright класть
   тоже во `frontend/` под именем `vite.stand-*.mjs` — ESM ищет `playwright-core` от файла, не от cwd); погашен по PID портов.
   Снимки `/privacy`, лэндинга, `/access` с вырезом и без — `…\scratchpad\critic6\bare-59-light\`, `bare-59-dark\`, `bare-0-light\`.
