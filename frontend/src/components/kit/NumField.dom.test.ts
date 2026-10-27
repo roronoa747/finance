@@ -114,12 +114,19 @@ describe('NumField: знак валюты внутри поля (FG-19)', () => 
   it('aria-label — на самом поле, раскладка экрана — на обёртке', async () => {
     const root = document.createElement('div')
     document.body.appendChild(root)
-    app = createApp({ render: () => h(NumField, { modelValue: '', 'aria-label': 'Сумма', class: 'min-w-0 flex-1 bg-surface' }) })
+    app = createApp({ render: () => h(NumField, { modelValue: '', 'aria-label': 'Сумма', class: 'min-w-0 flex-1 shrink-0 mb-2 bg-surface' }) })
     app.mount(root)
     const input = root.querySelector('input')!
+    // Классы — целыми словами (критик Блока 4: `split(/s+/)` резал по букве «s» — «bg-surface» терялся, а подстрока
+    // «bg-surface» из `focus-visible:bg-surface` прятала потерю от `toContain`).
+    const own = input.className.split(/\s+/)
+    const outer = input.parentElement!.className.split(/\s+/)
     expect(input.getAttribute('aria-label')).toBe('Сумма')
-    expect(input.className).toContain('bg-surface')
-    expect(input.parentElement!.className).toContain('flex-1')
-    expect(input.className).not.toContain('flex-1')
+    expect(own).toContain('bg-surface')
+    expect(own).not.toContain('bg-surface-2')
+    expect(outer).toEqual(expect.arrayContaining(['min-w-0', 'flex-1', 'shrink-0', 'mb-2']))
+    expect(own).not.toContain('flex-1')
+    expect(own).not.toContain('shrink-0')
+    expect([...own, ...outer].every((c) => !/^(bg-|urface|hrink-0)$/.test(c))).toBe(true)
   })
 })

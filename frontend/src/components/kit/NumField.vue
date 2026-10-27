@@ -72,11 +72,9 @@ function onEnter(e: KeyboardEvent) {
 const suffix = computed(() => (numKind.value === 'money' ? '₸' : numKind.value === 'fx' && props.currency ? CURRENCY_SIGN[props.currency] : null))
 // Со знаком поле в обёртке `relative`: раскладка экрана (отступы, flex, ширина) — на обёртку, вид (подложка) — на поле.
 const LAYOUT = /^(-?m[trblxy]?-|flex-|min-w-|max-w-|w-|shrink|grow|self-|basis-)/
-const outer = computed(() => classesOf(props.class, props.className).filter((c) => LAYOUT.test(c)).join(' '))
-const inner = computed(() => classesOf(props.class, props.className).filter((c) => !LAYOUT.test(c)).join(' '))
-function classesOf(...v: unknown[]): string[] {
-  return cn(...(v as Parameters<typeof cn>)).split(/s+/).filter(Boolean)
-}
+const classes = computed(() => cn(props.class, props.className).split(/\s+/).filter(Boolean))
+const outer = computed(() => classes.value.filter((c) => LAYOUT.test(c)).join(' '))
+const inner = computed(() => classes.value.filter((c) => !LAYOUT.test(c)).join(' '))
 
 // Поле внутри `kit/Field` с ошибкой — неверное (рамка `--destructive`, строка под полем).
 const invalid = useFieldInvalid()
