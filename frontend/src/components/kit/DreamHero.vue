@@ -45,19 +45,19 @@ const onPhoto = computed(() => !!props.src || !!props.tone)
   >
     <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" />
     <div v-if="onPhoto" class="absolute inset-x-0 bottom-0 top-[35%] -z-10 photo-scrim" aria-hidden="true" />
-    <!-- Верх светлого фото (небо шаблона «Машина»): белые «Мечты» и подпись автора иначе не читаются (`/ux` Блока 4; тот же
-         приём — просмотр фото темы, FR-09). Шапка «Мечт» — полной полосой, одна подпись автора — тише. -->
+    <!-- Верх светлого фото под одной подписью автора (экран цели) — тихая полоса (`/ux` Блока 4; тот же приём — просмотр фото
+         темы, FR-09). У обложки «Мечт» полосы нет: на светлом фото iPhone она читалась как серая размытая полоса под часами
+         (владелец 2026-10-27) — «Мечты» и автор читаются тенью букв. -->
     <div
-      v-if="src && ($slots.top || author)"
-      class="absolute inset-x-0 top-0 -z-10 photo-scrim-top"
-      :class="$slots.top ? 'h-[calc(112px+env(safe-area-inset-top))]' : 'h-14 opacity-60'"
+      v-if="src && author && !$slots.top"
+      class="absolute inset-x-0 top-0 -z-10 h-14 opacity-60 photo-scrim-top"
       aria-hidden="true"
       data-hero-top-scrim
     />
     <!-- Верхняя строка поверх фото (обложка «Мечт»: «Мечты» и шапка оболочки). -->
-    <div v-if="$slots.top" class="absolute inset-x-0 top-0 z-10 px-4 pt-[max(12px,calc(env(safe-area-inset-top)_+_8px))]"><slot name="top" :on-photo="onPhoto" /></div>
+    <div v-if="$slots.top" class="absolute inset-x-0 top-0 z-10 px-4 pt-[max(12px,calc(env(safe-area-inset-top)_+_8px))]" :class="src ? 'photo-text-shadow' : ''"><slot name="top" :on-photo="onPhoto" /></div>
     <!-- Автор — один раз, на самом фото (владелец, 2026-09-27); ссылка на профиль — требование Unsplash. -->
-    <div v-if="author" class="absolute right-4 text-[11px]" :class="[src ? 'opacity-75' : 'text-ink-2', $slots.top ? 'top-[calc(62px+env(safe-area-inset-top))]' : 'top-3']">
+    <div v-if="author" class="absolute right-4 text-[11px]" :class="[src ? 'opacity-75' : 'text-ink-2', src && $slots.top ? 'photo-text-shadow' : '', $slots.top ? 'top-[calc(62px+env(safe-area-inset-top))]' : 'top-3']">
       <a v-if="authorUrl" :href="authorUrl" target="_blank" rel="noreferrer noopener" class="underline-offset-2 hover:underline" @click.stop>Фото: {{ author }}</a>
       <template v-else>Фото: {{ author }}</template>
     </div>

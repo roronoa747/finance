@@ -95,17 +95,21 @@ describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
     expect(text.indexOf(pctText(62))).toBeLessThan(text.indexOf('Япония'))
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('photo-scrim')
-    // `/ux`: верх светлого фото затемнён — «Мечты» и автор читаются; шапка «Мечт» (слот top) — полной полосой 112.
+    // `/ux`: верх светлого фото под одной подписью автора — тихая полоса h-14.
     const scrim = (s: string) => s.match(/<div[^>]*data-hero-top-scrim[^>]*>/)?.[0] ?? ''
     expect(scrim(html)).toContain('photo-scrim-top')
     expect(scrim(html)).toContain('h-14')
-    const top = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p' }, { top: () => h('header', 'Мечты') })
-    expect(scrim(top)).toContain('photo-scrim-top')
-    // FG-31: под строкой статуса iPhone — полоса и шапка ниже выреза (`env(safe-area-inset-top)`), автор под шапкой.
-    expect(scrim(top)).toContain('h-[calc(112px+env(safe-area-inset-top))]')
-    expect(top).toMatch(/<div class="absolute inset-x-0 top-0 z-10 px-4 pt-\[max\(12px,calc\(env\(safe-area-inset-top\)_\+_8px\)\)\]">/)
-    const authored = await render(DreamHero, { size: 'cover', title: 'Я', percent: 1, src: 'blob:p', author: 'A' }, { top: () => h('header', 'Мечты') })
-    expect(authored).toContain('top-[calc(62px+env(safe-area-inset-top))]')
+    // Обложка «Мечт» со шапкой (слот top) — без полосы-затемнения (на светлом фото iPhone — серая полоса под часами,
+    // владелец 2026-10-27): «Мечты» и автор читаются тенью букв.
+    const top = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p', author: 'A' }, { top: () => h('header', 'Мечты') })
+    expect(top).not.toContain('data-hero-top-scrim')
+    expect(top).not.toContain('photo-scrim-top')
+    // FG-31: шапка ниже выреза (`env(safe-area-inset-top)`), с тенью букв; автор под шапкой, тоже с тенью.
+    const cls = (s: string, re: RegExp) => (s.match(re)?.[1] ?? '').split(/\s+/)
+    expect(cls(top, /<div class="([^"]*)"><header>Мечты/)).toEqual(
+      expect.arrayContaining(['top-0', 'z-10', 'pt-[max(12px,calc(env(safe-area-inset-top)_+_8px))]', 'photo-text-shadow']),
+    )
+    expect(cls(top, /<div class="([^"]*)">Фото: A/)).toEqual(expect.arrayContaining(['photo-text-shadow', 'top-[calc(62px+env(safe-area-inset-top))]']))
     // Без слота top (экран цели, превью) — отступы прежние.
     expect(html).toMatch(/top-3[^"]*">Фото: Matthew Skinner/)
     expect(html).not.toContain('safe-area')
