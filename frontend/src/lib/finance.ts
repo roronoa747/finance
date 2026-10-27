@@ -2618,16 +2618,6 @@ export function closerDays(amount: number, pace: number): number | null {
   return Math.round((amount / pace) * 30.4)
 }
 
-/**
- * На сколько месяцев взносов тянет сумма `amount` при темпе `pace` в месяц («Хватит? — нет», владелец Б5: прикидки — в
- * месяцах): меньше одного месяца — 0 («почти не сдвинется»), дальше — округление; нет суммы или темпа — null.
- */
-export function paceMonths(amount: number, pace: number): number | null {
-  if (amount <= 0 || pace <= 0) return null
-  const months = amount / pace
-  return months < 1 ? 0 : Math.round(months)
-}
-
 /** «Ближе на N дней» под героем «Мечт»: все положительные движения месяца `key` при темпе цели; null — нечего сказать. */
 export function closerThisMonth(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number | null {
   const put = (goal.movements ?? []).filter((m) => m.amount > 0 && movementMonth(m.date) === key).reduce((a, m) => a + m.amount, 0)
