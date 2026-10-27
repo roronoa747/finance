@@ -27,6 +27,9 @@ describe('WishRow — строка 80 (FG-22)', () => {
     expect(html).not.toContain('сентября')
     expect(html.indexOf('Наушники')).toBeLessThan(html.indexOf(money(45_000)))
     expect(html).toContain(`>${money(45_000)}</span>`)
+    // `/ux`: порядок макета 90:19 — фото у края, галочка у названия.
+    expect(html.indexOf('data-photo')).toBeLessThan(html.indexOf('aria-label="Отметить купленным"'))
+    expect(html.indexOf('aria-label="Отметить купленным"')).toBeLessThan(html.indexOf('Наушники'))
   })
 
   it('купленное — зачёркнуто, «купили», без даты; viewer — без галочки', async () => {

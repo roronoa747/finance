@@ -95,6 +95,15 @@ describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
     expect(text.indexOf(pctText(62))).toBeLessThan(text.indexOf('Япония'))
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('photo-scrim')
+    // `/ux`: верх светлого фото затемнён — «Мечты» и автор читаются; шапка «Мечт» (слот top) — полной полосой 112.
+    const scrim = (s: string) => s.match(/<div[^>]*data-hero-top-scrim[^>]*>/)?.[0] ?? ''
+    expect(scrim(html)).toContain('photo-scrim-top')
+    expect(scrim(html)).toContain('h-14')
+    const top = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p' }, { top: () => h('header', 'Мечты') })
+    expect(scrim(top)).toContain('photo-scrim-top')
+    expect(scrim(top)).toContain('h-28')
+    // Без фото затемнять нечего.
+    expect(await render(DreamHero, { size: 'cover', title: 'Я', percent: 1 }, { top: () => h('header', 'Мечты') })).not.toContain('data-hero-top-scrim')
     // Превью — со скруглением, как было.
     expect(await render(DreamHero, { line: 'Х', size: 'preview' })).toContain('rounded-hero')
     noLiterals(html)

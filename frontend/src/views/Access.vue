@@ -89,7 +89,8 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
 </script>
 
 <template>
-  <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col justify-center px-5 py-8 text-left">
+  <!-- Раскладка 46:44 (`/ux`): «‹ Назад», имя и «Реально.» — сверху; кнопка Google — посередине свободного места; подвал — внизу. -->
+  <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col px-5 py-8 text-left">
     <!-- Один левый край (пачка 2 «Figma», 46:44): «‹ Назад» первым, затем имя и «Реально.» -->
     <RouterLink to="/" class="mb-8 self-start text-[13px] text-brand" data-access-back>‹ Назад</RouterLink>
     <div class="mb-8 flex items-center gap-2.5">
@@ -113,40 +114,42 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
       Вход истёк, войдите снова
     </p>
 
-    <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд). -->
-    <div class="mt-7 flex flex-col gap-2.5">
-      <!-- color-scheme light: iframe Google светлый — при тёмной схеме страницы браузер залил бы его белым (смоук владельца Б4).
-           Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4).
-           Коробка 350 × 52 держит место заранее (FG-20): GIS дорисует кнопку — строки ниже не сдвигаются. -->
+    <!-- Главное действие — кнопка Google (её рисует GIS: цвета Google, не бренд); ошибка и заметки — рядом с ней. -->
+    <div class="my-auto py-7">
+      <div class="flex flex-col gap-2.5">
+        <!-- color-scheme light: iframe Google светлый — при тёмной схеме страницы браузер залил бы его белым (смоук владельца Б4).
+             Пока идёт вход — кнопка не нажимается: второй вход той же почтой гонялся бы с первым (ревью frontend Б4 Н-4).
+             Коробка 350 × 52 держит место заранее (FG-20): GIS дорисует кнопку — строки ниже не сдвигаются. -->
+        <div
+          ref="googleEl"
+          class="mx-auto grid h-[52px] w-full max-w-[350px] place-items-center [color-scheme:light]"
+          :class="busy && 'pointer-events-none opacity-60'"
+          :aria-busy="busy"
+          data-testid="google-button"
+        />
+        <p v-if="busy" role="status" class="text-center text-[13px] text-ink-2">Минуту…</p>
+        <p v-if="googleUnavailable" class="text-center text-[13px] text-ink-2">Вход через Google недоступен</p>
+        <p class="flex items-center justify-center gap-1 text-[12.5px] text-ink-2">
+          Раньше входили по почте?
+          <Hint label="Раньше входили по почте">Войдите через Google с той же почтой — данные на месте.</Hint>
+        </p>
+      </div>
+
       <div
-        ref="googleEl"
-        class="mx-auto grid h-[52px] w-full max-w-[350px] place-items-center [color-scheme:light]"
-        :class="busy && 'pointer-events-none opacity-60'"
-        :aria-busy="busy"
-        data-testid="google-button"
-      />
-      <p v-if="busy" role="status" class="text-center text-[13px] text-ink-2">Минуту…</p>
-      <p v-if="googleUnavailable" class="text-center text-[13px] text-ink-2">Вход через Google недоступен</p>
-      <p class="flex items-center justify-center gap-1 text-[12.5px] text-ink-2">
-        Раньше входили по почте?
-        <Hint label="Раньше входили по почте">Войдите через Google с той же почтой — данные на месте.</Hint>
+        v-if="errorMessage"
+        role="alert"
+        class="mt-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
+      >
+        {{ errorMessage }}
+      </div>
+
+      <p v-if="editsWaitLogin" class="mt-6 text-center text-[12px] text-ink-2">
+        Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
       </p>
+      <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">Новая семья — спросим, взять ли демо.</p>
     </div>
 
-    <div
-      v-if="errorMessage"
-      role="alert"
-      class="mt-3 rounded-xl border border-warn-line bg-warn-soft px-3.5 py-2.5 text-[13px] text-ink-2"
-    >
-      {{ errorMessage }}
-    </div>
-
-    <p v-if="editsWaitLogin" class="mt-6 text-center text-[12px] text-ink-2">
-      Неотправленные правки ждут на этом телефоне — войдите в свою семью, и они уйдут.
-    </p>
-    <p v-else-if="hasDemoDraft" class="mt-6 text-center text-[12px] text-ink-2">Новая семья — спросим, взять ли демо.</p>
-
-    <p class="mt-8 text-center text-[11.5px] text-ink-2">
+    <p class="text-center text-[11.5px] text-ink-2">
       Бесплатно · выписка остаётся на телефоне ·
       <RouterLink to="/privacy" class="underline">политика</RouterLink>
     </p>

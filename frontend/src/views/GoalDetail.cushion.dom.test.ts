@@ -108,6 +108,10 @@ describe('PN-20: экран подушки — нужно · есть · хва�
     expect(document.querySelector('[data-goal-left-line]')?.textContent ?? '').toMatch(/^Соберём в .+ · осталось \d+ взнос/)
     expect(document.querySelector('input[aria-label="Порог фонда — месяцев трат"]')).not.toBeNull()
     expect(document.querySelector('[aria-label="Как считается «нужно»"]')).not.toBeNull()
+    // `/ux`: месяцы — не деньги: у поля порога знака «₸» нет (у поля взноса — есть).
+    const months = document.querySelector('input[aria-label="Порог фонда — месяцев трат"]')!
+    expect(months.parentElement?.querySelector('[data-num-suffix]') ?? null).toBeNull()
+    expect(document.querySelector('input[aria-label="Откладывать в месяц"]')!.parentElement?.querySelector('[data-num-suffix]')?.textContent).toBe('₸')
   })
 
   it('пусто — «Хватит на 0 месяцев»; собрано — «✓» цветом «готово», «Собрано» в карточке нет', async () => {

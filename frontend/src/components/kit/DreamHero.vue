@@ -45,6 +45,15 @@ const onPhoto = computed(() => !!props.src || !!props.tone)
   >
     <img v-if="src" :src="src" alt="" class="absolute inset-0 -z-20 size-full object-cover" />
     <div v-if="onPhoto" class="absolute inset-x-0 bottom-0 top-[35%] -z-10 photo-scrim" aria-hidden="true" />
+    <!-- Верх светлого фото (небо шаблона «Машина»): белые «Мечты» и подпись автора иначе не читаются (`/ux` Блока 4; тот же
+         приём — просмотр фото темы, FR-09). Шапка «Мечт» — полной полосой, одна подпись автора — тише. -->
+    <div
+      v-if="src && ($slots.top || author)"
+      class="absolute inset-x-0 top-0 -z-10 photo-scrim-top"
+      :class="$slots.top ? 'h-28' : 'h-14 opacity-60'"
+      aria-hidden="true"
+      data-hero-top-scrim
+    />
     <!-- Верхняя строка поверх фото (обложка «Мечт»: «Мечты» и шапка оболочки). -->
     <div v-if="$slots.top" class="absolute inset-x-0 top-0 z-10 px-4 pt-3"><slot name="top" :on-photo="onPhoto" /></div>
     <!-- Автор — один раз, на самом фото (владелец, 2026-09-27); ссылка на профиль — требование Unsplash. -->

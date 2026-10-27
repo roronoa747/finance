@@ -728,13 +728,15 @@ describe('PV-19: цель — окно правки, взнос полем, да
 
   it('п. 5: ползунка нет — поле «Откладывать в месяц» с суммой; по уходу из поля — взнос в сторе, 0 и пусто — без записи', async () => {
     const store = family()
-    // FG-24: поле взноса и «Снять» — в листе «Взнос в месяц» (из ячейки «В месяц»); на экране их нет.
+    // FG-24: поле взноса и «Снять» — в листе «Взнос в месяц» (из ячейки «В месяц»); на экране их нет. `/ux`: подписи над полем
+    // нет (повторяла заголовок листа) — имя поля для чтения с экрана.
     const plain0 = await renderScreen(GoalDetail, '/goals/trip')
-    expect(plain0).not.toContain('>Откладывать в месяц</span>')
+    expect(plain0).not.toContain('aria-label="Откладывать в месяц"')
     expect(plain0).not.toContain('Чтобы успеть за год')
     const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ monthlyOpen: true })])
     expect(html).not.toContain('type="range"')
-    expect(html).toContain('>Откладывать в месяц</span>')
+    expect(html).toContain('aria-label="Откладывать в месяц"')
+    expect(html).not.toContain('>Откладывать в месяц</span>')
     expect(html).toContain(`value="${plain(40_000)}"`)
     expect(html).toContain('data-goal-withdraw')
     expect(html.indexOf('data-goal-deposit')).toBeLessThan(html.indexOf('data-goal-cells'))

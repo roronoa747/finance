@@ -45,7 +45,6 @@ import Hint from '@/components/kit/Hint.vue'
 import NumField from '@/components/kit/NumField.vue'
 import NumFieldBlur from '@/components/kit/NumFieldBlur.vue'
 import SavedMark from '@/components/kit/SavedMark.vue'
-import Section from '@/components/kit/Section.vue'
 import Segmented from '@/components/kit/Segmented.vue'
 import Select from '@/components/kit/Select.vue'
 import Sheet from '@/components/kit/Sheet.vue'
@@ -514,6 +513,18 @@ function share() {
       </span>
     </div>
 
+    <!-- Пауза плана и подушка — тихой строкой к плану долгов на «Закрыть быстрее», между обложкой и ячейками, без черты
+         (FG-24, макет 78:50: без цветной плашки). -->
+    <RouterLink
+      v-if="(paused || planCushion) && !isDone"
+      to="/money/debts/faster"
+      class="press flex items-center gap-2.5 px-1 py-1.5 text-[14px] text-ink"
+      data-goal-plan
+    >
+      <span class="min-w-0 flex-1">{{ paused ? 'На паузе — взнос идёт в долг' : 'Подушка плана — взносы идут' }}</span>
+      <PhCaretRight :size="16" class="shrink-0 text-ink-3" />
+    </RouterLink>
+
     <!-- Сбывшаяся (PN-14): месяц и «за N месяцев»; действий нет. -->
     <Card v-if="isDone">
       <h2 class="type-h2 flex items-center gap-2 text-ink" data-goal-done-at>
@@ -521,8 +532,9 @@ function share() {
       </h2>
       <p class="mt-1.5 text-[15px] text-ink-2">{{ doneTermLine }}</p>
     </Card>
-    <!-- «В месяц | Осталось» (FG-24): «В месяц» — лист взноса (поле, «Снять», фонд); подушка — «хватит на» заголовком над ячейками. -->
-    <Card v-else data-goal-cells>
+    <!-- «В месяц | Осталось» (FG-24): «В месяц» — лист взноса (поле, «Снять», фонд); подушка — «хватит на» заголовком над ячейками.
+         Пока висит «Купили?» / «Съездили?» — ячеек нет, как и «Пополнить» (макет 78:104): сначала ответ; «Ещё нет» их вернёт. -->
+    <Card v-else-if="!askBought && !askTrip" data-goal-cells>
       <template v-if="cover">
         <h2 class="type-h2" :class="coverFull ? 'text-ok' : 'text-ink'" data-cushion-cover>{{ coverTitle }}{{ coverFull ? ' ✓' : '' }}</h2>
         <p class="mb-3 mt-1 text-[14px] text-ink-2 num" data-cushion-need>нужно на {{ monthsLabel(cover.monthsNeeded) }}</p>
@@ -555,19 +567,8 @@ function share() {
       </div>
     </Card>
 
-    <!-- Пауза плана и подушка — тихой строкой к плану долгов на «Закрыть быстрее» (FG-24: без цветной плашки). -->
-    <RouterLink
-      v-if="(paused || planCushion) && !isDone"
-      to="/money/debts/faster"
-      class="press flex items-center gap-2.5 border-b border-line px-1 py-3 text-[14px] text-ink"
-      data-goal-plan
-    >
-      <span class="min-w-0 flex-1">{{ paused ? 'На паузе — взнос идёт в долг' : 'Подушка плана — взносы идут' }}</span>
-      <PhCaretRight :size="16" class="shrink-0 text-ink-3" />
-    </RouterLink>
-
-    <!-- Взносы — прямо на экране (FG-24); пусто — одной строкой без карточки (макет 78:50) -->
-    <Section title="Взносы" />
+    <!-- Взносы — прямо на экране (FG-24); заголовок 17 жирным, пусто — одной строкой без карточки (макеты 78:50, 78:104) -->
+    <h2 class="mt-3 px-1 text-[17px] font-semibold text-ink">Взносы</h2>
     <Card v-if="history.length" flush>
       <div
         v-for="m in history"
@@ -598,23 +599,22 @@ function share() {
     <!-- Лист «Взнос в месяц» (FG-24): поле взноса, у фонда — месяцев трат; «осталось N взносов» подписью; тихая «Снять». -->
     <Sheet v-if="canEdit" :open="monthlyOpen" title="Взнос в месяц" @close="monthlyOpen = false">
       <template #default="{ close }">
-        <div class="-mb-3.5 flex justify-end">
-          <SavedMark :on="monthlySaved" />
-        </div>
-        <Field label="Откладывать в месяц">
-          <NumFieldBlur :initial="plain(goal.monthly)" data-goal-monthly-field @commit="onMonthly" />
+        <!-- Подписи над полем нет — её говорит заголовок листа (`/ux`: «Откладывать в месяц» повторяло «Взнос в месяц»). -->
+        <Field>
+          <NumFieldBlur :initial="plain(goal.monthly)" aria-label="Откладывать в месяц" data-goal-monthly-field @commit="onMonthly" />
         </Field>
-        <p v-if="leftLine" class="-mt-2 mb-3.5 text-[13px] text-ink-2 num" data-goal-left-line>{{ leftLine }}</p>
-        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану. -->
-        <template v-if="fundKind">
-          <div class="-mb-3.5 flex justify-end">
-            <SavedMark :on="fundSaved" />
-          </div>
-          <Field label="Месяцев трат">
-            <template v-if="cover" #hint><Hint label="Как считается «нужно»">Нужно = месяцы × (платежи + траты по плану)</Hint></template>
-            <NumFieldBlur :initial="String(fundMonths)" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
-          </Field>
-        </template>
+        <div v-if="leftLine || monthlySaved" class="-mt-2 mb-3.5 flex items-baseline justify-between gap-2">
+          <p v-if="leftLine" class="text-[13px] text-ink-2 num" data-goal-left-line>{{ leftLine }}</p>
+          <SavedMark class="ml-auto" :on="monthlySaved" />
+        </div>
+        <!-- Порог фонда — месяцев трат (Н-9): «нужно» = месяцы × траты месяца по плану; число месяцев — без «₸». -->
+        <Field v-if="fundKind" label="Месяцев трат">
+          <template #hint>
+            <Hint v-if="cover" label="Как считается «нужно»">Нужно = месяцы × (платежи + траты по плану)</Hint>
+            <SavedMark class="ml-auto" :on="fundSaved" />
+          </template>
+          <NumFieldBlur :initial="String(fundMonths)" kind="int" aria-label="Порог фонда — месяцев трат" @commit="onFundMonths" />
+        </Field>
         <Button class="w-full" data-goal-monthly-save @click="close">Сохранить</Button>
         <Button variant="outline" size="md" class="mx-auto mt-2 flex w-fit" data-goal-withdraw @click="openWithdraw">Снять</Button>
       </template>

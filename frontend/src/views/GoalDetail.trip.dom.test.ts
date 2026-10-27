@@ -139,9 +139,12 @@ describe('PN-31: экран цели-поездки', () => {
     expect(norm(q('[data-trip-ask] span')?.textContent)).toBe('Съездили?')
     expect(q('[data-trip-ask] [data-goal-done]')!.className).toContain('h-[26px]')
     expect(hasTopUp(), 'у прошедшей поездки «Пополнить» нет').toBe(false)
+    // `/ux`: ячеек «В месяц | Осталось» и метки сдвига тоже нет (макет 78:104) — сначала ответ.
+    expect(q('[data-goal-cells]')).toBeNull()
     await click(q('[data-trip-ask] [data-goal-not-yet]'))
     expect(q('[data-trip-ask]')).toBeNull()
     expect(hasTopUp(), '«Ещё нет» — срок и «Пополнить»').toBe(true)
+    expect(q('[data-goal-cells]')).not.toBeNull()
   })
 
   it('в последний день поездки — ещё не спрашиваем', async () => {

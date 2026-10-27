@@ -213,7 +213,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @toggle="markBought(w.id, w.name)"
       />
     </div>
-    <Card v-else-if="activeWish.length" flush :class="canEdit && 'pl-2.5'">
+    <Card v-else-if="activeWish.length" flush>
       <SortableList :ids="activeIds" :label="(id) => `Переставить: ${activeById.get(id)?.name ?? ''}`" :disabled="!canEdit" @move="moveActive">
         <template #default="{ id }">
           <WishRow
