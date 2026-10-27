@@ -688,12 +688,12 @@ onBeforeUnmount(() => {
         <!-- «Это ваш доход?»: сумма и день правятся (как было в первом запуске); недельный ритм — только сумма за неделю. -->
         <template v-else-if="decision.kind === 'income'" #inner>
           <div class="flex gap-3" data-income-fields>
-            <Field :label="decision.income?.rhythm === 'week' ? 'За неделю, ₸' : 'Оклад, ₸'" class="flex-1"><NumField v-model="income.salary.value" placeholder="450 000" data-income-salary /></Field>
+            <Field :label="decision.income?.rhythm === 'week' ? 'За неделю' : 'Оклад'" class="flex-1"><NumField v-model="income.salary.value" placeholder="450 000" data-income-salary /></Field>
             <Field v-if="decision.income?.rhythm !== 'week'" label="День" class="w-24"><NumField v-model="income.payday.value" kind="int" placeholder="10" data-income-day /></Field>
           </div>
         </template>
         <template v-else-if="decision.kind === 'monthEnd'" #inner>
-          <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось, ₸" />
+          <NumField v-model="restAmount" placeholder="50 000" aria-label="Сколько осталось" />
         </template>
       </DecisionCard>
     </Sheet>
@@ -723,7 +723,7 @@ onBeforeUnmount(() => {
     <OpSheet :op-id="sectionOp" :z="60" @close="sectionOp = null" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
     <NoteSheet v-if="canUpload" :open="noteOpen || noteEdit !== null" :note-id="noteEdit" @close="closeNoteSheet" @saved="onHandSaved" />
-    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
+    <WeekFeedSheet :open="feedOpen" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->

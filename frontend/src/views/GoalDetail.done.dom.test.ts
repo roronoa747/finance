@@ -71,9 +71,11 @@ const text = () => document.body.textContent ?? ''
 const q = (sel: string) => document.querySelector(sel)
 
 describe('PN-14: «Купили?» на 100 %', () => {
-  it('«Накоплено!», «Купили?», «Сбылось» и «Ещё нет»; «Пополнить» нет', async () => {
+  it('тонкая строка «Купили?» с маленькими «Ещё нет» и «Сбылось» (FG-24, 78:104); «Пополнить» нет', async () => {
     await open()
-    expect(q('[data-goal-ask]')?.textContent).toContain('Накоплено!')
+    expect(q('[data-goal-ask]')?.textContent).toContain('Купили?')
+    expect(q('[data-goal-done]')!.className).toContain('h-[26px]')
+    expect(q('[data-goal-not-yet]')!.className).toContain('h-[26px]')
     expect(text()).toContain('Купили?')
     expect(q('[data-goal-done]')).not.toBeNull()
     expect(q('[data-goal-not-yet]')).not.toBeNull()
@@ -122,10 +124,12 @@ describe('PN-14: «Купили?» на 100 %', () => {
     expect(text()).toContain('Карточка для сторис')
   })
 
-  it('фонд на 100 % — «Собрано», без вопроса и без «Сбылось» в меню', async () => {
+  it('фонд (подушка) на 100 % — «хватит на» с ✓ в карточке, «собрано» на обложке, без вопроса и без «Сбылось» в меню', async () => {
     await open({ id: 'cushion', goals: (g) => (g.id === 'cushion' ? { ...g, fund: 'cushion', seed: 50_000_000, have: 50_000_000 } : g) })
     expect(q('[data-goal-ask]')).toBeNull()
-    expect(text()).toContain('Собрано')
+    expect(q('[data-cushion-cover]')?.textContent).toContain('✓')
+    // Обложка подушки — без дубля «хватит на» (он в карточке под ней): накоплено — «собрано».
+    expect(q('[data-goal-term]')?.textContent).toContain('собрано')
     ;(document.querySelector('[aria-label="Меню цели"]') as HTMLButtonElement).click()
     await nextTick()
     expect(q('[data-goal-done-menu]')).toBeNull()

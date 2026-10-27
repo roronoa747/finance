@@ -298,7 +298,7 @@ const markOpen = ref<Payment | null>(null)
   </Card>
   <p v-else-if="!shown.length" class="px-1 type-meta">Здесь пока ничего.</p>
 
-  <Button v-if="canEarlier" variant="ghost" size="md" class="w-full" @click="earlier">Раньше</Button>
+  <Button v-if="canEarlier" variant="outline" size="md" class="mx-auto flex w-fit" @click="earlier">Раньше</Button>
 
   <!-- Листы -->
   <Sheet :open="summaryOpen && hasSummary" title="Итог месяца" @close="summaryOpen = false">

@@ -76,7 +76,7 @@ function cancel() {
     <button
       v-else
       type="button"
-      class="flex w-full items-center justify-center gap-1.5 rounded-pill border border-destructive-line bg-destructive-soft px-4 py-2.5 text-[13px] font-medium text-destructive active:translate-y-px cursor-pointer"
+      class="mx-auto flex h-8 w-auto items-center justify-center gap-1.5 rounded-pill border border-destructive/45 bg-destructive-soft px-4 text-[13px] font-medium text-destructive active:translate-y-px cursor-pointer"
       @click="confirm = true"
     >
       {{ label }}

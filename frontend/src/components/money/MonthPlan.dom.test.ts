@@ -199,7 +199,9 @@ describe('B2C-94: «План · Месяц» — круг-оглавление',
     expect(txt(top.querySelector('[data-rest]'))).toBe(norm(money(plan.rest)))
     expect(top.querySelector('[data-rest]')!.className).toContain('text-[29px]')
     expect(top.querySelector('[data-rest-hint]')).not.toBeNull()
-    expect(top.querySelector('[data-afford-open]')).not.toBeNull()
+    // FG-23 (18:105): у остатка — «История» месяца вместо «Хватит?».
+    expect(top.querySelector('[data-month-feed]')).not.toBeNull()
+    expect(top.querySelector('[data-afford-open]')).toBeNull()
     // Разделы — в той же карточке: одна точка (цвет раздела), второй точки-призыва нет.
     expect(top.querySelector('[data-sections]')).not.toBeNull()
     expect(q('[data-section-dot]')).toBeNull()
@@ -1170,7 +1172,8 @@ describe('AU-02: траты на «Месяце» — свои разделы (F
     expect(txt(q('[role="dialog"] [data-cat-usual]'))).toBe(norm(`обычно у вас ${money(30_000)}`))
     expect(txt(q('[role="dialog"] [data-cat-plan]'))).toBe(norm(`план ${money(20_000)}`))
     expect(txt(q('[role="dialog"] [data-cat-advice]'))).toContain(norm(`до плана: +${money(10_000)} в мечту «${cafe.advice!.goalName}»`))
-    expect(q('[role="dialog"] [data-cat-rk]')).not.toBeNull()
+    // FG-25: строки «в Алматы» нет.
+    expect(q('[role="dialog"] [data-cat-rk]')).toBeNull()
     await press(q('[role="dialog"] [data-cat-person="a"] [data-cat-edit]'))
     expect(txt(q('[role="dialog"] h3'))).toBe('Сколько в месяц')
     expect(q<HTMLInputElement>('[role="dialog"] input[inputmode]')!.value).toBe(plain(20_000))

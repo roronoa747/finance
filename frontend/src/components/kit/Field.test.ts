@@ -13,9 +13,9 @@ describe('PV-09: kit/Field — подпись поля и группы кноп�
     )
 
   it('поле — внутри <label>', async () => {
-    const html = await render({ label: 'Сумма, ₸' })
+    const html = await render({ label: 'Сумма' })
     expect(html).toMatch(/^<label/)
-    expect(html).toContain('Сумма, ₸')
+    expect(html).toContain('Сумма')
     expect(html).not.toContain('role="group"')
   })
 

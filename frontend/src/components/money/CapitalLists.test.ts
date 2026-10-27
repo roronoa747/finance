@@ -435,7 +435,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     await family()
     const { monthInAfter } = await import('@/lib/dates')
     const html = await render('/capital?credit=loan')
-    for (const label of ['Название', 'Остаток долга, ₸', 'Платёж в месяц, ₸', 'Ставка, % годовых', 'День платежа', 'Примечание']) {
+    for (const label of ['Название', 'Остаток долга', 'Платёж в месяц', 'Ставка, % годовых', 'День платежа', 'Примечание']) {
       expect(html).toContain(`>${label}</span>`)
     }
     expect(html).not.toContain('Ставка (ГЭСВ), % годовых')
@@ -475,7 +475,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
     const { money } = await import('@/lib/money')
     await family('viewer')
     const html = await render('/capital?credit=loan')
-    expect(html).not.toContain('Остаток долга, ₸')
+    expect(html).not.toContain('data-num-suffix')
     expect(html).not.toContain('Ставка (ГЭСВ), % годовых')
     expect(html).not.toContain('Удалить кредит')
     expect(html).not.toContain('<input')
@@ -528,18 +528,20 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(ro).not.toContain('Удалить кредит')
   })
 
-  it('калькулятор: «долг не закрывается» в шапке и подсказка без суммы', async () => {
+  it('калькулятор: «долг не закрывается» в шапке; пояснение поля — в «?» у подписи (FG-25)', async () => {
     await family()
     const html = await render('/capital?payoff=card-debt')
     expect(html).toContain('Переплата, если не трогать')
     expect(html).toContain('долг не закрывается')
-    expect(html).toContain('Впишите сумму, которую действительно можете внести. Приложение не станет предлагать больше — считать по деньгам, которых нет, смысла нет.')
+    expect(html).not.toContain('Впишите сумму')
+    expect(html).toContain('aria-label="Какую сумму вписать"')
     expect(html).not.toContain('Отдача падает')
 
     // Добавка, с которой долг закрылся бы, выводов не даёт: «сейчас» — бесконечность
     // (было «Закроется на Infinity мес. раньше», ревью Н-1).
     const withSum = await render('/capital?payoff=card-debt', { payoffAmount: '10 000' })
-    expect(withSum).toContain('Впишите сумму, которую действительно можете внести.')
+    // Итога нет — ни «−N мес.», ни строки переплаты (пояснение — в «?» у поля).
+    expect(withSum).not.toContain('data-payoff-result')
     expect(withSum).not.toContain('Infinity')
   })
 
@@ -595,7 +597,7 @@ describe('PV-10: модалка кредита и калькулятор дос�
 
   })
 
-  it('калькулятор: подсказка поля — первый чип, чип «половина переплаты», лесенка «Отдача падает» с пояснением', async () => {
+  it('калькулятор: подсказка поля — первый чип, чип «половина переплаты»; лесенка «Отдача падает» — под свёрнутым «Подробнее» (FG-25)', async () => {
     const { money, plain } = await import('@/lib/money')
     const { halfOverpayExtra } = await import('@/lib/finance')
     await family()
@@ -606,16 +608,20 @@ describe('PV-10: модалка кредита и калькулятор дос�
     expect(html).toContain('половина переплаты')
     expect(html).not.toContain('½')
     expect(html).toMatch(/>\s*Отдача падает\s*</)
+    // Лесенка — внутри <details> «Подробнее», по умолчанию закрыта; пояснение «половину переплаты…» — в «?» у итога.
+    const ladder = html.slice(html.indexOf('<details'), html.indexOf('</details>'))
+    expect(ladder).toContain('Отдача падает')
+    expect(ladder).toMatch(/<summary[^>]*>\s*Подробнее/)
+    expect(html).not.toMatch(/<details[^>]*open/)
     // Добавка в строке лесенки — без «₸», как React `+{plain(r.extra)}` (критик).
     expect(html).toContain(`+${money(29_000)}</span>`)
-    expect(html).toContain(
-      `Половину переплаты снимает уже добавка в ${money(half)} — дальше каждая следующая тысяча даёт меньше предыдущей. Если больших сумм нет, начинать стоит отсюда.`,
-    )
 
-    // С суммой — результат React: «экономия …», «Останется N платежей вместо M».
+    // С суммой (FG-25, 51:873): одна крупная «−N мес.» и «переплата меньше на N ₸»; «осталось N платежей» — в «?» у итога.
     const withSum = await render('/capital?payoff=loan', { payoffAmount: plain(half) })
-    expect(withSum).toMatch(/экономия \d/)
-    expect(withSum).toMatch(/Останется \d+ платеж(а|ей)? вместо \d+\./)
+    expect(withSum).toMatch(/data-payoff-months[^>]*>−\d+ мес\.</)
+    expect(withSum).toMatch(/data-payoff-saved[^>]*>переплата меньше на \d/)
+    expect(withSum).toContain('aria-label="Что меняется"')
+    expect(withSum).not.toContain('экономия')
     expect(withSum).not.toContain('Впишите сумму')
   })
 
@@ -812,7 +818,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     const { money } = await import('@/lib/money')
     await family()
     const html = await render('/capital?obligation=rent')
-    for (const label of ['Название', 'Сумма сейчас, ₸', 'День платежа', 'Как часто', 'Чья']) {
+    for (const label of ['Название', 'Сумма сейчас', 'День платежа', 'Как часто', 'Чья']) {
       expect(html).toContain(`>${label}</span>`)
     }
     // Пояснение исправления — в подсказке (?) у строки, как в форме оклада (правило 12, ревью Б13 Н-7).
@@ -874,7 +880,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     const html = await render('/capital?obligation=rent', {}, () =>
       useFinanceStore().amendObligation('rent', '2026-09', 250_000, 'переезд'),
     )
-    const field = html.slice(html.indexOf('Сумма сейчас, ₸'))
+    const field = html.slice(html.indexOf('Сумма сейчас'))
     expect(field.slice(0, field.indexOf('</label>'))).toContain(`value="${plain(250_000)}"`)
   })
 
@@ -882,7 +888,7 @@ describe('PV-11: форма платежа и модалка обязатель�
     const { money } = await import('@/lib/money')
     await family('viewer')
     const html = await render('/capital?obligation=rent')
-    expect(html).not.toContain('Сумма сейчас, ₸')
+    expect(html).not.toContain('data-num-suffix')
     expect(html).not.toContain('Запланировать изменение')
     expect(html).not.toContain('Удалить платёж')
     expect(html).not.toContain('<input')
@@ -959,11 +965,12 @@ describe('PV-12: счета — валютный, удаление, тексты
     const { money } = await import('@/lib/money')
     await family()
     const html = await render('/capital', { selectedAccountId: 'usd' })
-    expect(html).toContain('>Сумма, $</span>')
+    expect(html).toContain('>Сумма</span>')
+    expect(html).toMatch(/data-num-suffix[^>]*>\$</)
     expect(html).toContain('>Курс, ₸ за 1 $</span>')
     expect(html).toContain('value="512,34"')
     expect(html).toContain(`В капитале счёт стоит как ${money(512_340)} — по этому курсу.`)
-    expect(html).not.toContain('>Сумма, ₸</span>')
+    expect(html).not.toContain('Сумма, $')
   })
 
   it('правка валютного из окна: курс → тенге по fxToTenge и дата курса; сумма в валюте — тенге, дата прежняя (критик)', async () => {
@@ -981,12 +988,12 @@ describe('PV-12: счета — валютный, удаление, тексты
     expect(usd().amount).toBe(530_268)
   })
 
-  it('счёт в тенге: «Сумма, ₸»; удаление — текст React с целями на счёте', async () => {
+  it('счёт в тенге: «Сумма» и «₸» в поле; удаление — текст React с целями на счёте', async () => {
     await family()
     let warning = ''
     const html = await render('/capital', { selectedAccountId: 'card' }, (s) => (warning = s.accountRemoveWarning as string))
-    expect(html).toContain('>Сумма, ₸</span>')
-    expect(html).not.toContain('Сумма, $')
+    expect(html).toContain('>Сумма</span>')
+    expect(html).toMatch(/data-num-suffix[^>]*>₸</)
     expect(html).toContain('Удалить счёт')
     expect(warning).toBe(
       'Счёт исчезнет у обоих участников. Отменить нельзя. Накопления по целям «Квартира», «Отпуск» останутся на месте: они снова будут считаться отдельно, а не лежащими на этом счёте.',
@@ -1048,7 +1055,7 @@ describe('PV-12: счета — валютный, удаление, тексты
     await family()
     // Без книги и без ответа ручки — курс руками.
     const manual = await render('/capital', { accountOpen: true, newAccountCurrency: 'USD', newAccountAmount: '1 000' })
-    expect(manual).toContain('>Сумма, $</span>')
+    expect(manual).toContain('>Сумма</span>')
     expect(manual).toContain('>Курс, ₸ за 1 $</span>')
     expect(manual).not.toContain('по курсу Нацбанка')
 

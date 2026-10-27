@@ -55,6 +55,18 @@ describe('B2C-27: лэндинг «/» для анонима', () => {
     expect(html.match(/loading="lazy"/g)?.length).toBe(3)
   })
 
+  it('FG-19/20: «Начать с Google» 44 с окантовкой, «Попробовать» — компактная 40 по центру', async () => {
+    const html = await renderScreen(Landing, '/')
+    const google = html.match(/<a[^>]*class="([^"]*)"[^>]*>\s*Начать с Google/)![1]
+    expect(google).toContain('h-11')
+    expect(google).toContain('--brand-edge')
+    const tryIt = html.match(/<button[^>]*class="([^"]*)"[^>]*>\s*Попробовать/)![1]
+    expect(tryIt).toContain('h-10')
+    expect(tryIt).toContain('self-center')
+    expect(tryIt).not.toContain('w-full')
+    expect(tryIt).not.toContain('h-13')
+  })
+
   it('черновик демо на телефоне — «Вернуться в демо»', async () => {
     useFinanceStore().claimFor(DEMO_HOUSEHOLD)
     expect(visible(await renderScreen(Landing, '/'))).toContain('Вернуться в демо')

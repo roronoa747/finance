@@ -2618,16 +2618,6 @@ export function closerDays(amount: number, pace: number): number | null {
   return Math.round((amount / pace) * 30.4)
 }
 
-/**
- * На сколько месяцев взносов тянет сумма `amount` при темпе `pace` в месяц («Хватит? — нет», владелец Б5: прикидки — в
- * месяцах): меньше одного месяца — 0 («почти не сдвинется»), дальше — округление; нет суммы или темпа — null.
- */
-export function paceMonths(amount: number, pace: number): number | null {
-  if (amount <= 0 || pace <= 0) return null
-  const months = amount / pace
-  return months < 1 ? 0 : Math.round(months)
-}
-
 /** «Ближе на N дней» под героем «Мечт»: все положительные движения месяца `key` при темпе цели; null — нечего сказать. */
 export function closerThisMonth(goal: { monthly: number; movements?: { date: string; amount: number }[] }, key: string): number | null {
   const put = (goal.movements ?? []).filter((m) => m.amount > 0 && movementMonth(m.date) === key).reduce((a, m) => a + m.amount, 0)
@@ -3862,72 +3852,6 @@ export function tryCredit(
 }
 
 /**
- * «Хватит?»: да — сколько останется до зарплаты; нет — сколько не хватает и на сколько месяцев отодвинется главная
- * мечта (`months` 0 — меньше месяца).
- */
-export type CanAfford =
-  | { ok: true; left: number; inDays: number | null }
-  | { ok: false; short: number; goal: string | null; months: number | null }
-
-/**
- * «Хватит?» (PN-16, Р-11) — ничего не пишет. Со счетами — от «до зарплаты» (`untilPayday.shortfall`: на счетах минус
- * платежи до зарплаты); счетов нет — от остатка плана месяца (`rest`). Нехватка — в месяцах взносов главной мечты
- * (`paceMonths` при её темпе `goalPace`, владелец Б5 — не дни); мечты или темпа нет — месяцев нет.
- */
-export function canAfford(
-  state: Parameters<typeof untilPayday>[0] & MonthPlanState,
-  ctx: MonthPlanCtx,
-  amount: number,
-  now = today(),
-): CanAfford {
-  const up = untilPayday(state, now)
-  const cash = up && up.knowsCash
-  const plan = cash ? null : monthPlan(state, ctx)
-  const left = (cash ? up.shortfall : plan!.rest) - amount
-  if (left >= 0) return { ok: true, left, inDays: cash ? up.inDays : null }
-  const item = firstGoal(plan ?? monthPlan(state, ctx))
-  const hero = item ? (state.goals ?? []).find((g) => g.id === item.goalId) ?? null : null
-  return { ok: false, short: -left, goal: item?.name ?? null, months: hero ? paceMonths(-left, goalPace(hero, ctx.key)) : null }
-}
-
-/** Где тесно до зарплаты (Р-7, AU-07): `short` — уйдёт в минус, `tight` — останется меньше 15 % прихода. */
-export type AffordWhy = { kind: 'short' | 'tight'; from: { day: number; key: string }; to: { day: number; key: string }; name: string }
-
-/**
- * «Хватит?» с причиной (Р-7, AU-07) — из того же «до зарплаты»: только когда знаем счета. На счетах минус покупка, платежи
- * окна по порядку: первый, после которого баланс ниже нуля, — `short` (окно — от его дня до дня перед зарплатой); иначе,
- * если после всех платежей остаётся меньше `LOW_REST_SHARE` прихода, — `tight` (окно — от дня самого крупного платежа).
- * Иначе — null.
- */
-export function affordWhy(state: Parameters<typeof untilPayday>[0], amount: number, now = today()): AffordWhy | null {
-  const up = untilPayday(state, now)
-  if (!up || !up.knowsCash || !up.due.length) return null
-  // День перед зарплатой; зарплата 1-го — последний день прошлого месяца.
-  const before = up.day > 1 ? { day: up.day - 1, key: up.key } : { day: daysInMonth(addMonths(up.key, -1)), key: addMonths(up.key, -1) }
-  const window = (from: { day: number; when: string }, name: string, kind: AffordWhy['kind']): AffordWhy => {
-    const start = { day: from.day, key: from.when }
-    // Платёж в сам день зарплаты: окно — один его день.
-    const late = start.key > before.key || (start.key === before.key && start.day > before.day)
-    return { kind, from: start, to: late ? start : before, name }
-  }
-  let balance = up.onAccounts - amount
-  for (const d of up.due) {
-    balance -= d.value
-    if (balance < 0) return window(d, d.name, 'short')
-  }
-  if (balance >= LOW_REST_SHARE * up.income) return null
-  const biggest = up.due.reduce((a, d) => (d.value > a.value ? d : a))
-  return window(biggest, biggest.name, 'tight')
-}
-
-/** Строка под вердиктом: «тесно 20–24-го — Автокредит»; окно через месяц — «тесно с 28-го до 5-го — …»; один день — «тесно 25-го — …». */
-export function affordWhyText(why: AffordWhy): string {
-  const { from, to } = why
-  const span = from.key !== to.key ? `с ${from.day}-го до ${to.day}-го` : from.day === to.day ? `${from.day}-го` : `${from.day}–${to.day}-го`
-  return `тесно ${span} — ${why.name}`
-}
-
-/**
  * Первый долг (Р-7, AU-07): самый дорогой из открытых с процентами (`costliestCredits`; ставка неизвестна — мимо) — только
  * когда таких хотя бы два (при одном «первый» не нужен). Ставка — в процентах (`ratePercent`).
  */
@@ -4364,27 +4288,6 @@ export function spendCompare(
     oneOff: hasFact ? byCategory.oneOff : 0,
     unmarkedPayments: hasFact ? unmarkedPayments : 0,
   }
-}
-
-/**
- * Доля группы РК в тратах семьи за месяц (справка «у вас X % · в Алматы Y %», Р-5): итоги участников с выпиской месяца
- * по разделам с группой — и разделам платежей с группой целиком (коммуналка, аренда, связь). Знаменатель — те же
- * разделы с группой (потребительские траты, как три группы статистики — 97,2 % денежных расходов): кредиты, переводы
- * людям, наличные и «не разобрано» долю не размывают; разовые (FB-07) — тоже. Целые %; выписок или трат с группой нет —
- * null. С `by` — доля в тратах одного участника (лист своего раздела, FB-11).
- */
-export function rkShare(state: MonthPlanState, ctx: MonthPlanCtx, group: RkGroup, by?: PersonId): number | null {
-  const people = peopleOf(state.people ?? [], by).filter((p) => uploadedBy(p.id, ctx.key, ctx.uploads))
-  const ids = new Set(people.map((p) => p.id))
-  const live = ctx.spendCategories.filter(alive)
-  const mine = ctx.totals.filter(
-    (t) => !t.deletedAt && ids.has(t.by) && t.kind === 'month' && t.period === ctx.key && t.amount > 0 && RK_GROUP_BY_CATEGORY[t.categoryId],
-  )
-  const amountOf = (t: SpendTotal) => t.amount - oneOffOf(t, live)
-  const total = mine.reduce((s, t) => s + amountOf(t), 0)
-  if (total <= 0) return null
-  const part = mine.filter((t) => RK_GROUP_BY_CATEGORY[t.categoryId] === group).reduce((s, t) => s + amountOf(t), 0)
-  return Math.round((part * 100) / total)
 }
 
 /**
@@ -5577,12 +5480,35 @@ export type WeekFeedOp = {
 export function weekFeed(
   ops: Operation[],
   where: { week: string; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
-): { count: number; total: number; days: { date: string; ops: WeekFeedOp[] }[] } {
+): FeedDays {
+  return feedOf(ops, (date) => weekKey(date) === where.week, where)
+}
+
+/**
+ * Лента трат месяца (пачка 2 «Figma», FG-23: «История» у остатка «Месяца» вместо «Хватит?»): тот же отбор и порядок, что у
+ * `weekFeed`, только по календарному месяцу дня операции (`YYYY-MM`). Недели месяца целиком внутри него — те же строки.
+ */
+export function monthFeed(
+  ops: Operation[],
+  where: { month: string; marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+): FeedDays {
+  return feedOf(ops, (date) => date.slice(0, 7) === where.month, where)
+}
+
+/** Лента по дням: `count`, `total` (сумма `spendOf`) и дни, свежие сверху. */
+export type FeedDays = { count: number; total: number; days: { date: string; ops: WeekFeedOp[] }[] }
+
+/** Общее тело лент недели и месяца: период — `inPeriod(op.date)`. */
+function feedOf(
+  ops: Operation[],
+  inPeriod: (date: string) => boolean,
+  where: { marked?: ReadonlySet<string>; categories?: Pick<SpendCategory, 'id' | 'plannedElsewhere'>[] },
+): FeedDays {
   const list = ops
     .filter(
       (op) =>
         isSpend(op) &&
-        weekKey(op.date) === where.week &&
+        inPeriod(op.date) &&
         (!op.categoryId || !plannedElsewhere(op.categoryId, where.categories ?? []) || (!!where.marked && !where.marked.has(op.id))),
     )
     .sort((a, b) => b.date.localeCompare(a.date) || (b.at ?? '').localeCompare(a.at ?? '') || a.amount - b.amount || a.id.localeCompare(b.id))

@@ -198,7 +198,7 @@ async function copy() {
       <!-- Тихий ряд под главной кнопкой: «Дальше» (буфер отказал), выбор старого iOS (версия не распознана — PWA с экрана
            «Домой»: путь iOS 27) или «Назад»; на первом и последнем шаге пустой — той же высоты. -->
       <div class="flex h-11 items-center justify-center">
-        <Button v-if="step.action === 'copy' && manual" variant="ghost" size="md" class="w-full" @click="next">Дальше</Button>
+        <Button v-if="step.action === 'copy' && manual" variant="outline" size="md" class="mx-auto flex w-fit" @click="next">Дальше</Button>
         <button
           v-else-if="step.action === 'copy' && legacyChoice && flow === 'tap'"
           type="button"
@@ -208,9 +208,9 @@ async function copy() {
         >
           {{ ap.path === 'ios27' ? 'У меня iOS 26 или старше' : 'У меня iOS 27' }}
         </button>
-        <Button v-else-if="index > 0 && step.action !== 'done'" variant="ghost" size="md" class="w-full" data-back @click="back">Назад</Button>
+        <Button v-else-if="index > 0 && step.action !== 'done'" variant="outline" size="md" class="mx-auto flex w-fit" data-back @click="back">Назад</Button>
         <!-- Блок 2: вторая команда — тихо, после первой (правило 12: одно действие за раз). -->
-        <Button v-else-if="step.action === 'done' && morePush" variant="ghost" size="md" class="w-full" data-more-push @click="toPush">
+        <Button v-else-if="step.action === 'done' && morePush" variant="outline" size="md" class="mx-auto flex w-fit" data-more-push @click="toPush">
           Ещё — пуши банков
         </Button>
       </div>

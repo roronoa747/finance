@@ -84,3 +84,49 @@ describe('NumField: набор по символу с точкой', () => {
     expect(input.value).toBe('123')
   })
 })
+
+describe('NumField: знак валюты внутри поля (FG-19)', () => {
+  const suffix = () => document.querySelector('[data-num-suffix]')?.textContent ?? null
+
+  it('деньги — «₸» справа внутри, у поля отступ под знак', async () => {
+    const { input } = await field({})
+    expect(suffix()).toBe('₸')
+    expect(input.className).toContain('pr-9')
+    expect(input.className).toContain('h-11')
+  })
+
+  it('валюта — свой знак: EUR → «€»', async () => {
+    await field({ currency: 'EUR' })
+    expect(suffix()).toBe('€')
+  })
+
+  it('ставка и целое — без знака и без отступа под него', async () => {
+    for (const kind of ['rate', 'int'] as const) {
+      const { input } = await field({ kind })
+      expect(suffix()).toBeNull()
+      expect(input.className).not.toContain('pr-9')
+      app?.unmount()
+      app = null
+      document.body.innerHTML = ''
+    }
+  })
+
+  it('aria-label — на самом поле, раскладка экрана — на обёртке', async () => {
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    app = createApp({ render: () => h(NumField, { modelValue: '', 'aria-label': 'Сумма', class: 'min-w-0 flex-1 shrink-0 mb-2 bg-surface' }) })
+    app.mount(root)
+    const input = root.querySelector('input')!
+    // Классы — целыми словами (критик Блока 4: `split(/s+/)` резал по букве «s» — «bg-surface» терялся, а подстрока
+    // «bg-surface» из `focus-visible:bg-surface` прятала потерю от `toContain`).
+    const own = input.className.split(/\s+/)
+    const outer = input.parentElement!.className.split(/\s+/)
+    expect(input.getAttribute('aria-label')).toBe('Сумма')
+    expect(own).toContain('bg-surface')
+    expect(own).not.toContain('bg-surface-2')
+    expect(outer).toEqual(expect.arrayContaining(['min-w-0', 'flex-1', 'shrink-0', 'mb-2']))
+    expect(own).not.toContain('flex-1')
+    expect(own).not.toContain('shrink-0')
+    expect([...own, ...outer].every((c) => !/^(bg-|urface|hrink-0)$/.test(c))).toBe(true)
+  })
+})

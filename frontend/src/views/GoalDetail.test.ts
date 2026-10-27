@@ -12,16 +12,21 @@ import {
   liveWishlist,
   deposit,
   realRate,
-  indexedNeed,
   INFLATION,
   monthsBetween,
 } from '@/lib/finance'
 import { money, plain, ratePct } from '@/lib/money'
-import { addMonths, monthIn, monthKey } from '@/lib/dates'
+import { addMonths, monthKey, MONTHS_DAT, parseMonthKey } from '@/lib/dates'
 import { GOAL_TEMPLATES, GOAL_TYPES, templateById } from '@/lib/goalTemplates'
 import { HUES } from '@/lib/palette'
 import { T0, authAs, planFamilyDoc, planOf } from '@/test/planFamily'
 import { renderScreen, screenMixin } from '@/test/screenState'
+
+/** Срок на обложке цели v2 (FG-24): «к сентябрю 2034». */
+const toMonth = (k: string) => {
+  const { year, month } = parseMonthKey(k)
+  return `к ${MONTHS_DAT[month]} ${year}`
+}
 import GoalDetail from './GoalDetail.vue'
 import GoalNew from './GoalNew.vue'
 import Wishes from './Wishes.vue'
@@ -204,36 +209,25 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада �
     // Герой — «накоплено из нужно», как в макете g4: имя уже в шапке, месяц — в карточке ниже (критик Блока 3).
     expect(html).toContain(`${plain(1_500_000)} из ${money(5_000_000)}`)
     expect(html).not.toContain('Автомобиль ·')
-    expect(html.match(/будет вашей в/gi)).toHaveLength(1)
     expect(html).not.toContain('Дисциплина накоплений')
-    // Остаток 3 500 000 взносом 150 000 — 24 взноса, последний через 23 месяца: горизонт цены — до месяца закрытия (B2C-18).
+    // Остаток 3 500 000 взносом 150 000 — 24 взноса, последний через 23 месяца: срок на обложке — «к <месяцу> <год>» (FG-24).
     const done = goalDoneMonth(goalMonths(3_500_000, 150_000), monthKey())!
     expect(monthsBetween(monthKey(), done)).toBe(23)
-    const indexed = indexedNeed(5_000_000, 23)
-    expect(html).toContain('Цель дорожает вместе с рынком')
-    // Предложный падеж: «в мае 2027», а не «к мае 2027».
-    expect(html).toContain(
-      `При инфляции 10,2% в год в ${monthIn(done)} такая же покупка будет стоить около ${money(indexed!)}. Расчёт выше — в сегодняшних деньгах.`,
-    )
-    expect(html).not.toContain(`к ${monthIn(done)}`)
-    expect(html).toContain('Ритм цели')
+    const { year, month } = parseMonthKey(done)
+    expect(html).toMatch(new RegExp(`data-goal-term[^>]*>к ${MONTHS_DAT[month]} ${year}`))
+    // Цель v2 (78:50): «Пополнить» — на обложке у срока; «В месяц | Осталось» — ячейками; «Подробнее», ритм и инфляции нет.
+    expect(html.indexOf('data-goal-deposit')).toBeGreaterThan(0)
+    expect(html.indexOf('data-goal-deposit')).toBeLessThan(html.indexOf('data-goal-cells'))
+    expect(html).toMatch(new RegExp(`data-goal-monthly-value>${money(150_000)}<`))
+    expect(html).toContain(money(3_500_000))
+    for (const text of ['<details', 'Подробнее', 'Чтобы успеть за год', 'Цель дорожает вместе с рынком', 'Ритм цели', 'Пополняем без пропусков']) {
+      expect(html).not.toContain(text)
+    }
     expect(html).toContain('Взносы')
     expect(html).not.toContain('История цели')
-
-    // Расчёты и график — в одном свёрнутом «Подробнее» (правило 12): до него их нет, «Взносы» — после.
-    const start = html.indexOf('<details>')
-    const end = html.indexOf('</details>')
-    expect(start).toBeGreaterThan(0)
-    expect(html.slice(start, end)).toMatch(/<summary[^>]*>Подробнее<\/summary>/)
-    for (const text of ['Чтобы успеть за год, нужно', 'Цель дорожает вместе с рынком', 'Ритм цели', 'Пополняем без пропусков']) {
-      expect(html.slice(start, end)).toContain(text)
-      expect(html.slice(0, start)).not.toContain(text)
-    }
-    expect(html.slice(end)).toContain('Взносы')
-    expect(html.slice(0, start)).toContain('Пополнить')
   })
 
-  it('тёмная тема: «Ритм цели» — тёмный оттенок цели (PV-08); кольца нет — процент в фото-герое (B2C-18)', async () => {
+  it('FG-24: ритм цели снят (вариант составителя) — оттенка ритма нет и в тёмной теме; кольца нет — процент на обложке', async () => {
     const { isDark } = await import('@/lib/theme')
     const { HUES } = await import('@/lib/palette')
     const store = useFinanceStore()
@@ -245,26 +239,22 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада �
     const { renderToString } = await import('vue/server-renderer')
     const { createRouter, createMemoryHistory } = await import('vue-router')
     const GoalDetail = (await import('./GoalDetail.vue')).default
-    const render = async () => {
-      const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
-      await router.push(`/goals/${gId}`)
-      await router.isReady()
-      const app = createSSRApp(GoalDetail)
-      app.use(router)
-      return renderToString(app)
-    }
-
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/goals/:id', component: GoalDetail }] })
+    await router.push(`/goals/${gId}`)
+    await router.isReady()
+    const app = createSSRApp(GoalDetail)
+    app.use(router)
     try {
       isDark.value = true
-      const html = await render()
+      const html = await renderToString(app)
       expect(html).not.toContain('stroke-dasharray')
-      expect(html).toContain(`background:${HUES.blue.dark}`)
-      expect(html).not.toContain(HUES.blue.light)
+      expect(html).not.toContain(HUES.blue.dark)
+      expect(html).toContain('type-percent')
+      // Строка взноса — «+150 000 ₸» одной строкой (Р-12).
+      expect(html).toMatch(new RegExp(`data-goal-movement>\\+${money(150_000)}<`))
     } finally {
       isDark.value = false
     }
-    const light = await render()
-    expect(light).toContain(`background:${HUES.blue.light}`)
   })
 
   it('цель со взносом 0 — срок не наступит, прогноза «дорожает» нет (PV-04)', async () => {
@@ -431,20 +421,20 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(html).not.toContain('после плана')
   })
 
-  // Р-116 (B2C-108): абзац-Callout паузы → строка-ссылка `data-goal-plan` на план долгов; сумма взноса — в карточке
-  // («N ₸ в месяц»), «Осталось K взносов · после плана» — в «Подробнее» (`data-goal-left`).
-  it('GoalDetail на паузе — строка-ссылка на план, взнос в карточке, «после плана» в «Подробнее»; взнос в документе прежний', async () => {
+  // Р-116 (B2C-108): абзац-Callout паузы → строка-ссылка `data-goal-plan` на план долгов; FG-24 — тихая строка без плашки,
+  // взнос — в ячейке «В месяц», «Осталось K взносов · после плана» — подписью в листе «Взнос в месяц».
+  it('GoalDetail на паузе — тихая строка-ссылка на план, взнос в ячейке, «после плана» в листе взноса; взнос в документе прежний', async () => {
     const store = family()
-    const html = await renderScreen(GoalDetail, '/goals/trip')
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ monthlyOpen: true })])
     const plan = html.match(/<a[^>]*data-goal-plan[^>]*>[\s\S]*?<\/a>/)?.[0] ?? ''
     // План «Сначала долги» живёт на «Закрыть быстрее» (Б17), не на «Долгах» (критик Б17).
     expect(plan).toContain('href="/money/debts/faster"')
     expect(plan).toContain('На паузе — взнос идёт в долг')
-    expect(html).toContain(`${money(40_000)} в месяц`)
-    const left = html.match(/<p[^>]*data-goal-left[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? ''
+    expect(plan).not.toContain('bg-warn-soft')
+    expect(html).toMatch(new RegExp(`data-goal-monthly-value>${money(40_000)}<`))
+    const left = html.match(/<p[^>]*data-goal-left-line[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? ''
     expect(left).toContain('после плана')
-    const details = html.slice(html.indexOf('<details'))
-    expect(details).toContain('data-goal-left')
+    expect(html).not.toContain('<details')
     expect(store.householdDoc.goals.find((g) => g.id === 'trip')!.monthly).toBe(40_000)
     expect(store.status).toBe('idle')
   })
@@ -622,7 +612,7 @@ describe('PV-18: покупки — правка, «Уже купили», viewe
     family('member', list())
     const html = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ editWishId: 'pan' })])
     expect(html).toContain('role="dialog"')
-    for (const label of ['Что покупаем', 'Цена, ₸', 'Ссылка на товар']) expect(html).toContain(`>${label}</span>`)
+    for (const label of ['Что покупаем', 'Цена', 'Ссылка на товар']) expect(html).toContain(`>${label}</span>`)
     expect(html).toContain('aria-label="Кто добавил"')
     expect(html).toContain('value="Сковорода"')
     expect(html).toContain(`value="${plain(18_000)}"`)
@@ -703,7 +693,7 @@ describe('PV-19: цель — окно правки, взнос полем, да
     const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true, confirm: true })])
     expect(html).toContain('role="dialog"')
     expect(html).toContain('Изменить цель')
-    for (const label of ['Название', 'Сколько нужно, ₸', 'Уже накоплено, ₸']) expect(html).toContain(`>${label}</span>`)
+    for (const label of ['Название', 'Сколько нужно', 'Уже накоплено']) expect(html).toContain(`>${label}</span>`)
     expect(html).toContain('value="Отпуск"')
     expect(html).toContain(`value="${plain(3_000_000)}"`)
     expect(html).toContain(`value="${plain(65_000)}"`)
@@ -719,7 +709,7 @@ describe('PV-19: цель — окно правки, взнос полем, да
   it('без взносов пояснения нет', async () => {
     family()
     const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true })])
-    expect(html).toContain('>Уже накоплено, ₸</span>')
+    expect(html).toContain('>Уже накоплено</span>')
     expect(html).not.toContain('останутся в истории')
   })
 
@@ -738,17 +728,18 @@ describe('PV-19: цель — окно правки, взнос полем, да
 
   it('п. 5: ползунка нет — поле «Откладывать в месяц» с суммой; по уходу из поля — взнос в сторе, 0 и пусто — без записи', async () => {
     const store = family()
-    const html = await renderScreen(GoalDetail, '/goals/trip')
+    // FG-24: поле взноса и «Снять» — в листе «Взнос в месяц» (из ячейки «В месяц»); на экране их нет. `/ux`: подписи над полем
+    // нет (повторяла заголовок листа) — имя поля для чтения с экрана.
+    const plain0 = await renderScreen(GoalDetail, '/goals/trip')
+    expect(plain0).not.toContain('aria-label="Откладывать в месяц"')
+    expect(plain0).not.toContain('Чтобы успеть за год')
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ monthlyOpen: true })])
     expect(html).not.toContain('type="range"')
-    expect(html).toContain('>Откладывать в месяц, ₸</span>')
+    expect(html).toContain('aria-label="Откладывать в месяц"')
+    expect(html).not.toContain('>Откладывать в месяц</span>')
     expect(html).toContain(`value="${plain(40_000)}"`)
-    expect(html).toContain('Чтобы успеть за год, нужно')
-    // Возврат смоука (g4, правило 12): в карточке — месяц, строка и «Пополнить» / «Поделиться»;
-    // поле взноса и «Снять» — под свёрнутым «Подробнее»; карандаш — в шапке (без оболочки — на месте).
-    const details = html.indexOf('<details')
-    expect(html.indexOf('Пополнить')).toBeLessThan(details)
-    expect(html.indexOf('>Откладывать в месяц, ₸</span>')).toBeGreaterThan(details)
-    expect(html.indexOf('Снять')).toBeGreaterThan(details)
+    expect(html).toContain('data-goal-withdraw')
+    expect(html.indexOf('data-goal-deposit')).toBeLessThan(html.indexOf('data-goal-cells'))
     expect(html).not.toContain('Все мечты')
     expect(html).toContain('aria-label="Меню цели"')
 
@@ -764,20 +755,20 @@ describe('PV-19: цель — окно правки, взнос полем, да
     expect(store.goals.find((g) => g.id === 'car')!.monthly).toBe(73_000)
     expect(after).toContain(money(73_000))
     // Машина без плана: 3 000 000 − 200 000 при 73 000 в месяц — 39 взносов с сентября.
-    expect(after).toContain(`Будет вашей в ${monthIn(addMonths('2026-09', goalMonths(2_800_000, 73_000) - 1))}`)
+    expect(after).toContain(toMonth(addMonths('2026-09', goalMonths(2_800_000, 73_000) - 1)))
   })
 
   it('п. 4: цель на паузе закроется позже месяца без процентных долгов — от конца плана', async () => {
     const store = family('member', { plans: [planOf()] })
-    const html = await renderScreen(GoalDetail, '/goals/trip')
+    const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ monthlyOpen: true })])
     const free = planForecast(planOf(), store.planState(), '2026-09').debtFreeMonth!
     expect(free).toMatch(/^\d{4}-\d{2}$/)
     const done = addMonths(free, goalMonths(3_000_000 - 50_000, 40_000))
     expect(done > free).toBe(true)
-    expect(html).toContain(`Будет вашей в ${monthIn(done)}`)
+    expect(html).toContain(toMonth(done))
     expect(html).toContain('после плана')
     // Прежняя дата — будто взносы идут с сентября — ушла.
-    expect(html).not.toContain(`Будет вашей в ${monthIn(addMonths('2026-09', goalMonths(2_950_000, 40_000) - 1))}`)
+    expect(html).not.toContain(toMonth(addMonths('2026-09', goalMonths(2_950_000, 40_000) - 1)))
     expect(goalDoneMonth(74, '2026-09', { debtFreeMonth: free })).toBe(done)
   })
 
@@ -787,8 +778,8 @@ describe('PV-19: цель — окно правки, взнос полем, да
     store.mutateHouseholdDoc((doc) => doc.credits.push(huge))
     expect(planForecast(planOf(), store.planState(), '2026-09').debtFreeMonth).toBeNull()
     const html = await renderScreen(GoalDetail, '/goals/trip')
-    expect(html).toContain('После плана')
-    expect(html).not.toContain('Будет вашей в ')
+    expect(html).toMatch(/data-goal-term[^>]*>после плана/)
+    expect(html).not.toMatch(/data-goal-term[^>]*>к /)
     expect(goalDoneMonth(74, '2026-09', { debtFreeMonth: null })).toBeNull()
   })
 
@@ -807,7 +798,7 @@ describe('PV-19: цель — окно правки, взнос полем, да
     const html = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ openEditModal: true })])
     expect(html).not.toContain('aria-label="Меню цели"')
     expect(html).not.toContain('role="dialog"')
-    expect(html).not.toContain('Откладывать в месяц, ₸')
+    expect(html).not.toContain('Откладывать в месяц')
     expect(html).not.toContain('<input')
     expect(html).toContain(money(40_000))
   })
@@ -880,7 +871,7 @@ describe('PV-23: окно пополнения и «История цели» (S
       doc.goals.find((g) => g.id === 'trip')!.movements = [mid, old]
     })
     const order = (html: string) =>
-      [11_000, 22_000, 33_000].map((a) => html.indexOf(`+${plain(a)} ₸`)).filter((i) => i >= 0)
+      [11_000, 22_000, 33_000].map((a) => html.indexOf(`+${money(a)}`)).filter((i) => i >= 0)
     let html = await renderScreen(GoalDetail, '/goals/trip')
     const [iOld, iMid] = order(html)
     expect(iMid).toBeLessThan(iOld)
@@ -888,7 +879,7 @@ describe('PV-23: окно пополнения и «История цели» (S
     // Новый взнос дописывается в конец списка — на экране он сверху.
     store.contribute('trip', 33_000, 'a')
     html = await renderScreen(GoalDetail, '/goals/trip')
-    const at = (a: number) => html.indexOf(`+${plain(a)} ₸`)
+    const at = (a: number) => html.indexOf(`+${money(a)}`)
     expect(at(33_000)).toBeLessThan(at(22_000))
     expect(at(22_000)).toBeLessThan(at(11_000))
   })

@@ -102,7 +102,7 @@ describe('PV-18: WishSheet в DOM', () => {
   it('название, цена и «Кто добавил» пишутся сразу; стёртая ссылка — пустой строкой', async () => {
     const { field, button, pan } = await openPan()
     await edit(field('Что покупаем'), 'Сковорода Tefal')
-    await edit(field('Цена, ₸'), '21 000')
+    await edit(field('Цена'), '21 000')
     await edit(field('Ссылка на товар'), '')
     button('Аруна').click()
     await nextTick()
@@ -133,7 +133,7 @@ describe('PV-18: WishSheet в DOM', () => {
 describe('PV-23 (хвост приёмки Б4): «Готово» закрывает через close() кита', () => {
   it('цена набрана, фокус в поле, «Готово» нажата без смены фокуса — цена записана, окно закрыто', async () => {
     const { wishId, field, button, pan } = await openPan()
-    const price = field('Цена, ₸')
+    const price = field('Цена')
     price.focus()
     price.value = '25 000'
     price.dispatchEvent(new Event('input', { bubbles: true }))

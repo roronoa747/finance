@@ -5,7 +5,6 @@ import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { monthKey, monthTitle, monthFrom, addMonths } from '@/lib/dates'
 import { monthlyFromWeekly, payEventAt, payEvents, payRhythmOf, periodMonth, salaryAt, salaryOf, weeklyFromMonthly } from '@/lib/finance'
-import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, Person, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 import CurrencyChips from '@/components/kit/CurrencyChips.vue'
@@ -91,7 +90,6 @@ const currentTenge = computed(() => {
   const first = payRhythmOf(p) === 'week' ? payEvents(p, key.value)[0] : null
   return first ? payEventAt(p, first.period, fx.book) : salaryAt(p, key.value, fx.book)
 })
-const sign = computed(() => CURRENCY_SIGN[current.value.currency])
 
 /** Месяцы версии: 24 назад (задним числом, Р-70) … 12 вперёд. */
 const months = computed(() =>
@@ -195,7 +193,7 @@ function handlePlanSubmit() {
         <Input v-model="personName" @blur="onNameBlur" />
       </Field>
 
-      <Field :label="weekly ? `Оклад сейчас — за неделю, ${sign}` : `Оклад сейчас, ${sign}`">
+      <Field :label="weekly ? 'Оклад сейчас — за неделю' : 'Оклад сейчас'">
         <!-- «только исправить ошибку» — в подсказке у поля (макет Б17), не строкой. -->
         <template #hint><Hint label="Оклад сейчас">Только исправить ошибку: оклад был введён неверно. Если зарплата действительно меняется — не трогайте это поле, а измените оклад с нужного месяца ниже.</Hint></template>
         <NumFieldBlur :initial="plain(current.amount)" :currency="current.currency" data-salary-now @commit="onSalaryCommit" />
@@ -233,7 +231,7 @@ function handlePlanSubmit() {
           <CurrencyChips v-model="newCurrency" />
         </Field>
 
-        <Field :label="weekly ? `Новый оклад за неделю, ${CURRENCY_SIGN[newCurrency]}` : `Новый оклад, ${CURRENCY_SIGN[newCurrency]}`" name="newAmount">
+        <Field :label="weekly ? 'Новый оклад за неделю' : 'Новый оклад'" name="newAmount">
           <NumField v-model="newAmount" :currency="newCurrency" :placeholder="plain(current.currency === newCurrency ? current.amount : 0)" />
         </Field>
         <NbRateLine :amount="planned" :currency="newCurrency" :nb="nb" />

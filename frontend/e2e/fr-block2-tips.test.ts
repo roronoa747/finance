@@ -227,7 +227,7 @@ describe('e2e / бэклог «первый», Блок 2 — подсказки
     // «Месяц»: открыт лист — пузыря нет, закрыт — вернулся; нажатие раздела — ушёл.
     await go(router, '/month')
     expect(shown()).toEqual(['tab-month'])
-    await press(document.querySelector('[data-afford-open]'), '«Хватит?»')
+    await press(document.querySelector('[data-month-feed]'), '«История»')
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
     expect(shown()).toEqual([])
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))

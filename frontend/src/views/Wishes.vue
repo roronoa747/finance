@@ -77,9 +77,10 @@ const activeById = computed(() => new Map(activeWish.value.map((w) => [w.id, w])
 // Перестановка внутри видимой вкладки: прочие желания семьи стоят на своих местах.
 const moveActive = (id: string, index: number) => financeStore.moveWish(id, index, activeIds.value)
 const boughtSum = computed(() => wishTotal(boughtWish.value))
-// «Уже купили» свёрнуто при новом заходе (PN-34, как альбом «Сбылось» на «Мечтах»).
+// «Уже купили» свёрнуто при новом заходе (PN-34).
 const { open: boughtOpen, toggle: toggleBoughtOpen } = useHistoryFlag('boughtOpen')
 
+// Подпись купленной плитки галереи — «кто · куплено когда»; строки списка её не несут (FG-22).
 function nameOf(id: PersonId) {
   return people.value.find((p) => p.id === id)?.name || 'Участник'
 }
@@ -183,11 +184,16 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <Segmented v-if="tabs.length > 1" v-model="tab" :options="tabs" class="min-w-0 flex-1" />
       <button
         type="button"
-        :aria-label="view === 'grid' ? 'Списком' : 'Галереей'"
-        class="grid size-10 shrink-0 place-items-center rounded-pill bg-surface-3 text-ink-2 cursor-pointer hover:text-ink"
+        aria-label="Списком"
+        :aria-pressed="view === 'list'"
+        class="grid size-10 shrink-0 place-items-center rounded-pill cursor-pointer"
+        :class="view === 'list' ? 'bg-brand-soft text-brand' : 'bg-surface-3 text-ink-2 hover:text-ink'"
+        data-view-toggle
         @click="setView(view === 'grid' ? 'list' : 'grid')"
       >
-        <PhListBullets v-if="view === 'grid'" :size="18" />
+        <!-- Значок — текущий вид; список подсвечен брендовым тоном (FG-22, 90:19). Кнопка-переключатель: имя одно
+             («Списком»), включён ли список — `aria-pressed` (критик Блока 4: «Галереей, нажата» читалось наоборот). -->
+        <PhListBullets v-if="view === 'list'" :size="18" />
         <PhSquaresFour v-else :size="18" />
       </button>
     </div>
@@ -207,7 +213,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         @toggle="markBought(w.id, w.name)"
       />
     </div>
-    <Card v-else-if="activeWish.length" flush :class="canEdit && 'pl-2.5'">
+    <Card v-else-if="activeWish.length" flush>
       <SortableList :ids="activeIds" :label="(id) => `Переставить: ${activeById.get(id)?.name ?? ''}`" :disabled="!canEdit" @move="moveActive">
         <template #default="{ id }">
           <WishRow
@@ -215,7 +221,6 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
             :wish="activeById.get(id)!"
             :src="activeById.get(id)!.photoId ? (wishSrc[activeById.get(id)!.photoId!] ?? null) : null"
             :can-edit="canEdit"
-            :meta="`${nameOf(activeById.get(id)!.by)} · ${addedLabel(activeById.get(id)!.addedOn)}`"
             @open="editWishId = id"
             @toggle="markBought(id, activeById.get(id)!.name)"
           />
@@ -266,7 +271,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
           </div>
           <p v-if="!giftsFor.length" class="py-2 type-meta">Пока ни одного сюрприза.</p>
         </div>
-        <Button variant="secondary" class="mt-2 w-full" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
+        <Button variant="outline" size="md" class="mt-2 mx-auto flex w-fit" @click="openGift = true"><PhPlus :size="16" weight="bold" /> Сюрприз</Button>
       </Card>
       <GiftSheet :open="openGift" :for-slot="person.id" :for-name="person.name" @close="openGift = false" />
       <GiftSheet :open="!!editGiftId" :gift-id="editGiftId" :for-slot="person.id" :for-name="person.name" @close="editGiftId = null" />
@@ -318,7 +323,6 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
         :src="w.photoId ? (wishSrc[w.photoId] ?? null) : null"
         :can-edit="canEdit"
         bought
-        :meta="`${nameOf(w.by)} · куплено ${addedLabel(w.boughtOn)}`"
         @open="editWishId = w.id"
         @toggle="financeStore.toggleBought(w.id)"
       />
@@ -338,7 +342,7 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <Field label="Что покупаем" name="wishName">
         <Input v-model="wishName" placeholder="Например, сковорода" />
       </Field>
-      <Field label="Цена, ₸">
+      <Field label="Цена">
         <NumField v-model="wishPrice" placeholder="18 000" />
       </Field>
       <Field v-if="tab === 'all' && people.length > 1" label="Кто добавил" group>

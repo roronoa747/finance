@@ -136,8 +136,8 @@ function onLink(found: LinkFound) {
       <div class="sticky -bottom-9 -mx-5 -mb-9 flex flex-col gap-3 border-t border-line bg-surface px-5 pb-9 pt-3 sm:-bottom-5 sm:-mb-5 sm:pb-5">
         <ThemePhotoRow v-if="variants.length > 1" :photos="variants" :selected="pickedId" @pick="pickedId = $event.id" />
         <Button size="lg" class="w-full" @click="form.submit(confirm)">Выбрать это</Button>
-        <Button v-if="skippable" variant="ghost" size="md" class="w-full" @click="emit('skip')">Пропустить</Button>
-        <Button v-if="removable" variant="ghost" size="md" class="w-full" @click="emit('remove')">Убрать фото</Button>
+        <Button v-if="skippable" variant="outline" size="md" class="mx-auto flex w-fit" @click="emit('skip')">Пропустить</Button>
+        <Button v-if="removable" variant="outline" size="md" class="mx-auto flex w-fit" @click="emit('remove')">Убрать фото</Button>
       </div>
     </div>
     <ThemePhotoViewer v-if="open && viewerOpen" :photos="variants" @pick="onViewerPick" @close="viewerOpen = false" />

@@ -41,7 +41,7 @@ const noLiterals = (html: string) => {
 }
 
 describe('DreamHero', () => {
-  it('экран цели (умолчание): фото, процент (type-percent, 34) без подписи «До мечты» (Р-116), строка, полоса, автор-ссылка, угол — 380; у фонда — «Собрано»', async () => {
+  it('экран цели (умолчание): фото, процент (type-percent, 34) без подписи «До мечты» (Р-116), строка, полоса, автор-ссылка, угол — 400 со скруглением 24 (FG-24); у фонда — «Собрано»', async () => {
     const html = await render(
       DreamHero,
       { line: '1 116 000 из 1 800 000 ₸', percent: 62, src: 'blob:photo', author: 'Matthew Skinner', authorUrl: 'https://unsplash.com/@m' },
@@ -58,7 +58,8 @@ describe('DreamHero', () => {
     expect(html).toContain('Фото: Matthew Skinner')
     expect(html).toContain('aria-valuenow="62"')
     expect(html).toContain('aria-label="Сменить фото"')
-    expect(html).toContain('min-h-[380px]')
+    expect(html).toContain('min-h-[400px]')
+    expect(html).toContain('rounded-card')
     expect(html).not.toContain('min-h-[440px]')
     noLiterals(html)
     expect(await render(DreamHero, { line: 'x', percent: 30, eyebrow: 'Собрано' })).toContain('Собрано')
@@ -83,25 +84,44 @@ describe('DreamHero', () => {
 })
 
 describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
-  it('мечта по центру: фото 236 со скруглением 32, под ним одна строка «название · N %» средним размером (FR-09), без крупной цифры', async () => {
-    const html = await render(DreamCenter, { title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
-    expect(html).toContain('size-[236px]')
-    expect(html).toContain('rounded-[32px]')
-    expect(html).not.toContain('type-percent')
-    expect(html).toContain('text-[20px]')
-    expect(html.replace(/<[^>]*>/g, '')).toContain(`Япония${NBSP}·${NBSP}${pctText(62)}`)
+  it('обложка «Мечт» (FG-21): DreamHero cover — 480, скруглён только низ (28, макет 47:2), процент 34 перед названием 28, полоса; автор на фото', async () => {
+    const html = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p', author: 'Matthew Skinner' })
+    expect(html).toContain('min-h-[480px]')
+    expect(html).not.toContain('rounded-hero')
+    expect(html).toContain('rounded-b-hero')
+    expect(html).toContain('type-percent')
+    expect(html).toContain('text-[28px]')
+    const text = html.replace(/<[^>]*>/g, '')
+    expect(text.indexOf(pctText(62))).toBeLessThan(text.indexOf('Япония'))
     expect(html).toContain('Фото: Matthew Skinner')
-    expect(html).not.toContain('Выбрать мечту')
-    expect(await render(DreamCenter, { title: 'Х', percent: 140 })).toContain(pctText(100))
+    expect(html).toContain('photo-scrim')
+    // `/ux`: верх светлого фото затемнён — «Мечты» и автор читаются; шапка «Мечт» (слот top) — полной полосой 112.
+    const scrim = (s: string) => s.match(/<div[^>]*data-hero-top-scrim[^>]*>/)?.[0] ?? ''
+    expect(scrim(html)).toContain('photo-scrim-top')
+    expect(scrim(html)).toContain('h-14')
+    const top = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p' }, { top: () => h('header', 'Мечты') })
+    expect(scrim(top)).toContain('photo-scrim-top')
+    expect(scrim(top)).toContain('h-28')
+    // Без фото затемнять нечего.
+    expect(await render(DreamHero, { size: 'cover', title: 'Я', percent: 1 }, { top: () => h('header', 'Мечты') })).not.toContain('data-hero-top-scrim')
+    // Превью — со скруглением, как было.
+    expect(await render(DreamHero, { line: 'Х', size: 'preview' })).toContain('rounded-hero')
     noLiterals(html)
   })
 
-  it('empty — «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
-    const html = await render(DreamCenter, { empty: true })
+  it('DreamCenter — только пустой: «На что копим?» и одна брендовая «Выбрать мечту»; у viewer без кнопки', async () => {
+    const html = await render(DreamCenter, {})
     expect(html).toContain('На что копим?')
     expect(html).toContain('Выбрать мечту')
     expect(html).toContain('bg-brand')
-    expect(await render(DreamCenter, { empty: true, canPick: false })).not.toContain('Выбрать мечту')
+    expect(await render(DreamCenter, { canPick: false })).not.toContain('Выбрать мечту')
+  })
+
+  it('ThumbRow `photo` 56 — фото size-14 и строка py-3 (желания, FG-21); по умолчанию 48', async () => {
+    const wish = await render(ThumbRow, { title: 'Кофемашина', photo: 56 })
+    expect(wish).toContain('size-14')
+    expect(wish).toContain('py-3')
+    expect(await render(ThumbRow, { title: 'Цель' })).toContain('size-12')
   })
 
   it('строка: мини-фото 48 со скруглением 14, без фото — плашка оттенка; кнопкой — только `clickable`', async () => {
@@ -290,5 +310,22 @@ describe('OpRow / Tabs / Toggle / EmptyState / Avatar / Tag / Card', () => {
     expect(warn).toContain('bg-warn-soft')
     expect(warn).toContain('Не всё ушло')
     expect(await render(Callout, { tone: 'neutral', icon: 'none' }, { default: () => 'x' })).not.toContain('<svg')
+  })
+})
+
+describe('DreamHero — обложка-карточка цели (FG-24, 78:50)', () => {
+  it('название 26 над процентом, строка «из», полоса, нижняя строка (срок и «Пополнить»)', async () => {
+    const html = await render(
+      DreamHero,
+      { title: 'Поездка в Японию', line: '900 000 из 6 000 000 ₸', percent: 15, src: 'blob:p' },
+      { footer: () => [h('span', 'к сентябрю 2034'), h('button', 'Пополнить')] },
+    )
+    expect(html).toContain('text-[26px]')
+    const text = html.replace(/<[^>]*>/g, ' ')
+    expect(text.indexOf('Поездка в Японию')).toBeLessThan(text.indexOf(pctText(15)))
+    expect(text.indexOf(pctText(15))).toBeLessThan(text.indexOf('900 000 из'))
+    expect(html.indexOf('role="progressbar"')).toBeLessThan(html.indexOf('к сентябрю 2034'))
+    expect(html).toContain('Пополнить')
+    noLiterals(html)
   })
 })

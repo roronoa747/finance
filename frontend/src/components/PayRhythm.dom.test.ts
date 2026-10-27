@@ -142,7 +142,8 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     const finance = await openDialog()
     await press(byText('[data-pay-rhythm] button', 'Раз в неделю'))
     expect(finance.people[0]).toMatchObject({ payRhythm: 'week', weekday: 5, salary: 700_000 })
-    expect(document.body.textContent).toContain('Оклад сейчас — за неделю, ₸')
+    expect(document.body.textContent).toContain('Оклад сейчас — за неделю')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('₸')
     // 700 000 × 12 / 52 = 161 538.
     expect(txt(q('[data-week-hint]'))).toBe('≈ 161 538 ₸ за неделю')
     await press(byText('[data-weekday] button', 'пн'))
@@ -158,7 +159,8 @@ describe('PN-23: «Изменить оклад» — как приходит з�
     const doc = planFamilyDoc()
     doc.people[0] = { ...doc.people[0], payRhythm: 'week', weekday: 5, salaryVersions: [{ from: '2000-01', amount: 700_000 }, { from: '2026-01', amount: 300, currency: 'EUR', rate: 500 }] }
     await openDialog(doc)
-    expect(document.body.textContent).toContain('Оклад сейчас — за неделю, €')
+    expect(document.body.textContent).toContain('Оклад сейчас — за неделю')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('€')
     // Раньше — 612 000 ₸ (четыре пятницы месяца) под полем «за неделю».
     expect(txt(all('p').find((p) => txt(p).includes('по курсу Нацбанка')) ?? null)).toBe('≈ 153 000 ₸ по курсу Нацбанка')
   })

@@ -151,49 +151,43 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(html).not.toMatch(/Обзор|Бюджет<\/span>|Капитал<\/span>/)
   })
 
-  it('лист «+» на Sheet: действия в порядке §2, «Трата» первой, за ней «Загрузить выписку»; закрытый лист не рендерится', async () => {
+  it('лист «+» (FG-23, 47:115): плитки «Доход» (→ /month?income=1) и «Расход», ниже 4 строки без подписей; «Хватит ли?» нет; закрытый лист не рендерится', async () => {
     const closed = await renderScreen(AppShell, '/')
     expect(closed).not.toContain('role="dialog"')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).toContain('role="dialog"')
     expect(html).toContain('bg-scrim')
-    // Бэклог «Ручная трата», Р-1: «Трата» — первой, подпись «сумма и раздел».
-    expect(html.indexOf('>Трата<')).toBeGreaterThan(0)
-    expect(html.indexOf('>Трата<')).toBeLessThan(html.indexOf('Загрузить выписку'))
-    expect(html).toContain('сумма и раздел')
-    // FB-20 (Р-33): «Заметка» — сразу после «Траты», подпись «себе, с датой», ведёт в `/week?note=1`.
-    expect(html.indexOf('>Трата<')).toBeLessThan(html.indexOf('>Заметка<'))
-    expect(html.indexOf('>Заметка<')).toBeLessThan(html.indexOf('Загрузить выписку'))
-    expect(html).toContain('себе, с датой')
-    const order = ['Загрузить выписку', 'Новая мечта', 'Покупка в список желаний', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку']
+    expect(html).toContain('data-add-income')
+    expect(html).toContain('data-add-expense')
+    expect(html).toMatch(/bg-ok-soft[^>]*data-add-income/)
+    expect(html).toMatch(/bg-destructive-soft[^>]*data-add-expense/)
+    expect(html.indexOf('>Доход<')).toBeLessThan(html.indexOf('>Расход<'))
+    // Список — в порядке макета, без подписей-пояснений.
+    const order = ['>Мечта<', '>Желание<', '>Заметка<', '>Прикинуть кредит<']
     const at = order.map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
-    expect([...at].sort((a, b) => a - b)).toEqual(at)
-    expect(html).toContain('Kaspi или Freedom — траты недели по разделам')
-    // PN-26: пункт платежа — без «аренды» (жильё — свой вход в «Капитале»), ведёт в форму подписки.
-    expect(html).toContain('связь, подписки, страховка')
-    expect(html).not.toContain('Обязательство или подписка')
-    expect(html).not.toContain('аренда, связь')
+    expect([...at].sort((x, y) => x - y)).toEqual(at)
+    for (const t of ['Хватит ли?', 'покупка до зарплаты', 'сумма и раздел', 'себе, с датой', 'фото, сумма и срок', 'нагрузка, мечта, переплата']) expect(html).not.toContain(t)
+    // Пункты «Расхода» — на второй странице, не здесь.
+    expect(html).not.toContain('>Выписка<')
   })
 
-  it('PN-17: в «+» после «Долга» — «Прикинуть кредит» (→ /money/debts?try=1) и «Хватит ли?» (→ /month?afford=1)', async () => {
-    const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
-    const at = ['кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?'].map((t) => html.indexOf(t))
+  it('«Расход» (74:178): «‹ Добавить» над заголовком и 4 пункта — трата, выписка, платёж или подписка, долг', async () => {
+    const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true, addPage: 'expense' })])
+    expect(html).toContain('data-add-back')
+    expect(html.indexOf('‹ Добавить')).toBeLessThan(html.lastIndexOf('>Расход<'))
+    const at = ['>Трата<', '>Выписка<', '>Платёж или подписка<', '>Долг<'].map((t) => html.indexOf(t))
     expect(at.every((i) => i >= 0)).toBe(true)
-    expect([...at].sort((a, b) => a - b)).toEqual(at)
-    expect(html).toContain('нагрузка, мечта, переплата')
-    expect(html).toContain('покупка до зарплаты')
+    expect([...at].sort((x, y) => x - y)).toEqual(at)
+    expect(html).not.toContain('data-add-income')
   })
 
-  // Критик Блока 3: у viewer нет ни «+», ни строки желаний — добавить покупку он всё равно не может.
   it('viewer: кнопки «+» нет, лист без действий', async () => {
     setActivePinia(createPinia())
     signIn('viewer', 'b')
     const html = await renderScreen(AppShell, '/', undefined, [screenMixin({ addOpen: true })])
     expect(html).not.toContain('aria-label="Добавить"')
-    expect(html).not.toContain('сумма и раздел')
-    expect(html).not.toContain('себе, с датой')
-    for (const t of ['Покупка в список желаний', 'Загрузить выписку', 'Новая мечта', 'Внеплановый доход', 'Подписка или платёж', 'кредит, рассрочка, человеку', 'Прикинуть кредит', 'Хватит ли?']) {
+    for (const t of ['data-add-income', 'data-add-expense', '>Мечта<', '>Желание<', '>Заметка<', 'Прикинуть кредит', 'Хватит ли?']) {
       expect(html).not.toContain(t)
     }
   })

@@ -15,8 +15,8 @@ vi.mock('@/lib/photos/store', async (orig) => ({
 }))
 
 /**
- * PN-14 (Р-13, ворота done.html): альбом «Сбылось · N» нажатием раскрывается на месте, строка ведёт на экран
- * сбывшейся; при новом заходе на «Мечты» снова свёрнут (критик Блока 4 — SSR-тест раскрывал миксином, клика не было).
+ * PN-14 → FG-21 (пачка 2 «Figma», 47:2): «Сбылось · N ›» у «Целей» открывает лист сбывшихся, строка ведёт на экран
+ * сбывшейся; при новом заходе на «Мечты» лист закрыт (было — альбом-карточка, раскрывавшаяся на месте).
  */
 let app: App | null = null
 
@@ -55,42 +55,40 @@ async function open() {
   return router
 }
 
-const album = () => document.querySelector<HTMLButtonElement>('[data-done-album]')!
+const link = () => document.querySelector<HTMLButtonElement>('[data-done-link]')!
 const rows = () => [...document.querySelectorAll<HTMLElement>('[data-done-row]')]
 
-describe('PN-14: альбом «Сбылось» нажатием', () => {
-  it('свёрнут → нажатие раскрывает строку «Машина» → нажатие на строку — экран сбывшейся', async () => {
+describe('FG-21: «Сбылось · N ›» → лист сбывшихся', () => {
+  it('лист закрыт → ссылка открывает строку «Машина» → нажатие на строку — экран сбывшейся, лист закрыт', async () => {
     const router = await open()
-    expect(album().getAttribute('aria-expanded')).toBe('false')
+    expect(document.querySelector('[data-done-album-card]')).toBeNull()
+    expect(link().textContent).toContain('Сбылось · 1')
     expect(rows()).toHaveLength(0)
 
-    album().click()
+    link().click()
     await nextTick()
-    expect(album().getAttribute('aria-expanded')).toBe('true')
+    expect(document.querySelector('[data-done-sheet]')).not.toBeNull()
     expect(rows().map((r) => r.textContent)).toEqual([expect.stringContaining('Машина')])
+    expect(rows()[0]!.textContent).toContain('сен 2026 · за')
 
     rows()[0]!.click()
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/goals/car'))
-  })
-
-  it('повторное нажатие сворачивает; новый заход — снова свёрнут', async () => {
-    await open()
-    album().click()
-    await nextTick()
-    album().click()
     await nextTick()
     expect(rows()).toHaveLength(0)
+  })
 
-    album().click()
+  it('новый заход на «Мечты» — лист закрыт', async () => {
+    await open()
+    link().click()
     await nextTick()
+    expect(rows()).toHaveLength(1)
     app!.unmount()
     document.body.innerHTML = ''
     await open()
-    expect(album().getAttribute('aria-expanded')).toBe('false')
     expect(rows()).toHaveLength(0)
   })
 
-  it('«назад» со сбывшейся — альбом раскрыт, как оставили; новый заход — свёрнут (`/ux` Б4)', async () => {
+  it('«назад» со сбывшейся — «Мечты» со ссылкой, лист закрыт', async () => {
     // Настоящая история браузера и RouterView: «Мечты» уходят со строки и возвращаются «назад», как в оболочке.
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -115,18 +113,13 @@ describe('PN-14: альбом «Сбылось» нажатием', () => {
     app.mount(root)
     await nextTick()
 
-    album().click()
+    link().click()
     await nextTick()
     rows()[0]!.click()
-    await vi.waitFor(() => expect(document.querySelector('[data-done-album]')).toBeNull())
+    await vi.waitFor(() => expect(document.querySelector('[data-done-link]')).toBeNull())
 
     router.back()
-    await vi.waitFor(() => expect(album().getAttribute('aria-expanded')).toBe('true'))
-    expect(rows()).toHaveLength(1)
-
-    await router.push('/goals/car')
-    await router.push('/')
-    await nextTick()
-    expect(album().getAttribute('aria-expanded')).toBe('false')
+    await vi.waitFor(() => expect(link()).toBeTruthy())
+    expect(rows()).toHaveLength(0)
   })
 })

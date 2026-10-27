@@ -9,7 +9,6 @@ import { useOperationsStore } from '../src/stores/operations'
 import { planFamilyDoc, T0 } from '../src/test/planFamily'
 import { screenMixin } from '../src/test/screenState'
 import type { PersonId, SyncDoc } from '../src/types/finance'
-import AffordSheet from '../src/components/money/AffordSheet.vue'
 import Dreams from '../src/views/Dreams.vue'
 import GoalDetail from '../src/views/GoalDetail.vue'
 import Money from '../src/views/Money.vue'
@@ -133,8 +132,9 @@ describe('e2e / ИИ-польза Блок 2 — мечта и строки', ()
     at('2026-10-12T07:00:00Z')
     const b = await phone(server, st, 'b')
     const v = await phone(server, st, 'b', 'viewer')
-    for (const p of [a, v]) expect(part(await dreams(p), 'data-hero-note')).toBe(SHORT)
-    expect(part(await dreams(b), 'data-hero-note')).toBe(SHORT)
+    // FG-21: на обложке «Мечт» метки нет — срок и причина в карточке цели у всех ролей.
+    for (const p of [a, b, v]) expect(await dreams(p)).not.toContain('data-hero-note')
+    expect(part(await goal(a), 'data-goal-shift')).toContain(SHORT)
     expect(part(await goal(b), 'data-goal-shift')).toBe(PARTNER) // причина — в карточке цели
     expect(part(await goal(v), 'data-goal-shift')).toBe(LABEL)
     expect(await goal(v)).not.toContain('data-return-term')
@@ -154,24 +154,21 @@ describe('e2e / ИИ-польза Блок 2 — мечта и строки', ()
     const pb = on(b).monthPlanOf(K)
     expect(pb.spend.find((s) => s.by === 'b')!.rows.find((r) => r.categoryId === 'sc_food')!.plan).toBe(240_000)
     expect(pb.queue.find((q) => q.goalId === 'car')!.given).toBe(120_000)
-    expect(await dreams(b)).not.toContain('data-hero-note')
-    expect(await dreams(v)).not.toContain('data-hero-note')
+    expect(await goal(b)).not.toContain('data-goal-shift')
+    expect(await goal(v)).not.toContain('data-goal-shift')
 
     // «Отменить» на телефоне Ильяса — надгробие; у Аруны после синка метка и план прежние.
     on(a).undoPlanShift(shift.id)
     await sync(a, b)
-    expect(part(await dreams(b), 'data-hero-note')).toBe(SHORT)
+    expect(part(await goal(b), 'data-goal-shift')).toBe(PARTNER)
     const { state, ctx } = on(b).planInput(K)
     expect(monthPlan(state, ctx).spend.find((s) => s.by === 'b')!.plan).toBe(300_000)
   })
 
-  it('«Хватит?» и «Долги» — строки у всех ролей', async () => {
+  it('«Долги» — строка «первым» у всех ролей (строка «Хватит?» снята с листом — FG-23)', async () => {
     at('2026-10-12T07:00:00Z')
     const phones = [await phone(server, st, 'a'), await phone(server, st, 'b'), await phone(server, st, 'b', 'viewer')]
     for (const p of phones) {
-      // 12 октября: на счетах 2 000 000, ближайшая зарплата — Аруны 20-го; «Кредит» 15-го (58 000) уводит в минус.
-      const afford = await screen(p.pinia, AffordSheet, '/month', { open: true }, [screenMixin({ sum: '1 950 000' })])
-      expect(part(afford, 'data-afford-why')).toBe('тесно 15–19-го — Кредит')
       const debts = await screen(p.pinia, Money, '/money/debts')
       expect(part(debts, 'data-debts-first')).toBe('первым — Кредитка: ставка 40 % — самая высокая')
     }

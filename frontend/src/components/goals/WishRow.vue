@@ -2,42 +2,41 @@
 import { PhCheck, PhLink, PhShoppingBag } from '@phosphor-icons/vue'
 import { money } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { memberColor } from '@/lib/palette'
-import { useFinanceStore } from '@/stores/finance'
 import type { WishItem } from '@/types/finance'
 import { useWideFit } from '@/lib/photos/fit'
-import IconBox from '@/components/kit/IconBox.vue'
 import Tag from '@/components/kit/Tag.vue'
 
 /**
- * Строка желания — второй режим списка (владелец 2026-09-27: галерея и список с переключателем):
- * галочка, картинка, название с автором и датой, ссылка, цена. Ссылка вынесена из нажимаемой
- * области: ссылка внутри кнопки — невалидная разметка. Viewer — строка без действий (Р-12).
+ * Строка желания — второй режим списка (владелец 2026-09-27: галерея и список с переключателем). Пачка 2 «Figma» (90:19,
+ * FG-22): строка 80 — фото 56, галочка «купил» 26, название 16 по центру высоты, цена 15 справа; серой подписи «кто · когда»
+ * нет — «кто добавил» в листе желания. Купленное — зачёркнутое название и «купили», без даты. Нет фото — плашка с сумкой.
+ * Ссылка вынесена из нажимаемой области: ссылка внутри кнопки — невалидная разметка. Viewer — строка без действий (Р-12).
  */
 const props = defineProps<{
   wish: WishItem
   src: string | null
   canEdit: boolean
   bought?: boolean
-  /** «Ильяс · 10 сентября» или «Аруна · куплено 20 сентября». */
-  meta: string
 }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'toggle'): void }>()
-// Точка автора — тот же цвет, что его кружок (Р-61).
-const finance = useFinanceStore()
 // Широкое фото — целиком (B2C-73).
 const { onLoad, fit } = useWideFit(() => props.src)
 </script>
 
 <template>
-  <div class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0">
+  <!-- Порядок — по макету 90:19 (`/ux`): фото у края, галочка — у названия; строка viewer начинается так же. -->
+  <div class="flex items-center gap-3 border-b border-line px-3.5 py-3 last:border-b-0" data-wish-row>
+    <div :class="cn('grid size-14 shrink-0 place-items-center overflow-hidden rounded-[14px] bg-surface-3 text-ink-3', bought && 'opacity-70')" data-photo>
+      <img v-if="wish.photoId && src" :src="src" alt="" :class="['size-full', fit()]" @load="onLoad" />
+      <PhShoppingBag v-else-if="!wish.photoId" :size="20" />
+    </div>
     <button
       v-if="canEdit"
       type="button"
       :aria-label="bought ? 'Вернуть в список' : 'Отметить купленным'"
       :class="
         cn(
-          'grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] cursor-pointer',
+          'ml-1 grid size-[26px] shrink-0 place-items-center rounded-lg border-[1.5px] cursor-pointer',
           bought ? 'border-brand bg-brand text-brand-ink' : 'border-line-strong text-transparent hover:border-brand hover:text-brand',
         )
       "
@@ -45,23 +44,15 @@ const { onLoad, fit } = useWideFit(() => props.src)
     >
       <PhCheck :size="14" weight="bold" />
     </button>
-    <Tag v-else-if="bought" tone="ok">купили</Tag>
-    <IconBox v-else><PhShoppingBag :size="18" /></IconBox>
-    <div v-if="wish.photoId" :class="cn('size-11 shrink-0 overflow-hidden rounded-inner bg-surface-3', bought && 'opacity-70')" data-photo>
-      <img v-if="src" :src="src" alt="" :class="['size-full', fit()]" @load="onLoad" />
-    </div>
     <component
       :is="canEdit ? 'button' : 'div'"
       :type="canEdit ? 'button' : undefined"
       :data-wish="wish.id"
-      :class="cn('min-w-0 flex-1 text-left', canEdit && 'cursor-pointer')"
+      :class="cn('flex min-w-0 flex-1 items-center gap-2 text-left', canEdit && 'cursor-pointer')"
       @click="canEdit && emit('open')"
     >
-      <b :class="cn('block truncate text-[14.5px] font-medium', bought ? 'text-ink-2 line-through' : 'text-ink')">{{ wish.name }}</b>
-      <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-2">
-        <i class="size-[7px] shrink-0 rounded-full" :style="{ background: memberColor(finance.people, wish.by) }" />
-        {{ meta }}
-      </span>
+      <b :class="cn('block truncate text-[16px] font-medium', bought ? 'text-ink-2 line-through' : 'text-ink')">{{ wish.name }}</b>
+      <Tag v-if="bought" tone="ok" class="shrink-0">купили</Tag>
     </component>
     <a
       v-if="wish.url"
@@ -73,6 +64,6 @@ const { onLoad, fit } = useWideFit(() => props.src)
     >
       <PhLink :size="10" /> ссылка
     </a>
-    <span :class="cn('shrink-0 text-[14px] font-semibold num', bought ? 'text-ink-2' : 'text-ink')">{{ money(wish.price) }}</span>
+    <span :class="cn('shrink-0 text-[15px] font-semibold num', bought ? 'text-ink-2' : 'text-ink')">{{ money(wish.price) }}</span>
   </div>
 </template>

@@ -40,7 +40,7 @@ function tryDemo() {
 <template>
   <div class="min-h-dvh text-left text-ink">
     <div class="mx-auto w-full max-w-[1120px] px-5 md:px-10">
-      <nav class="flex items-center justify-between py-4">
+      <nav class="flex items-center justify-between pl-2 pt-[26px] pb-4 md:pl-0 md:py-4">
         <span class="font-display text-[17px] font-semibold tracking-[-0.02em]">Family Finance</span>
         <div class="flex items-center gap-5 text-[14px] text-ink-2">
           <a href="#how" class="hidden md:inline">Как это работает</a>
@@ -58,14 +58,14 @@ function tryDemo() {
           <div class="mt-7 flex flex-col gap-2.5 sm:flex-row">
             <RouterLink
               to="/access"
-              class="press inline-flex h-13 items-center justify-center rounded-pill bg-brand px-7 text-[15.5px] font-semibold text-brand-ink"
+              class="press inline-flex h-11 items-center justify-center rounded-pill bg-brand px-7 text-[15px] font-semibold text-brand-ink shadow-[inset_0_0_0_1px_var(--brand-edge)]"
             >
               Начать с Google
             </RouterLink>
             <button
               v-if="!editsWaitLogin"
               type="button"
-              class="press inline-flex h-13 items-center justify-center rounded-pill bg-surface px-7 text-[15.5px] font-semibold text-ink cursor-pointer"
+              class="press inline-flex h-10 items-center justify-center self-center rounded-pill border border-line-strong bg-surface px-4 text-[14.5px] font-semibold text-ink cursor-pointer"
               @click="tryDemo"
             >
               {{ hasDemoDraft ? 'Вернуться в демо' : 'Попробовать' }}

@@ -147,12 +147,12 @@ const press = async (el: HTMLElement | null | undefined) => {
 const dialog = () => document.querySelector('[data-report]')
 
 describe('AI-09: разбор месяца у остатка', () => {
-  it('без ИИ — пилюля «Разбор» без ✦ (карточки кода, Р-27); с ИИ — «✦ Разбор» рядом с «Хватит?» под кольцом, той же высоты, не брендовая (RZ-08)', async () => {
+  it('без ИИ — пилюля «Разбор» без ✦ (карточки кода, Р-27); с ИИ — «✦ Разбор» рядом с «Историей» под кольцом (FG-23 — вместо «Хватит?»), той же высоты, не брендовая (RZ-08)', async () => {
     await open({ ai: false })
     const plain = q('[data-review-open]')!
     expect(txt(plain)).toBe('Разбор')
     expect(plain.querySelector('[data-review-sparkle]')).toBeNull()
-    expect(document.querySelectorAll('[data-afford-open]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-month-feed]')).toHaveLength(1)
     app!.unmount()
     document.body.innerHTML = ''
 
@@ -161,15 +161,15 @@ describe('AI-09: разбор месяца у остатка', () => {
     expect(btn.getAttribute('aria-label')).toBe('Разобрать месяц')
     expect(txt(btn)).toBe('Разбор')
     expect(btn.querySelector('[data-review-sparkle]')).not.toBeNull()
-    expect(document.querySelectorAll('[data-afford-open]')).toHaveLength(1)
-    const afford = q('[data-afford-open]')!
-    expect(btn.parentElement).toBe(afford.parentElement)
+    expect(document.querySelectorAll('[data-month-feed]')).toHaveLength(1)
+    const feed = q('[data-month-feed]')!
+    expect(btn.parentElement).toBe(feed.parentElement)
     expect(btn.className).toContain('h-8')
-    expect(afford.className).toContain('h-8')
+    expect(feed.className).toContain('h-8')
     expect(btn.className).not.toContain('bg-brand ')
-    // «Хватит?» под кольцом открывает свой лист, как в кольце.
-    await press(afford)
-    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('Хватит?')
+    // «История» под кольцом открывает лист операций месяца.
+    await press(feed)
+    expect([...document.querySelectorAll('[role="dialog"] h3')].map(txt)).toContain('История')
   })
   it('разбор месяца есть — лист без запроса; точка до первого открытия на этом телефоне', async () => {
     const spy = vi.spyOn(apiClient, 'aiReview')
@@ -696,7 +696,7 @@ describe('RZ-07: отчёт разбора v3', () => {
     expect(key('Tab', true).defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(sent)
     // Фокус ушёл из отчёта (за ним — экран) — Tab возвращает на первую кнопку отчёта.
-    q<HTMLElement>('[data-afford-open]')!.focus()
+    q<HTMLElement>('[data-month-feed]')!.focus()
     expect(key('Tab').defaultPrevented).toBe(true)
     expect(document.activeElement).toBe(close)
     // Открыт лист «Сделать» поверх — стрелки отчёт не листают.

@@ -34,7 +34,7 @@ const emit = defineEmits<{ (e: 'budgetBlur'): void }>()
       <Input v-model="to" type="date" aria-label="Последний день" :class="fieldClass" data-trip-to />
     </div>
   </Field>
-  <Field label="Бюджет поездки, ₸">
+  <Field label="Бюджет поездки">
     <template #hint><Hint label="Что такое бюджет поездки">Сколько планируете потратить в поездке; пусто — как сумма мечты</Hint></template>
     <span class="contents" @focusout="emit('budgetBlur')">
       <NumField v-model="budget" placeholder="как сумма мечты" :class="fieldClass" data-trip-budget />

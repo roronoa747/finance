@@ -66,12 +66,14 @@ describe('подписка в долларах', () => {
   it('новая: тенге по умолчанию, $ — строка «≈ 7 068 ₸» (15 × 471,20), версия с валютой и курсом', async () => {
     const store = await mount(NewObligationSheet, { open: true })
     expect(document.querySelector('button[aria-label="KZT"]')!.getAttribute('aria-pressed')).toBe('true')
-    expect(text()).toContain('Сумма в месяц, ₸')
+    expect(text()).toContain('Сумма в месяц')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('₸')
     const [name] = [...document.querySelectorAll('input')] as HTMLInputElement[]
     await type(name, 'Netflix')
     ;(document.querySelector('button[aria-label="USD"]') as HTMLButtonElement).click()
     await flush()
-    expect(text()).toContain('Сумма в месяц, $')
+    expect(text()).not.toContain('Сумма в месяц, $')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('$')
     const amount = [...document.querySelectorAll('input[inputmode]')][0] as HTMLInputElement
     await type(amount, '15')
     expect(text()).toContain('≈ 7 068 ₸ по курсу Нацбанка')
@@ -113,7 +115,8 @@ describe('подписка в долларах', () => {
     app.use(createPiniaFrom())
     app.mount(root)
     await flush()
-    expect(text()).toContain('Сумма сейчас, $')
+    expect(text()).toContain('Сумма сейчас')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('$')
     expect(text()).toContain('≈ 7 068 ₸ по курсу Нацбанка')
     button('Запланировать изменение').click()
     await flush()

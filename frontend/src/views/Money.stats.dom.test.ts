@@ -9,7 +9,7 @@ import { useFinanceStore } from '@/stores/finance'
 import { authAs, planFamilyDoc, planOf, T0 } from '@/test/planFamily'
 import { capitalStats } from '@/lib/finance'
 import { monthBy } from '@/lib/dates'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { plural } from '@/lib/utils'
 import type { SyncDoc } from '@/types/finance'
 import Money from '@/views/Money.vue'
@@ -97,7 +97,8 @@ describe('PN-05: плашка Капитала — формула «счета �
   it('закрыто: формула под числом, подсказки «?» нет, строк статистики нет; плашка — кнопка с aria-expanded', async () => {
     await open()
     expect(num(q('[data-worth]'))).toBe(710_000)
-    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(money(1_540_000))}`)
+    expect(txt(q('[data-worth-assets]'))).toBe(`счета ${norm(money(2_250_000))}`)
+    expect(txt(q('[data-worth-debts]'))).toBe(`долги ${norm(money(1_540_000))}`)
     expect(q('[aria-label="Что такое капитал"]')).toBeNull()
     expect(q('[role="note"]')).toBeNull()
     expect(plaque().getAttribute('role')).toBe('button')
@@ -146,7 +147,9 @@ describe('PN-05: плашка Капитала — формула «счета �
   it('без кредитов: формула «счета N · долгов нет», три доли, строка «Долгов нет» без срока и переплаты', async () => {
     await open('member', familyDoc({ credits: [] }))
     expect(num(q('[data-worth]'))).toBe(2_250_000)
-    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(money(2_250_000))} · долгов нет`)
+    expect(txt(q('[data-worth-assets]'))).toBe(`счета ${norm(money(2_250_000))}`)
+    expect(q('[data-worth-debts]')).toBeNull()
+    expect(txt(q('[data-worth-no-debts]'))).toBe('долгов нет')
     await press(plaque())
     expect(all('[data-stat-row]').map((r) => r.dataset.statRow)).toEqual(['payments', 'goals', 'rest'])
     expect(txt(q('[data-debt-free]'))).toBe('Долгов нет')

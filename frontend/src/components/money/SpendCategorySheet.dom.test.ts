@@ -6,7 +6,7 @@ import { money, plain } from '@/lib/money'
 import type { PersonId } from '@/types/finance'
 import SpendCategorySheet from './SpendCategorySheet.vue'
 
-/** AU-02: лист раздела трат — только показ строки `spendCompare` и `rkShare`; «Изменить» отдаёт участника и его сумму. */
+/** AU-02: лист раздела трат — только показ строки `spendCompare`; «Изменить» отдаёт участника и его сумму. Строки «в Алматы» нет (FG-25). */
 let app: App | null = null
 afterEach(() => {
   app?.unmount()
@@ -23,7 +23,7 @@ const PLANS = [{ by: 'a' as PersonId, name: 'Ильяс', amount: 20_000 }, { by
 const events: [string, string][] = []
 async function mount(
   row: Partial<SpendCompareRow> = {},
-  extra: { rk?: number | null; canEdit?: boolean; image?: HabitImage; month?: string; ops?: SectionMonth | null; plans?: typeof PLANS; none?: string } = {},
+  extra: { canEdit?: boolean; image?: HabitImage; month?: string; ops?: SectionMonth | null; plans?: typeof PLANS; none?: string } = {},
 ) {
   const edits: [PersonId, number][] = []
   events.length = 0
@@ -31,7 +31,7 @@ async function mount(
   document.body.appendChild(root)
   app = createApp({
     render: () => h(SpendCategorySheet, {
-      row: extra.none ? null : { ...ROW, ...row }, rk: extra.rk === undefined ? 45 : extra.rk, plans: extra.plans ?? PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
+      row: extra.none ? null : { ...ROW, ...row }, plans: extra.plans ?? PLANS, canEdit: extra.canEdit ?? true, image: extra.image ?? null, month: extra.month,
       ops: extra.ops ?? null, none: extra.none ?? null,
       onEdit: (by: PersonId, amount: number) => edits.push([by, amount]),
       onOpen: (id: string) => events.push(['open', id]),
@@ -57,11 +57,9 @@ describe('SpendCategorySheet', () => {
     expect(txt(q('[data-cat-plan]'))).toBe(norm(`план ${money(20_000)}`))
     // Х-2: «в мечту «<мечта>»» без склонения имени; справка называет группу (у кафе и транспорта одна доля).
     expect(txt(q('[data-cat-advice]'))).toBe(norm(`до плана: +${money(10_000)} в мечту «Отпуск» · на 3 недели раньше`))
-    expect(txt(q('[data-cat-rk]'))).toContain('услуги: у вас 45 % · в Алматы 24 %')
-    // Hint — сначала открыть.
-    q('[data-cat-rk] button')!.click()
-    await nextTick()
-    expect(txt(q('[role="note"]'))).toBe('Доля услуг в тратах семей Алматы, stat.gov.kz, II кв. 2025')
+    // FG-25 (50:178): строку «у вас N % · в Алматы M %» владелец убрал.
+    expect(q('[data-cat-rk]')).toBeNull()
+    expect(document.body.textContent).not.toContain('в Алматы')
   })
 
   it('Х-10: образ «N % мечты» той же мечты — внутри плашки «до плана», одной плашкой; другая мечта — строкой под ней', async () => {
@@ -119,10 +117,6 @@ describe('SpendCategorySheet', () => {
     expect(txt(q('[data-cat-amount]'))).toBe(norm(money(5_400)))
   })
 
-  it('свой раздел — без справки РК', async () => {
-    await mount({ categoryId: 'my_dog', name: 'Собака', group: null }, { rk: null })
-    expect(q('[data-cat-rk]')).toBeNull()
-  })
 
   it('план по участникам; «Изменить» отдаёт участника и сумму; viewer — без «Изменить»', async () => {
     const edits = await mount()
@@ -234,8 +228,8 @@ describe('TL-06: «Наличные» и «Переводы людям» — т�
     expect(events).toEqual([['open', 'c1']])
   })
 
-  it('обычный раздел — как был: доля, «обычно», план, «до плана» и «Изменить»', async () => {
+  it('обычный раздел — как был: доля, «обычно», план, «до плана» и «Изменить» (без строки «в Алматы» — FG-25)', async () => {
     await mount({}, { ops: OPS })
-    for (const sel of ['[data-cat-share]', '[data-cat-usual]', '[data-cat-plan]', '[data-cat-advice]', '[data-cat-plans-title]', '[data-cat-edit]', '[data-cat-rk]']) expect(q(sel), sel).not.toBeNull()
+    for (const sel of ['[data-cat-share]', '[data-cat-usual]', '[data-cat-plan]', '[data-cat-advice]', '[data-cat-plans-title]', '[data-cat-edit]']) expect(q(sel), sel).not.toBeNull()
   })
 })

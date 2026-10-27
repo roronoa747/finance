@@ -65,7 +65,8 @@ describe('SalaryDialog — оклад в валюте', () => {
     await flush()
     ;(document.querySelector('button[aria-label="EUR"]') as HTMLButtonElement).click()
     await flush()
-    expect(text()).toContain('Новый оклад, €')
+    expect(text()).toContain('Новый оклад')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('€')
 
     const amount = document.querySelector('input[inputmode]:focus, [class*="border-brand"] input[inputmode]') as HTMLInputElement
     amount.value = '1500'
@@ -89,7 +90,8 @@ describe('SalaryDialog — оклад в валюте', () => {
     expect(salaryAt(p, '2026-09', { EUR: { '2026-09-10': 510 } })).toBe(765_000)
     expect(salaryAt(p, '2026-09')).toBe(767_100)
     // Форма показывает оклад в евро и тенге за этот месяц.
-    expect(text()).toContain('Оклад сейчас, €')
+    expect(text()).toContain('Оклад сейчас')
+    expect([...document.querySelectorAll('[data-num-suffix]')].map((s) => s.textContent)).toContain('€')
     expect(text()).toContain('≈ 765 000 ₸ по курсу Нацбанка')
   })
 

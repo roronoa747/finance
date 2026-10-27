@@ -527,7 +527,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(capitalNote(before)).toBe(money(500_000))
       // Блок 16 (Р-109): «Счета и цели» — счета 1 300 000 + цели вне счетов 200 000; минус долг = капитал.
       // Понятность Р-2: это число — в формуле «счета − долги» под суммой.
-      expect(before).toContain('data-worth-formula')
+      expect(before).toContain('data-worth-assets')
       expect(assetsOf(B.store)).toBe(1_500_000)
       expect(goalSavings(B.store.goals)).toBe(200_000)
 
@@ -594,7 +594,7 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(row).not.toContain(plain(512_340))
       expect(row).not.toContain(plain(479_260))
       // 1 000 000 на карте + 640 771 — «счета» в формуле под капиталом (понятность Р-2), тем же расчётом.
-      expect(capital).toContain('data-worth-formula')
+      expect(capital).toContain('data-worth-assets')
       expect(assetsOf(B.store)).toBe(1_640_771)
       const modal = await page(B.pinia, Money, '/money', { state: { selectedAccountId: 'usd' } })
       expect(modal).toContain(`value="${plain(1_337)}"`)
@@ -785,7 +785,9 @@ describe('e2e / Блок 2 паритета — правка денег на д�
       expect(cell(open, 'Осталось платежей')).toBe('12')
       expect(cell(open, 'Переплата, если не трогать')).toBe(money(0))
       expect(open).toContain(`placeholder="${plain(10_000)}"`)
-      expect(open).toContain('Впишите сумму, которую действительно можете внести.')
+      // FG-25: пояснение поля — в «?» у подписи (абзаца под полем нет).
+      expect(open).not.toContain('Впишите сумму, которую действительно можете внести.')
+      expect(open).toContain('aria-label="Какую сумму вписать"')
 
       // B закрывает рассрочку досрочкой целиком.
       at('2026-09-24T09:00:00Z')

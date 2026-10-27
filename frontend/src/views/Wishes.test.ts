@@ -432,20 +432,26 @@ describe('views/Wishes.vue — галерея и список с переклю�
     wish({ id: 'vac', name: 'Пылесос', price: 180_000, by: 'b', bought: true, boughtOn: '2026-09-20T15:00:00.000Z' }),
   ]
 
-  it('по умолчанию галерея: плитки без автора и даты, одна кнопка «Списком» в строке вкладок; в списке — строки с автором и датой, ссылкой и картинкой, кнопка «Галереей»; выбор — на устройстве', async () => {
+  it('по умолчанию галерея: плитки без автора и даты, одна кнопка «Списком» в строке вкладок; в списке (FG-22) — строки без автора и даты, фото 56, ссылка, «купили»; кнопка вида подсвечена; выбор — на устройстве', async () => {
     family('member', 'a', { wishlist: list() })
     const grid = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ boughtOpen: true })])
-    expect(grid).toContain('aria-label="Списком"')
+    expect(grid.match(/aria-label="Списком"/g)).toHaveLength(1)
     expect(grid).not.toContain('aria-label="Галереей"')
     expect(grid).toMatch(/<button type="button"[^>]*data-wish="pan"/)
     expect(grid).not.toContain('Ильяс · 10 сентября')
     expect(grid).toContain('Аруна · куплено 20 сентября')
+    // Кнопка вида в галерее — тихая; в списке — брендовым тоном, aria-pressed.
+    expect(grid).toMatch(/aria-pressed="false"[^>]*bg-surface-3[^>]*data-view-toggle/)
 
     const rows = await renderScreen(Wishes, '/wishes', undefined, [screenMixin({ view: 'list', boughtOpen: true })])
-    expect(rows).toContain('aria-label="Галереей"')
-    expect(rows).not.toContain('aria-label="Списком"')
-    expect(rows).toContain('Ильяс · 10 сентября')
-    expect(rows).toContain('Аруна · куплено 20 сентября')
+    // Переключатель: имя одно, включён ли список — aria-pressed (не «Галереей, нажата»).
+    expect(rows).toContain('aria-label="Списком"')
+    expect(rows).not.toContain('aria-label="Галереей"')
+    expect(rows).toMatch(/aria-pressed="true"[^>]*bg-brand-soft[^>]*data-view-toggle/)
+    expect(rows).not.toContain('Ильяс · 10 сентября')
+    expect(rows).not.toContain('Аруна · куплено 20 сентября')
+    expect(rows).toContain('купили')
+    expect(rows).toContain('size-14')
     expect(rows).toContain('line-through">Пылесос<')
     expect(rows).toContain('aria-label="Открыть ссылку"')
     expect(rows).toContain(`>${money(18_000)}</span>`)
@@ -457,7 +463,7 @@ describe('views/Wishes.vue — галерея и список с переклю�
     // Выбор запоминается: setView пишет ключ, новый рендер читает его.
     await renderScreen(Wishes, '/wishes', undefined, [screenMixin({}, (s) => (s.setView as (v: string) => void)('list'))])
     expect(storage.get('ff_wishes_view')).toBe('"list"')
-    expect(await renderScreen(Wishes, '/wishes')).toContain('aria-label="Галереей"')
+    expect(await renderScreen(Wishes, '/wishes')).toMatch(/aria-pressed="true"[^>]*data-view-toggle/)
 
     // Viewer: и в списке строка — не кнопка.
     setActivePinia(createPinia())

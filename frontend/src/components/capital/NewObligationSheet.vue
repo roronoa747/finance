@@ -5,7 +5,6 @@ import { money, parseMoney, plain } from '@/lib/money'
 import type { RecurringPrefill } from '@/lib/statements/firstRun'
 import { MONTHS_NOM, monthKey, parseMonthKey } from '@/lib/dates'
 import { yearShare } from '@/lib/finance'
-import { CURRENCY_SIGN } from '@/lib/fx'
 import type { Currency, PersonId } from '@/types/finance'
 import { cn } from '@/lib/utils'
 
@@ -136,7 +135,7 @@ function createObligation() {
       <CurrencyChips v-model="obCurrency" />
     </Field>
 
-    <Field :label="`${obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'}, ${CURRENCY_SIGN[obCurrency]}`" name="amount">
+    <Field :label="obEvery === 'year' ? 'Сумма за год' : 'Сумма в месяц'" name="amount">
       <NumField v-model="obAmount" :currency="obCurrency" placeholder="5 000" />
     </Field>
     <NbRateLine :amount="parseMoney(obAmount)" :currency="obCurrency" :nb="nb" />

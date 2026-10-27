@@ -111,7 +111,8 @@ describe('B2C-100: «Капитал» — зарплаты для справки
     expect(q('[data-credits-total]')).toBeNull()
     expect(num(q('[data-goals-total]'))).toBe(goals.total)
     expect(q('button[aria-label="Что такое капитал"]')).toBeNull()
-    expect(txt(q('[data-worth-formula]'))).toBe(`счета ${norm(plain(2_250_000))} − долги ${norm(money(1_540_000))}`)
+    expect(txt(q('[data-worth-assets]'))).toBe(`счета ${norm(money(2_250_000))}`)
+    expect(txt(q('[data-worth-debts]'))).toBe(`долги ${norm(money(1_540_000))}`)
     expect(2_250_000 - 1_540_000).toBe(num(q('[data-worth]')))
     expect(num(q('[data-worth]'))).toBe(710_000)
     // Брендовой кнопки на экране нет (правило 12).
@@ -509,39 +510,31 @@ describe('PN-17: «Прикинуть кредит» с «Долгов» и «Х
     expect(q('[data-try-sum]')).not.toBeNull()
   })
 
-  it('?afford=1 на «Месяце» открывает «Хватит?» — и у viewer; закрыли — адрес без ?afford', async () => {
-    await open('viewer', familyDoc(), '/month?afford=1', Month)
+  it('FG-23: «Хватит?» снят владельцем — `?afford=1` на «Месяце» ничего не открывает, чипа нет ни у кого', async () => {
+    await open('member', familyDoc(), '/month?afford=1', Month)
     await flush()
-    expect(txt(dialog())).toContain('Хватит?')
-    await press(q('[role="dialog"] button[aria-label="Закрыть"]'))
-    await vi.waitFor(() => expect(router.currentRoute.value.query.afford).toBeUndefined())
+    expect(dialog()).toBeNull()
+    expect(q('[data-afford-open]')).toBeNull()
   })
 
-  it('тихая «Хватит?» под «Остаётся» — у member и viewer; viewer открывает лист, считает, документ прежний', async () => {
-    await open('member', familyDoc(), '/month', Month)
+  it('FG-23: «История» у остатка — у участника, тихая, рядом с «Остаётся»; лист — операции месяца; у viewer чипа нет', async () => {
+    const finance = await open('member', familyDoc(), '/month', Month)
     await flush()
-    expect(txt(q('[data-afford-open]'))).toBe('Хватит?')
-    app?.unmount()
-    document.body.innerHTML = ''
-
-    const finance = await open('viewer', familyDoc(), '/month', Month)
-    await flush()
-    const btn = q('[data-afford-open]')!
-    // Владелец, приёмка Б5: кнопка у своего предмета — рядом с остатком (FB-19: справа от кольца, в той же колонке), тихая (не брендовая).
-    // AI-09: в одном ряду с кнопкой разбора месяца.
+    const btn = q('[data-month-feed]')!
+    expect(txt(btn)).toBe('История')
     expect(btn.parentElement!.parentElement).toBe(q('[data-rest]')!.parentElement)
     expect(btn.className).not.toContain('bg-brand')
-    // `/ux` Б5: пилюля `secondary`, как «Обменял» у своей строки — `ghost` читался подписью к сумме.
     expect(btn.className).toContain('bg-surface-3')
     const before = JSON.stringify(finance.householdDoc)
     await press(btn)
-    expect(txt(dialog())).toContain('Хватит?')
-    const input = q<HTMLInputElement>('[data-afford-sum]')!
-    input.value = '150000'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await flush()
-    expect(q('[data-afford-result]')).not.toBeNull()
+    expect(txt(dialog())).toContain('История')
+    expect(q('[role="dialog"] [data-feed-meta]')).not.toBeNull()
     expect(JSON.stringify(finance.householdDoc)).toBe(before)
-    expect(router.currentRoute.value.query.afford).toBeUndefined()
+    app?.unmount()
+    document.body.innerHTML = ''
+
+    await open('viewer', familyDoc(), '/month', Month)
+    await flush()
+    expect(q('[data-month-feed]')).toBeNull()
   })
 })

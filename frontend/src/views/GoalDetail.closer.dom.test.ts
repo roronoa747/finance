@@ -99,7 +99,10 @@ describe('PN-09: тост «ближе на N дней» на экране це�
     await nextTick()
     expect(closer()).toBeNull()
 
-    const withdraw = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Снять'))!
+    // FG-24: «Снять» — в листе «Взнос в месяц» (ячейка «В месяц»).
+    ;(document.querySelector('[data-goal-monthly]') as HTMLElement).click()
+    await nextTick()
+    const withdraw = document.querySelector<HTMLButtonElement>('[data-goal-withdraw]')!
     withdraw.click()
     await nextTick()
     await enter('5 000', 'Снять')

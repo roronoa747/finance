@@ -24,6 +24,7 @@ import {
   habitImages,
   lastAccountFor,
   liveSpendCategories,
+  monthFeed,
   monthPlan,
   monthSalaries,
   monthSubscriptions,
@@ -34,7 +35,6 @@ import {
   planPuts,
   putsLeft,
   queueStatus,
-  rkShare,
   spendCompare,
   spendFact,
   participantLines,
@@ -68,7 +68,6 @@ import MarkSheet from '@/components/MarkSheet.vue'
 import SalaryExchange from '@/components/SalaryExchange.vue'
 import SalaryRow from '@/components/SalaryRow.vue'
 import ExtraIncomeSheet from '@/components/capital/ExtraIncomeSheet.vue'
-import AffordSheet from '@/components/money/AffordSheet.vue'
 import AiReport from '@/components/ai/AiReport.vue'
 import AdviceMark from '@/components/ai/AdviceMark.vue'
 import { useQuerySheet, useQueryValue } from '@/components/useQuerySheet'
@@ -81,6 +80,7 @@ import SectionOpsList from '@/components/money/SectionOpsList.vue'
 import OpSheet from '@/components/OpSheet.vue'
 import AddPaymentSheet from '@/components/AddPaymentSheet.vue'
 import HandSpendSheet from '@/components/week/HandSpendSheet.vue'
+import WeekFeedSheet from '@/components/week/WeekFeedSheet.vue'
 import ImageMoveSheet from '@/components/plan/ImageMoveSheet.vue'
 import { templateById } from '@/lib/goalTemplates'
 import { attachTemplate } from '@/lib/photos/goalPhoto'
@@ -284,10 +284,20 @@ watch(
 )
 
 /*
- * ---------- «Хватит?» из «+» (`?afford=1`, PN-17) и тихой кнопкой под «Остаётся» (владелец, приёмка Б5 — вход для
- * всех ролей): ничего не пишет — гарда viewer нет ----------
+ * ---------- «История» месяца у остатка (пачка 2 «Figma», FG-23, 18:105: вместо «Хватит?», лист «Хватит?» снят владельцем):
+ * свои траты месяца по дням — тот же лист, что «История» недели; считает `monthFeed`. Операции личные (Р-5) — у viewer нет.
+ * Строка выписки — лист операции, ручная — «Трата» (`catHand`, как из листа раздела). ----------
  */
-const { open: affordOpen, close: closeAfford } = useQuerySheet('afford')
+const monthFeedOpen = ref(false)
+const monthFeedOf = computed(() => {
+  if (!monthFeedOpen.value) return { count: 0, total: 0, days: [] }
+  const { marked, categories } = ops.totalMarks(ops.shown)
+  return monthFeed(ops.shown, { month: props.monthKey, marked, categories })
+})
+function openFeedHand(id: string) {
+  monthFeedOpen.value = false
+  catHand.value = id
+}
 
 /*
  * ---------- разбор месяца ИИ (бэклог «ИИ», Р-4, AI-09; v2 — «ИИ-польза», AU-13; v3 — «Разбор», RZ-07): у остатка
@@ -474,7 +484,6 @@ const sheetCompare = computed(() =>
 const catRow = computed(() => sheetCompare.value.rows.find((r) => r.categoryId === catFor.value) ?? null)
 /** Раздел семьи, где у меня нет ни трат, ни плана (`?cat=` из отчёта): лист «нет трат», цифр партнёра нет (FB-12). */
 const catNone = computed(() => (canEdit.value && catFor.value && !catRow.value ? (categories.value.find((c) => c.id === catFor.value)?.name ?? null) : null))
-const catRk = computed(() => (catRow.value?.group ? rkShare(state.value, ctx.value, catRow.value.group, me.value) : null))
 /** Свой план раздела — строка `monthPlan().spend`; плана нет — 0. План партнёра — его раздел (Р-18). */
 const catPlans = computed(() => (catFor.value ? spendPlansBy(plan.value, people.value.filter((p) => p.id === me.value), catFor.value) : []))
 /** Образ привычки раздела (Р-24, AU-29): один, самый крупный; считает `habitImages` по 3 закрытым месяцам. */
@@ -730,11 +739,11 @@ function addFund(kind: 'reserve' | 'cushion') {
             <span v-else-if="plan.short > 0" class="font-num text-[29px] font-bold leading-none num text-warn">{{ money(plan.short) }}</span>
             <span v-else class="font-num text-[29px] font-bold leading-none num text-ink" data-rest>{{ money(plan.rest) }}</span>
             <!--
-              Действие у своего предмета (правило 12): «Хватит?» — у остатка; «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
+              Действие у своего предмета (правило 12): «История» месяца — у остатка (FG-23, вместо «Хватит?»); «✦ Разбор» (Р-3, Р-22, RZ-08) — заметный
               вход в отчёт, точка — разбор новый на этом телефоне.
             -->
             <span class="mt-0.5 flex flex-wrap items-center gap-1.5">
-              <Button variant="secondary" size="sm" data-afford-open @click="affordOpen = true">Хватит?</Button>
+              <Button v-if="canEdit" variant="secondary" size="sm" data-month-feed @click="monthFeedOpen = true">История</Button>
               <Button
                 v-if="reviewShown"
                 variant="secondary"
@@ -1128,7 +1137,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
-    <AffordSheet :open="affordOpen" @close="closeAfford" />
+    <WeekFeedSheet v-if="canEdit" :open="monthFeedOpen" :feed="monthFeedOf" empty-text="За этот месяц трат нет" @close="monthFeedOpen = false" @edit="openFeedHand" />
     <AiReport
       :open="reviewOpen && reviewShown"
       :month-key="monthKey"
@@ -1149,10 +1158,10 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="paySheet.paid">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-paid>{{ givenDue(paySheet) ? '✓ Отдал' : '✓ Оплачено' }}</p>
-            <Button variant="ghost" size="md" class="w-full" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
+            <Button variant="outline" size="md" class="mx-auto flex w-fit" data-unpay @click="unpay(paySheet)">Не оплачено</Button>
           </template>
           <Button v-else class="w-full" data-pay @click="pay(paySheet)">{{ givenDue(paySheet) ? 'Отдал' : 'Оплатил' }}</Button>
-          <Button variant="ghost" size="md" class="w-full" @click="editDue(paySheet)">Изменить платёж</Button>
+          <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="editDue(paySheet)">Изменить платёж</Button>
         </div>
       </template>
     </Sheet>
@@ -1177,13 +1186,13 @@ function addFund(kind: 'reserve' | 'cushion') {
         <div class="flex flex-col gap-1.5">
           <template v-if="putSheet.done">
             <p class="p-1 text-center text-[14px] font-semibold text-ok" data-put>✓ Отложено</p>
-            <Button v-if="putSheet.undo > 0" variant="ghost" size="md" class="w-full" data-unput @click="onUnput(putSheet)">Не отложено</Button>
+            <Button v-if="putSheet.undo > 0" variant="outline" size="md" class="mx-auto flex w-fit" data-unput @click="onUnput(putSheet)">Не отложено</Button>
           </template>
           <template v-else>
             <p v-if="putSheet.put > 0" class="text-center type-meta num">уже отложено {{ money(putSheet.put) }}</p>
             <Button class="w-full" data-put-one @click="onPut(putSheet)">Отложил{{ putSheet.put > 0 ? ` · ${money(putSheet.left)}` : '' }}</Button>
           </template>
-          <Button variant="ghost" size="md" class="w-full" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
+          <Button variant="outline" size="md" class="mx-auto flex w-fit" @click="openDetail(putSheet)">{{ putSheet.kind === 'debt' ? 'Сумма в месяц' : 'Открыть цель' }}</Button>
         </div>
       </template>
     </Sheet>
@@ -1210,7 +1219,6 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Прошлый месяц (план до отложенной зарплаты) — без «Изменить»: план раздела общий на будущее (Х-9, RZ-13). -->
     <SpendCategorySheet
       :row="catRow"
-      :rk="catRk"
       :plans="catPlans"
       :can-edit="canEdit && sheetMonth >= monthNow()"
       :image="catImage"
@@ -1262,7 +1270,7 @@ function addFund(kind: 'reserve' | 'cushion') {
         <Field v-if="spendEdit.fresh && people.length > 1" label="Чей" name="by">
           <Select v-model="spendEdit.by" :options="people.map((p) => ({ value: p.id, label: p.name }))" class="mb-3" data-spend-by />
         </Field>
-        <Field :label="spendEdit.fresh && people.length > 1 ? '₸ в месяц' : `${personName(spendEdit.by)}, ₸ в месяц`">
+        <Field :label="spendEdit.fresh && people.length > 1 ? 'В месяц' : `${personName(spendEdit.by)} — в месяц`">
           <NumField v-model="spendEdit.amount" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="spendForm.submit(saveSpend)">Готово</Button>
@@ -1272,7 +1280,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Сумма карточки «закрыть кредит» -->
     <Sheet :open="debtEdit !== null" :title="debtName || 'Закрыть кредит'" @close="debtEdit = null">
       <template v-if="debtEdit !== null">
-        <Field label="Сверх графика, ₸ в месяц">
+        <Field label="Сверх графика в месяц">
           <NumField v-model="debtEdit" placeholder="50 000" />
         </Field>
         <Button class="w-full" @click="saveDebt">Готово</Button>

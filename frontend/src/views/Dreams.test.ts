@@ -10,7 +10,7 @@ import { OPERATIONS_STORAGE_KEYS, writeStorage } from '@/lib/storage'
 import type { Goal, SyncDoc, WishItem } from '@/types/finance'
 import type { Operation, SpendTotal } from '@/lib/statements/types'
 import { authAs, planFamilyDoc, T0 } from '@/test/planFamily'
-import { renderScreen, screenMixin } from '@/test/screenState'
+import { renderScreen } from '@/test/screenState'
 import Dreams from './Dreams.vue'
 
 // Дозагрузка шаблонных фото — счётчик вызовов вместо сети (Unsplash и сервер фото).
@@ -80,6 +80,8 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     await useOperationsStore().loadUploads()
     return useFinanceStore()
   }
+  /** Текст обложки «Мечт» (FG-21): от обложки до шапки «Целей». */
+  const cover = (html: string) => html.slice(html.indexOf('data-dreams-cover'), html.indexOf('>Цели<')).replace(/<[^>]*>/g, ' ')
   const withMain = (): Partial<SyncDoc> => ({ goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true } : g)) })
 
   it('мечта по центру: процент и название (срок — на экране цели, Р-116); «Цели» — все мечты, кроме главной, с процентом; новая цель — круглый «+» (FR-09)', async () => {
@@ -87,8 +89,11 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     const html = await renderScreen(Dreams, '/')
     // Машина: 200 000 из 3 000 000 → 7 %; месяца «· июль 2030» под мечтой нет — он на экране цели.
     expect(html).toContain(`7${NBSP}%`)
-    // Под фото — одна строка «Машина · 7 %» (FR-09).
-    expect(html.slice(html.indexOf('data-hero-line')).replace(/<[^>]*>/g, '')).toContain(`Машина${NBSP}·${NBSP}7${NBSP}%`)
+    // Обложка (FG-21, 47:2): на фото — «7 %», под ним название; «Мечты» и шапка — поверх фото.
+    expect(html).toContain('data-dreams-cover')
+    expect(cover(html)).toMatch(new RegExp(`7${NBSP}%\\s*Машина`))
+    expect(cover(html)).toContain('Мечты')
+    expect(html).toContain('data-shell-people')
     expect(html).not.toContain(`июль${NBSP}2030`)
     expect(html).toContain('href="/goals/new"')
     expect(html).toContain('aria-label="Новая цель"')
@@ -113,7 +118,6 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     const car = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
       goals: planFamilyDoc().goals.map((g) => (g.id === 'car' ? { ...g, main: true, have: g.have + 100_000, movements: [movement], ...extra } : g)),
     })
-    const heroLine = (html: string) => html.slice(html.indexOf('data-hero-line'), html.indexOf('</span></span>', html.indexOf('data-hero-line')))
     const cases: [string, Partial<SyncDoc>][] = [
       ['взнос месяца', car()],
       ['на паузе', { goals: car({ pausedAt: T0 }).goals!.filter((g) => g.id === 'car') }],
@@ -124,15 +128,15 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
         setActivePinia(createPinia())
         await family(role, role === 'viewer' ? 'b' : 'a', doc)
         const html = await renderScreen(Dreams, '/')
-        const line = heroLine(html).replace(/<[^>]*>/g, '')
-        expect(line, `${what} / ${role}`).toMatch(new RegExp(`Машина${NBSP}·${NBSP}[0-9]+${NBSP}%`))
+        const line = cover(html)
+        expect(line, `${what} / ${role}`).toMatch(new RegExp(`[0-9]+${NBSP}%\\s*Машина`))
         expect(html, what).not.toMatch(/ближе|потрачено|data-hero-closer/)
         expect(line, what).not.toContain('паузе')
       }
     }
   })
 
-  it('PN-14: альбом «Сбылось · N» свёрнут — строк сбывшихся нет; герой и «Цели» — без сбывшейся; нет сбывшихся — строки нет', async () => {
+  it('PN-14 → FG-21: «Сбылось · N ›» — тихой ссылкой у «Целей», карточки-альбома нет; герой и «Цели» — без сбывшейся; нет сбывшихся — ссылки нет', async () => {
     const done = (extra: Partial<Goal> = {}): Partial<SyncDoc> => ({
       goals: planFamilyDoc().goals.map((g) =>
         g.id === 'car'
@@ -143,30 +147,26 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     await family('member', 'a', done())
     const html = await renderScreen(Dreams, '/')
     const text = html
-    expect(html).toContain('data-done-album')
-    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('data-done-link')
+    expect(html).not.toContain('data-done-album-card')
     expect(text).toContain('Сбылось · 1')
+    // Ссылка — слева от «+» в шапке «Целей».
+    expect(html.indexOf('data-done-link')).toBeLessThan(html.indexOf('data-new-goal'))
     expect(html).not.toContain('data-done-row')
     // Главная «Машина» сбылась — героем стала первая активная, «Машины» нет ни в герое, ни в «Целях».
     expect(html).not.toContain('Машина')
     for (const w of WEEKLY) expect(html).not.toContain(w)
 
-    // Раскрыто: строка с фото, именем и «сен 2026 · за 4 мес.» (май → сентябрь).
-    setActivePinia(createPinia())
-    await family('member', 'a', done())
-    const open = (await renderScreen(Dreams, '/', undefined, [screenMixin({ albumOpen: true })]))
-    expect(open).toContain('data-done-row')
-    expect(open).toContain('Машина')
-    expect(open).toContain('сен 2026 · за 4 мес.')
+    // Лист сбывшихся (строки, «сен 2026 · за 4 мес.») — `Dreams.done.dom.test`.
 
-    // Viewer видит альбом.
+    // Viewer видит ссылку.
     setActivePinia(createPinia())
     await family('viewer', 'b', done())
-    expect(await renderScreen(Dreams, '/')).toContain('data-done-album')
+    expect(await renderScreen(Dreams, '/')).toContain('data-done-link')
 
     setActivePinia(createPinia())
     await family('member', 'a', withMain())
-    expect(await renderScreen(Dreams, '/')).not.toContain('data-done-album')
+    expect(await renderScreen(Dreams, '/')).not.toContain('data-done-link')
   })
 
   it('ворота PN-12: герой накоплен целиком — под процентом только имя, без «ближе на N дней»', async () => {
@@ -202,19 +202,21 @@ describe('views/Dreams.vue — «Мечты» строками (B2C-48)', () => 
     expect(html).not.toContain('До зарплаты')
   })
 
-  it('«Желания» — первые три некупленных: фото-плашка, вся строка — кнопка, цена справа, подпись — чьё; «Желания N» = некупленных, «›» → /wishes', async () => {
+  it('«Желания» — первые три некупленных: фото 56, вся строка — кнопка, цена справа, подписи «чьё» нет (FG-21); «Желания N» = некупленных, «›» → /wishes', async () => {
     await family('member', 'a', { ...withMain(), wishlist: WISHES })
     const html = await renderScreen(Dreams, '/')
     expect(html).toContain('Желания<span')
     expect(html).toMatch(/data-wish-count>4</)
     expect(html).toMatch(/href="\/wishes"[^>]*aria-label="Все желания"/)
     expect(html).toContain('Наушники')
-    // Строка — кнопка целиком: название, подпись «чьё», цена справа (Р-116; кнопки «Открыть» нет).
-    const row = (name: string, whose: string, price: number) =>
-      new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*>${name}</span>(?:(?!</button>)[\\s\\S])*>${whose}</span>(?:(?!</button>)[\\s\\S])*>${money(price)}</span>`)
-    expect(html).toMatch(row('Наушники', 'Ильяс', 89_000))
-    expect(html).toMatch(row('Кофемашина', 'общие', 145_000))
-    expect(html).toMatch(row('Кроссовки', 'Аруна', 60_000))
+    // Строка — кнопка целиком: фото 56, название, цена справа (Р-116; кнопки «Открыть» нет); «чьё» — в листе желания (FG-21).
+    const row = (name: string, price: number) =>
+      new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*size-14(?:(?!</button>)[\\s\\S])*>${name}</span>(?:(?!</button>)[\\s\\S])*>${money(price)}</span>`)
+    expect(html).toMatch(row('Наушники', 89_000))
+    expect(html).toMatch(row('Кофемашина', 145_000))
+    expect(html).toMatch(row('Кроссовки', 60_000))
+    const wishes = html.slice(html.indexOf('data-all-wishes'))
+    for (const whose of ['Ильяс', 'Аруна', 'общие']) expect(wishes).not.toContain(`>${whose}</span>`)
     expect(html).not.toContain('Палатка')
     expect(html).not.toContain('Куплено давно')
     expect(html).not.toMatch(/>\s*Открыть\s*</)

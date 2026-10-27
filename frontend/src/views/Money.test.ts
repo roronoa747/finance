@@ -302,7 +302,9 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(raw).toMatch(new RegExp(`data-worth[^>]*>${money(worth)}<`))
       expect(raw).not.toContain('Что такое капитал')
       const assets = amountTotal(liveAccounts(store.accounts)) + capitalGoals(store.goals, store.accounts).total
-      expect(raw).toContain(`data-worth-formula>счета ${plain(assets)} − долги ${money(openDebt(store.credits))}<`)
+      // FG-25 (19:2): две рамки «счета N ₸» и «долги N ₸» вместо формулы.
+      expect(raw).toContain(`data-worth-assets><span class="text-ink-2">счета</span> <span class="text-ink">${money(assets)}</span>`)
+      expect(raw).toContain(`data-worth-debts><span class="text-ink-2">долги</span> <span class="text-ink">${money(openDebt(store.credits))}</span>`)
       // Статистика (Р-3) закрыта: плашка — кнопка с aria-expanded, в SSR закрытого экрана строк долей нет; раскрытая — есть.
       expect(raw).toMatch(/data-capital[^>]*aria-expanded="false"|aria-expanded="false"[^>]*data-capital/)
       for (const attr of ['data-stat-row', 'data-growth', 'data-debt-free', 'data-capital-stats-body']) expect(raw).not.toContain(attr)
@@ -348,8 +350,8 @@ describe('views/Money.vue — финансовые показатели (рас�
       expect(squares(html).match(/aria-current="page"/g)).toHaveLength(1)
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Капитал/)
       // Формула «счета − долги» — не на чипе, а под суммой капитала (одна на экране; подсказки «?» нет — понятность Р-2).
-      expect(squares(html)).not.toContain('data-worth-formula')
-      expect(html.match(/data-worth-formula/g)).toHaveLength(1)
+      expect(squares(html)).not.toContain('data-worth-assets')
+      expect(html.match(/data-worth-assets/g)).toHaveLength(1)
       expect(html).not.toContain('Что такое капитал')
       html = await renderScreen(Money, '/money/debts')
       expect(squares(html)).toMatch(/aria-current="page"[^>]*>\s*Долги/)

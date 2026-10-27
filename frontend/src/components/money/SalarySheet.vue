@@ -158,8 +158,8 @@ watch(
       </div>
       <SalaryRow v-if="mine && line.open && !events.length" button :person-id="line.person" :period="monthKey" />
       <div class="mt-2 flex flex-col gap-1.5">
-        <Button v-if="mine && line.came && !events.length" variant="ghost" size="md" class="w-full" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
-        <Button v-if="canEdit" variant="ghost" size="md" class="w-full" data-salary-edit @click="next('edit')">Изменить оклад</Button>
+        <Button v-if="mine && line.came && !events.length" variant="outline" size="md" class="mx-auto flex w-fit" data-salary-paid @click="next('paid')">Другая сумма или снять</Button>
+        <Button v-if="canEdit" variant="outline" size="md" class="mx-auto flex w-fit" data-salary-edit @click="next('edit')">Изменить оклад</Button>
       </div>
     </template>
   </Sheet>

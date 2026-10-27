@@ -115,10 +115,10 @@ describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приём�
     await mount(pinia, Week, '/week')
     await click(document.querySelector<HTMLElement>('[data-bang]')!)
     expect(page()).toContain('Это ваш доход?')
-    expect(field('Оклад, ₸').value).toBe(plain(120_000))
-    await type(field('Оклад, ₸'), '125000')
+    expect(field('Оклад').value).toBe(plain(120_000))
+    await type(field('Оклад'), '125000')
     await pause()
-    expect(field('Оклад, ₸').value).toBe(plain(125_000))
+    expect(field('Оклад').value).toBe(plain(125_000))
     await click(button('Да, это зарплата'))
     expect(finance.people).toEqual([expect.objectContaining({ id: 'a', salary: 125_000, payday: 24 })])
     await pause()
@@ -135,10 +135,10 @@ describe('e2e / B2C Блок 3 — часть 4 (DOM, возврат приём�
     const name = [...document.querySelectorAll<HTMLInputElement>('[role="dialog"] input')].find((i) => i.value.includes('Kaspi Кредита'))!
     expect(name, 'имя из выписки в поле').toBeTruthy()
     await type(name, 'Автокредит Kaspi')
-    await type(field('Остаток долга, ₸'), '2400000')
+    await type(field('Остаток долга'), '2400000')
     await pause()
     expect(name.value).toBe('Автокредит Kaspi')
-    expect(field('Остаток долга, ₸').value).toBe(plain(2_400_000))
+    expect(field('Остаток долга').value).toBe(plain(2_400_000))
     await click(button('Добавить'))
     // Строка кредита — кредит с остатком (TL-03, Р-3), не обязательство «быт».
     const credit = finance.credits.find((c) => c.name === 'Автокредит Kaspi')!

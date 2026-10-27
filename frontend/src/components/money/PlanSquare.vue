@@ -205,7 +205,7 @@ function choosePlan(opts: { keptGoalIds: string[]; cushionGoalId: string | null;
       <span v-else-if="!plan && !advice.unknownRate.length" class="type-meta">Долгов с процентами нет</span>
       <p v-if="advice.unknownRate.length" class="type-meta">{{ unknownRateText }}</p>
       <!-- Шаг месяца записывает «Отложил» у строки долга в «Месяце» (Р-110): кнопки шага здесь нет -->
-      <Button v-if="!authStore.isViewer && plan && step && step.kind === 'cushion'" variant="secondary" size="md" class="w-full" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
+      <Button v-if="!authStore.isViewer && plan && step && step.kind === 'cushion'" variant="outline" size="md" class="mx-auto flex w-fit" @click="router.push(`/goals/${step.goalId}`)">Пополнить подушку</Button>
     </Card>
     <!-- Одни рассрочки без процентов: сравнивать и ускорять нечего (критик Б17 — как до Б17, без пустого «Подробнее»). -->
     <Card v-else tight data-plan-none>

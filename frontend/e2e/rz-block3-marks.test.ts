@@ -141,7 +141,7 @@ describe('e2e / Разбор Блок 3 — ✦ у предметов', { timeou
       subsCalls: (dues.match(/data-subs-mark/g) ?? []).length,
       queue: markIn(queue, 'data-queue="fund"', /data-queue=/),
       money: markIn(money, '>iCloud<', /data-payment/),
-      goal: markIn(await screen(p.pinia, GoalDetail, '/goals/fund'), 'data-cushion-cover', /<\/h2>/),
+      goal: markIn(await screen(p.pinia, GoalDetail, '/goals/fund'), 'data-goal-term', /data-goal-cells/), // FG-24: ✦ у срока на обложке
       dreams: marks(await screen(p.pinia, Dreams, '/')),
       debts: marks(await screen(p.pinia, Money, '/money/debts')),
     }

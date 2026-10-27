@@ -106,7 +106,7 @@ function apply() {
       <Button class="w-full" @click="close">Готово</Button>
     </template>
     <template v-else-if="credit" #default>
-      <Field label="Сколько внесли, ₸" name="amount">
+      <Field label="Сколько внесли" name="amount">
         <NumField v-model="amountText" data-prepay-amount />
       </Field>
       <Segmented
@@ -120,7 +120,7 @@ function apply() {
       <p v-if="preview" class="mb-3.5 text-[13px] text-ink-2 num" data-prepay-preview>{{ preview }}</p>
       <AccountChoice v-model="account" :accounts="payAccounts" label="Откуда списать" name="account" />
       <Button class="w-full" data-prepay-apply @click="form.submit(apply)">Внёс</Button>
-      <Button variant="ghost" size="md" class="mt-2 w-full" data-prepay-more @click="emit('payoff', credit.id)">Подробнее</Button>
+      <Button variant="outline" size="md" class="mt-2 mx-auto flex w-fit" data-prepay-more @click="emit('payoff', credit.id)">Подробнее</Button>
     </template>
   </Sheet>
 </template>

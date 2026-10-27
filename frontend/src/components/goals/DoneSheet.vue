@@ -30,7 +30,7 @@ const term = computed(() => (goal.value ? doneLabel(doneTerm(goal.value)) : ''))
       <b class="type-h3 text-ink">{{ goal.name }}</b>
       <span class="text-[15px] text-ink-2" data-done-term>{{ term }}</span>
       <Button class="mt-4 w-full" data-done-share @click="emit('share')">Поделиться</Button>
-      <Button variant="ghost" size="md" class="w-full" data-done-ok @click="emit('close')">Готово</Button>
+      <Button variant="outline" size="md" class="mx-auto flex w-fit" data-done-ok @click="emit('close')">Готово</Button>
     </div>
   </Sheet>
 </template>

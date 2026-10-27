@@ -112,7 +112,7 @@ function saveCash() {
 <template>
   <Sheet :open="!!op" :z="z" :title="title" @close="close">
     <template v-if="op">
-      <p class="mb-3 type-meta num" data-op-meta>
+      <p class="mb-3 text-right type-meta num" data-op-meta>
         {{ dayLabel(Number(op.date.slice(8, 10)), op.date.slice(0, 7)) }} · {{ money(Math.abs(op.amount)) }}<template v-if="op.refund"> · вернули {{ money(op.refund.amount) }}</template>
       </p>
       <Input v-model="memo" placeholder="Что это было" maxlength="60" autocapitalize="sentences" class="mb-3 w-full" data-op-memo @blur="saveMemo" />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { OVER_MIN, earlierLabel, monthCovered, monthPlan, participantLines, rkShare, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
-import { RK_GROUP_BY_CATEGORY, RK_SPEND_GROUPS } from './statements/dictionary'
+import { OVER_MIN, earlierLabel, monthCovered, monthPlan, participantLines, spendCompare, spendFact, stepCandidates, usualMonths, usualSpend, type MonthPlanCtx, type UploadPeriod } from './finance'
+import { RK_GROUP_BY_CATEGORY } from './statements/dictionary'
 import type { SpendTotal } from './statements/types'
 import { planFamilyDoc, T0 } from '@/test/planFamily'
 import type { PersonId, SpendPlan, SyncDoc } from '@/types/finance'
@@ -209,33 +209,9 @@ describe('spendCompare — «не разобрано» и переводы в к
   })
 })
 
-describe('справка РК', () => {
-  it('доли — из константы источника; группы — 3', () => {
-    expect([RK_SPEND_GROUPS.food.share, RK_SPEND_GROUPS.goods.share, RK_SPEND_GROUPS.services.share]).toEqual([54, 19, 24])
-    expect(RK_SPEND_GROUPS.food.source).toBe('stat.gov.kz')
+describe('группы разделов РК (строка «в Алматы» снята — FG-25)', () => {
+  it('группы — 3 (поле `group` строки раздела)', () => {
     expect(new Set(Object.values(RK_GROUP_BY_CATEGORY))).toEqual(new Set(['food', 'goods', 'services']))
-  })
-  it('доля группы — сумма её разделов (и разделов платежей с группой целиком) от трат с группой', () => {
-    // Октябрь a: продукты 100 000, кафе 60 000, коммуналка 25 000 → с группой 185 000 («не разобрано» 5 000 — нет).
-    // Продукты 100 / 185 = 54,05 → 54; услуги (кафе + коммуналка) 85 / 185 = 45,9 → 46; покупки 0.
-    expect(rkShare(family(), ctxOf(), 'food')).toBe(54)
-    expect(rkShare(family(), ctxOf(), 'services')).toBe(46)
-    expect(rkShare(family(), ctxOf(), 'goods')).toBe(0)
-  })
-  it('кредит, переводы людям, наличные и удалённый итог долю не размывают (критик)', () => {
-    const totals = [
-      ...TOTALS,
-      total('a', KEY, 'sc_credit', 300_000), total('a', KEY, 'sc_people', 50_000), total('a', KEY, 'sc_cash', 20_000),
-      { ...total('b', KEY, 'sc_food', 400_000), deletedAt: T0 },
-    ]
-    // Те же 100 / 185 → 54: без группы — мимо знаменателя, удалённое — мимо всего.
-    expect(rkShare(family(), ctxOf({ totals }), 'food')).toBe(54)
-  })
-  it('трат с группой нет — null', () => {
-    expect(rkShare(family(), ctxOf({ totals: [total('a', KEY, 'sc_credit', 300_000)] }), 'food')).toBeNull()
-  })
-  it('выписок месяца нет — null', () => {
-    expect(rkShare(family(), ctxOf({ uploads: [] }), 'food')).toBeNull()
   })
 })
 
@@ -295,9 +271,6 @@ describe('spendCompare — разовые (FB-07)', () => {
   it('строка плана раздела — без разовых', () => {
     const rows = monthPlan(family(), ctxOf({ totals: WITH })).spend.find((s) => s.by === 'a')!.rows
     expect(rows.find((x) => x.categoryId === 'sc_food')?.fact).toBe(100_000)
-  })
-  it('доля РК — без разовых', () => {
-    expect(rkShare(family(), ctxOf({ totals: WITH }), 'food')).toBe(rkShare(family(), ctxOf(), 'food'))
   })
   it('план не сдвигается: совет и шаги — те же', () => {
     const steps = stepCandidates(family(), ctxOf())
@@ -374,10 +347,5 @@ describe('spendCompare по участнику (FB-11)', () => {
   it('участник без выписки месяца — факта нет', () => {
     const r = spendCompare(family(), ctxOf(), 'b')
     expect(r.rows.map((x) => [x.categoryId, x.amount, x.plan])).toEqual([['sc_food', null, 60_000], ['sc_transport', null, 25_000]])
-  })
-  it('rkShare с `by`', () => {
-    expect(rkShare(family(), ctx, 'food', 'a')).toBe(54)
-    expect(rkShare(family(), ctx, 'food', 'b')).toBe(100)
-    expect(rkShare(family(), ctx, 'food')).toBe(62)
   })
 })

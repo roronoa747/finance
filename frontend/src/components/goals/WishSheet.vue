@@ -139,14 +139,14 @@ function remove() {
         @remove="removePhoto"
       />
       <Callout v-if="photoNote || link.note.value" tone="neutral" icon="info" class="mb-3">{{ photoNote ?? link.note.value }}</Callout>
-      <p class="mb-3 type-meta">{{ meta }}</p>
+      <p class="mb-3 text-right type-meta">{{ meta }}</p>
       <!-- Ссылка в магазин — заметной кнопкой, а не строкой -->
       <a
         v-if="wish.url"
         :href="wish.url"
         target="_blank"
         rel="noreferrer noopener"
-        class="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-pill bg-surface-3 text-[15px] font-semibold text-ink"
+        class="mx-auto mb-3 flex h-10 w-fit items-center justify-center gap-2 rounded-pill border border-line-strong bg-surface px-4 text-[14.5px] font-semibold text-ink"
       >
         <PhLink :size="16" /> Открыть ссылку
       </a>
@@ -154,7 +154,7 @@ function remove() {
       <Field label="Что покупаем">
         <Input :default-value="wish.name" @blur="onName" />
       </Field>
-      <Field label="Цена, ₸">
+      <Field label="Цена">
         <NumFieldBlur :initial="plain(wish.price)" @commit="onPrice" />
       </Field>
       <!-- Ссылка подтягивает фото со страницы — нужен сервер: в демо поля нет (B2C-66) -->

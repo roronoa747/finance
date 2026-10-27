@@ -220,6 +220,9 @@ describe('FR-02: вступление — три экрана-образа пе�
     expect(page()).not.toMatch(/\d из \d/)
     expect(button('Пропустить')).toBeTruthy()
     expect(current().querySelector('h1')!.textContent).toBe('Мечта')
+    // FG-20 (46:94): образ вместо текста — заголовок по центру, строки-подписи нет ни на одном экране.
+    expect(current().querySelector('h1')!.className).toContain('text-center')
+    for (const s of document.querySelectorAll('[data-intro-page]')) expect(s.querySelector('p')).toBeNull()
     // Картинка в теме экрана: светлая — `-light.webp`; первая грузится сразу, остальные — лениво.
     const imgs = [...document.querySelectorAll('[data-intro-page] img')]
     expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['/landing/dream-light.webp', '/landing/free-light.webp', '/landing/leaks-light.webp'])

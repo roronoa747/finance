@@ -5,7 +5,7 @@ import { PhCaretRight } from '@phosphor-icons/vue'
 import { useOperationsStore } from '@/stores/operations'
 import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
-import { money, plain } from '@/lib/money'
+import { money } from '@/lib/money'
 import { monthKey } from '@/lib/dates'
 import { amountTotal, capitalGoals, capitalStats, liveAccounts, liveCredits, openGoals, netWorth, openDebt } from '@/lib/finance'
 import Card from '@/components/kit/Card.vue'
@@ -37,10 +37,10 @@ const tipText = computed(() => (auth.isViewer ? 'Сверху — капитал
 
 const square = computed(() => (route.params.square === 'debts' || route.params.square === 'history' ? route.params.square : 'capital'))
 const worth = computed(() => netWorth(liveAccounts(finance.accounts), liveCredits(finance.credits), openGoals(finance.goals))) // Сбылось (PN-13): деньги сбывшейся ушли покупкой — не в капитале
-// Формула под суммой: «Счета» (счета и цели вне счетов, Р-109) и долги — те же функции, что у списков «Капитала».
+// Под суммой — две рамки «счета N ₸» и «долги N ₸» (пачка 2 «Figma», 19:2, FG-25): «Счета» (счета и цели вне счетов, Р-109) и долги —
+// те же функции, что у списков «Капитала»; суммы теперь порознь — у каждой «₸» (Р-12).
 const assets = computed(() => amountTotal(liveAccounts(finance.accounts)) + capitalGoals(finance.goals, finance.accounts).total)
 const debt = computed(() => openDebt(finance.credits))
-const formula = computed(() => (debt.value > 0 ? `счета ${plain(assets.value)} − долги ${money(debt.value)}` : `счета ${money(assets.value)} · долгов нет`))
 
 /** Статистика раскрыта; локально — при заходе на экран всегда закрыто. */
 const statsOpen = ref(false)
@@ -72,7 +72,11 @@ onMounted(() => void ops.loadUploads())
           <span class="font-num text-[34px] font-bold leading-none num" :class="worth < 0 ? 'text-warn' : 'text-ink'" data-worth>{{ money(worth) }}</span>
           <PhCaretRight :size="20" class="shrink-0 text-ink-3 transition-transform" :class="statsOpen && 'rotate-90'" aria-hidden="true" />
         </span>
-        <span class="text-[14px] num text-ink-2" data-worth-formula>{{ formula }}</span>
+        <span class="flex flex-wrap items-center gap-1.5">
+          <span class="inline-flex h-6 items-center gap-1 rounded-lg border border-line-strong px-2 text-[12px] num" data-worth-assets><span class="text-ink-2">счета</span> <span class="text-ink">{{ money(assets) }}</span></span>
+          <span v-if="debt > 0" class="inline-flex h-6 items-center gap-1 rounded-lg border border-line-strong px-2 text-[12px] num" data-worth-debts><span class="text-ink-2">долги</span> <span class="text-ink">{{ money(debt) }}</span></span>
+          <span v-else class="text-[12px] text-ink-2" data-worth-no-debts>долгов нет</span>
+        </span>
         <CapitalStats v-if="statsOpen" :stats="stats" :debt="debt" class="mt-2 border-t border-line pt-3.5" />
       </Card>
       <CapitalLists />

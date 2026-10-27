@@ -37,3 +37,22 @@ describe('kit/DangerZone в DOM', () => {
     expect(button('Удалить навсегда').disabled).toBe(true)
   })
 })
+
+describe('kit/DangerZone — плашка «Удалить …» (FG-19)', () => {
+  it('триггер по центру по тексту, 32 px, рамка `--destructive`; подтверждение открывается как прежде', async () => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    app = createApp({ render: () => h(DangerZone, { label: 'Удалить цель', confirmLabel: 'Удалить', warning: 'Безвозвратно.' }) })
+    app.mount(root)
+
+    const trigger = button('Удалить цель')
+    expect(trigger.className).not.toContain('w-full')
+    expect(trigger.className).toContain('mx-auto')
+    expect(trigger.className).toContain('h-8')
+    expect(trigger.className).toContain('border-destructive/45')
+    trigger.click()
+    await nextTick()
+    expect(button('Отмена')).toBeTruthy()
+    expect(button('Удалить')).toBeTruthy()
+  })
+})
