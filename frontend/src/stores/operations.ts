@@ -1006,7 +1006,7 @@ export const useOperationsStore = defineStore('operations', () => {
     const periods = periodsOf(list)
     const spent = spentDue
     spentDue = false
-    if (periods.length && (extra.length || all.value.length)) writeTotals(periods)
+    if (periods.length) writeTotals(periods)
     else if (spent) spentNow()
   }
   /** Запись по копии как есть; пустая копия (ещё не загружена) не пишет — ноль затёр бы запись второго своего телефона. */

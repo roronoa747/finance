@@ -389,6 +389,25 @@ describe('FG-28: итоги разделов второго своего тел�
     expect(useFinanceStore().householdDoc.spendTotals ?? []).toEqual([])
     expect(apiClient.listOperations).not.toHaveBeenCalled()
   })
+
+  it('(5) pull принёс свою строку, исправленную на втором своём телефоне (сумма, раздел), — итоги её периода переписаны (критик)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    await store.saveHand(hand('00aa11bb22cc33dd', 2_500), {}, client)
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 15_000, ops: 2 })
+    // Сумму строки исправили на втором своём телефоне: id тот же — строка не новая, но итог другой.
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 9_000)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 11_500, ops: 2 })
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 11_500 })])
+    // …затем раздел: из «Еды» строка ушла.
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [{ ...wire('11aa11bb22cc33dd', 9_000), category_id: 'sc_cafe' }] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 2_500, ops: 1 })
+  })
 })
 
 /**
@@ -421,7 +440,7 @@ describe('FG-29: окно свежести — от сигнала докуме�
     expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
   })
 
-  it('(3) сигнал во время идущего pull — новый запрос после него, запись одна по последнему ответу; каскад наблюдателей в одном тике — один запрос', async () => {
+  it('(3) сигнал во время идущего pull — новый запрос после него, итог по последнему ответу; каскад наблюдателей в одном тике — один запрос', async () => {
     const finance = signIn()
     const store = useOperationsStore()
     await store.pull(client)
@@ -441,6 +460,10 @@ describe('FG-29: окно свежести — от сигнала докуме�
     await nextTick()
     answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
     await held
+    // Остаточное окно (FG-Х11, критик): идущий pull начат раньше сигнала, но забирает отложенное и пишет по своему ответу;
+    // следующий — уже в очереди — приносит недостающую строку и переписывает. В приложении обе записи уходят одним синком
+    // документа (`scheduleSync` 1,5 с сбрасывается) — на сервер идёт последняя.
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })])
     await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 16_000 })]))
     expect(food()).toMatchObject({ amount: 16_000, ops: 3 })
     expect(apiClient.listOperations).toHaveBeenCalledTimes(2)
