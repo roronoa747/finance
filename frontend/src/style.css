@@ -372,10 +372,6 @@
   /* Верхняя полоса под подписью автора на светлом фото (просмотр фото темы, `/ux` бэклога «первый» Б2). */
   background: linear-gradient(to top, transparent, var(--photo-scrim));
 }
-/* Тень букв белого текста на светлом фото без полосы-затемнения (шапка обложки «Мечт», владелец 2026-10-27). */
-@utility photo-text-shadow {
-  text-shadow: 0 1px 6px var(--photo-scrim);
-}
 @utility photo-scrim {
   background: linear-gradient(to bottom, transparent, var(--photo-scrim));
 }
