@@ -342,4 +342,17 @@ describe('e2e / Блок 6 «Маленькая пачка» — вид', () => 
     expect(all('[data-hero-title]').map(txt)).toEqual([LONG])
     expect(document.body.textContent!.split(LONG)).toHaveLength(2)
   })
+
+  it('FG-31: «Мечты» с обложкой — одна шапка на фото ниже выреза (safe-area), шапки оболочки нет; «План» — шапка оболочки с тем же env()', async () => {
+    const pinia = await viewPhone({ goals: [goal('jp', 'Япония', { seed: 300_000, have: 300_000, main: true })] })
+    const router = await mount(pinia, '/')
+    expect(q('[data-shell-header]')).toBeNull()
+    const heads = all('[data-dreams-cover] header')
+    expect(heads).toHaveLength(1)
+    expect(heads[0].parentElement!.className).toContain('env(safe-area-inset-top)')
+    await router.push('/month')
+    await tick()
+    expect(q('[data-shell-header]')!.className).toContain('pt-[max(16px,calc(env(safe-area-inset-top)_+_8px))]')
+    expect(q('nav[aria-label="Разделы"]')!.className).toContain('env(safe-area-inset-bottom)')
+  })
 })

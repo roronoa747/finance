@@ -26,7 +26,7 @@ const emit = defineEmits<{ (e: 'plus'): void }>()
 </script>
 
 <template>
-  <nav class="absolute inset-x-0 bottom-0 z-10 flex items-center gap-1 px-4 pb-2 pt-2.5 select-none" aria-label="Разделы">
+  <nav class="absolute inset-x-0 bottom-0 z-10 flex items-center gap-1 px-4 pb-[max(8px,env(safe-area-inset-bottom))] pt-2.5 select-none" aria-label="Разделы">
     <div class="absolute inset-x-4 top-2.5 h-[58px] rounded-pill border border-card-border bg-surface shadow-lift" aria-hidden="true" />
     <RouterLink
       v-for="t in items"

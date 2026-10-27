@@ -72,6 +72,18 @@ describe('AppShell (B2C-13): шапка, вкладки, лист «+» — SSR'
     expect(back).not.toMatch(/bg-surface[\s"]/)
   })
 
+  it('iPhone (FG-31): шапка ниже выреза, контент и тосты над полосой жеста — env(safe-area-inset-*) через max()/calc()', async () => {
+    const html = await renderScreen(AppShell, '/week')
+    const head = html.match(/<header[^>]*data-shell-header[^>]*>/)![0]
+    expect(head).toContain('pt-[max(16px,calc(env(safe-area-inset-top)_+_8px))]')
+    expect(html.match(/<main[^>]*>/)![0]).toContain('pb-[calc(96px+env(safe-area-inset-bottom))]')
+    expect(html.match(/<div id="shell-toast"[^>]*>/)![0]).toContain('bottom-[calc(84px+env(safe-area-inset-bottom))]')
+    // Без вкладок (вложенный экран) — те же минимумы, что были: 24 и 16.
+    const goal = await renderScreen(AppShell, '/goals/x')
+    expect(goal.match(/<main[^>]*>/)![0]).toContain('pb-[max(24px,env(safe-area-inset-bottom))]')
+    expect(goal.match(/<div id="shell-toast"[^>]*>/)![0]).toContain('bottom-[max(16px,env(safe-area-inset-bottom))]')
+  })
+
   it('главный: без подписи под заголовком (Р-116, тишина), аватары обоих → /settings (Р-1 «понятность»), шестерёнка → /settings, «Советника» нет', async () => {
     const html = await renderScreen(AppShell, '/')
     expect(html).not.toContain('Сентябрь · Ильяс и Дана')

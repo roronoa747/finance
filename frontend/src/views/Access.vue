@@ -90,7 +90,7 @@ const editsWaitLogin = computed(() => financeStore.hasUnsent && !financeStore.is
 
 <template>
   <!-- Раскладка 46:44 (`/ux`): «‹ Назад», имя и «Реально.» — сверху; кнопка Google — посередине свободного места; подвал — внизу. -->
-  <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col px-5 py-8 text-left">
+  <div class="mx-auto flex min-h-dvh w-full max-w-[420px] flex-col px-5 pb-8 pt-[max(32px,calc(env(safe-area-inset-top)_+_8px))] text-left">
     <!-- Один левый край (пачка 2 «Figma», 46:44): «‹ Назад» первым, затем имя и «Реально.» -->
     <RouterLink to="/" class="mb-8 self-start text-[13px] text-brand" data-access-back>‹ Назад</RouterLink>
     <div class="mb-8 flex items-center gap-2.5">

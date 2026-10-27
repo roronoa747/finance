@@ -44,6 +44,8 @@ describe('kit/Tabs в DOM', () => {
     const links = () => [...document.querySelectorAll<HTMLAnchorElement>('nav a')]
     const current = () => links().find((a) => a.getAttribute('aria-current') === 'page')?.textContent?.trim()
     expect(current()).toBe('Мечты')
+    // FG-31: плашка вкладок над полосой жеста iPhone (с нулевым вырезом — прежние 8 px).
+    expect(document.querySelector('nav')!.className).toContain('pb-[max(8px,env(safe-area-inset-bottom))]')
 
     links()[1].click()
     // RouterLink ведёт переход асинхронно (guards → push): ждём очередь микрозадач и рендер.

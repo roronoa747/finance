@@ -101,7 +101,14 @@ describe('DreamCenter / ThumbRow (пивот 3, Р-42)', () => {
     expect(scrim(html)).toContain('h-14')
     const top = await render(DreamHero, { size: 'cover', title: 'Япония', percent: 62, src: 'blob:p' }, { top: () => h('header', 'Мечты') })
     expect(scrim(top)).toContain('photo-scrim-top')
-    expect(scrim(top)).toContain('h-28')
+    // FG-31: под строкой статуса iPhone — полоса и шапка ниже выреза (`env(safe-area-inset-top)`), автор под шапкой.
+    expect(scrim(top)).toContain('h-[calc(112px+env(safe-area-inset-top))]')
+    expect(top).toMatch(/<div class="absolute inset-x-0 top-0 z-10 px-4 pt-\[max\(12px,calc\(env\(safe-area-inset-top\)_\+_8px\)\)\]">/)
+    const authored = await render(DreamHero, { size: 'cover', title: 'Я', percent: 1, src: 'blob:p', author: 'A' }, { top: () => h('header', 'Мечты') })
+    expect(authored).toContain('top-[calc(62px+env(safe-area-inset-top))]')
+    // Без слота top (экран цели, превью) — отступы прежние.
+    expect(html).toMatch(/top-3[^"]*">Фото: Matthew Skinner/)
+    expect(html).not.toContain('safe-area')
     // Без фото затемнять нечего.
     expect(await render(DreamHero, { size: 'cover', title: 'Я', percent: 1 }, { top: () => h('header', 'Мечты') })).not.toContain('data-hero-top-scrim')
     // Превью — со скруглением, как было.

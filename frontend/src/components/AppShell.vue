@@ -185,7 +185,7 @@ function navigateAndClose(to: string) {
   <div
     class="relative mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
   >
-    <header v-if="!heroHeader" class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4" data-shell-header>
+    <header v-if="!heroHeader" class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-[max(16px,calc(env(safe-area-inset-top)_+_8px))]" data-shell-header>
       <div class="flex min-w-0 items-center gap-2.5">
         <button
           v-if="!isRoot"
@@ -211,7 +211,7 @@ function navigateAndClose(to: string) {
 
     <!-- Капсула вкладок парит над контентом (макет pivot-3 `.tabs`): снизу запас 96 px, чтобы последняя карточка
          докручивалась из-под неё. -->
-    <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-6' : 'pb-24']">
+    <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-[max(24px,env(safe-area-inset-bottom))]' : 'pb-[calc(96px+env(safe-area-inset-bottom))]']">
       <!-- Смена экрана — короткое проявление (Р-45); ключ — имя маршрута: квадраты «Денег» и цели
            между собой экран не пересоздают. Шапка и капсула вкладок вне — не прыгают. -->
       <RouterView v-slot="{ Component, route: r }">
@@ -222,7 +222,7 @@ function navigateAndClose(to: string) {
     </main>
 
     <!-- Тосты экранов (`kit/Toast`) — над капсулой вкладок (макет week-month.html `.toast`). -->
-    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-4' : 'bottom-[84px]'" />
+    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-[max(16px,env(safe-area-inset-bottom))]' : 'bottom-[calc(84px+env(safe-area-inset-bottom))]'" />
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 
