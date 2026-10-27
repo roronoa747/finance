@@ -113,7 +113,7 @@
 | 3. Хвосты 🏁 *(на проде 2026-10-26 `dpl_FS1q5q2Lsfoc5zHEzNJnWuQuKcsw`, «да» владельца)* *(M по Р-4 — FG-17, FG-18 трогают счёт денег; экраны не меняются — `/ux` нет; дописан 2026-10-26 по Р-11; FG-18 дописан после критика — владелец 2026-10-26; принят 2026-10-26, ждёт «да» владельца)* | FG-16 «₸» в скрытых расчётах: `StrategyCompare` «N ₸/мес», `ScheduleTable` (график кредита), строка зарплаты, подсказка оклада (FG-Х3) | `block-3-tails/FG-16-currency-hidden.md` | — | ✅ |
 | | FG-17 Запись сдвига `goal-out` при досрочке из целей (`applyPrepayment`) — счёт семьи и личный; тест + e2e + мутанты (FG-Х4) | `block-3-tails/FG-17-prepay-shift.md` | — (Блок 2 на проде) | ✅ |
 | | FG-18 Досрочка со счёта ↔ строка выписки «−шаг»: пара в `writeAccountSpent` (как FG-15), наблюдатель по досрочкам; итоги разделов не трогать; тест + e2e + мутанты (FG-Х5) | `block-3-tails/FG-18-prepay-statement.md` | FG-17 | ✅ |
-| 4. Пачка 2 · Вид 🔄 *(исполнитель ✅ 2026-10-26, ветка `fg-block-4-pack-2`; дальше — критик)* *(S по Р-4 — вид; экраны меняются — `/ux` после критика; дописан 2026-10-26 по Р-11; эталон — макеты владельца в ленте `46:2`, Figma не правим)* | FG-19 Кит: кнопки 44 + окантовка `--brand-edge`, «Удалить» плашкой, второстепенные компактные 40, сегменты 36, поля 44 с «₸» внутри, подписи без «, ₸», мета листа справа | `block-4-pack-2/FG-19-kit.md` | — | ✅ |
+| 4. Пачка 2 · Вид 🔄 *(исполнитель ✅ 2026-10-26, критик ✅ 2026-10-27, ветка `fg-block-4-pack-2`; дальше — `/ux`)* *(S по Р-4 — вид; экраны меняются — `/ux` после критика; дописан 2026-10-26 по Р-11; эталон — макеты владельца в ленте `46:2`, Figma не правим)* | FG-19 Кит: кнопки 44 + окантовка `--brand-edge`, «Удалить» плашкой, второстепенные компактные 40, сегменты 36, поля 44 с «₸» внутри, подписи без «, ₸», мета листа справа | `block-4-pack-2/FG-19-kit.md` | — | ✅ |
 | | FG-20 Лэндинг, вход (место под Google заранее), «С кем ведём», вступление, «Тратьте как обычно» (`46:3`, `46:44`, `46:61`, `46:94`, `19:156`) | `block-4-pack-2/FG-20-entry.md` | FG-19 | ✅ |
 | | FG-21 «Мечты»: обложка-журнал во всю ширину, шапка на фото, «Сбылось · N ›» листом, желания 56 без подписей, без «+2 недели» (`47:2`) | `block-4-pack-2/FG-21-dreams.md` | FG-19 | ✅ |
 | | FG-22 «Желания» списком: строки 80, фото 56, без подписи, кнопка вида подсвечена (`90:19`) | `block-4-pack-2/FG-22-wishes-list.md` | FG-19 | ✅ |
@@ -324,3 +324,39 @@ Google Play; подсказки по человеку в личном докум
   тронуты — строка «−шаг» остаётся тратой своего раздела. «Снять» при загруженной строке — карта та же (строка снова трата).
   Не покрыто (осознанно, как у сдвигов Блока 2): карта «оба» — досрочку записал один, строка в выписке другого; досрочка до
   сверки, строка после; сумма строки ≠ сумме записи (`plan.paid` меньше запрошенной, перевод частями) — пары нет.
+
+**После Блока 4** (критик, 2026-10-27; ветка `fg-block-4-pack-2`; пути — от `frontend/src/`).
+- Кит: `ui/button.ts` — `default`/`lg` 44 (`h-11`, 15) + окантовка `shadow-[inset_0_0_0_1px_var(--brand-edge)]` только у варианта
+  `default`; `md` 40 (`h-10`), `sm` 32, `xs` 26. Токен `--brand-edge` — `style.css:35` (светлая `rgb(0 0 0/.18)`), `:103` (тёмная
+  `rgb(255 255 255/.12)`), `--color-brand-edge` `:181`; пару ловит `style.tokens.test`. Вторая во всю ширину → `outline md` +
+  `mx-auto flex w-fit` (пары подтверждения, строки-переходы `CapitalLists`, `DevLogin` — как были). `Input`/`NumField` 44;
+  `DangerZone` — плашка `mx-auto h-8 w-auto … border-destructive/45` (все «Удалить …» — через него, 12 вызовов); `Segmented` —
+  капсула `rounded-[14px] p-[3px]`, кнопки `h-[30px] rounded-[12px]` (`SegmentGroup` не тронут).
+- `kit/NumField.vue`: знак внутри — `suffix` `:72` («₸» при `money`, `CURRENCY_SIGN` при `fx`, `int`/`rate` — нет), `data-num-suffix`,
+  у поля `pr-9`; со знаком поле в обёртке `relative`: классы раскладки (`LAYOUT` `:74` — `m*-`, `flex-`, `w-`, `min-w-`, `max-w-`,
+  `shrink`, `grow`, `self-`, `basis-`) — на обёртку, остальные — на `input`; делятся `split(/\s+/)` (критик: было `/s+/` — резало
+  по букве «s», `bg-surface` «Новой мечты» терялся). Подписи полей без «, ₸»/«, €» — валюту несёт поле (`currency` прокинут во все
+  валютные поля); курсы «Курс, ₸ за 1 €» — с ней.
+- `kit/DreamHero.vue`: `size` `goal` (400, `rounded-card`, `title` 26 над процентом, слот `footer` — срок и «Пополнить»), `preview`
+  (180), `cover` (480, `rounded-b-hero`, процент → название 28, слоты `top` и `title`); `tone` — без фото плашка оттенка с текстом
+  на тени. `kit/DreamCenter` — только пустой. `kit/ThumbRow` — `photo` 48 | 56. `goals/WishRow` — без `meta`, фото 56.
+- Шапка на фото: `components/shellHero.ts` — `provideShellHero()` в `AppShell` (`:60`, `<header v-if="!heroHeader" data-shell-header>`),
+  `useShellHero(() => !!main)` в `Dreams` (`:98`; `watchEffect` + сброс в `onBeforeUnmount`). `components/ShellPeople.vue` — бейдж,
+  аватары, «Настройки» одним видом для шапки оболочки и обложки «Мечт» (пропсов нет). Действия вложенных экранов
+  (`HeaderActions`, `Teleport defer`) находят `#shell-actions` и при переходе с «Мечт» (стенд: «Поделиться»/«···» цели в шапке).
+- `lib/finance.ts`: `weekFeed` `:5480` и `monthFeed` `:5491` — обёртки над `feedOf` `:5502` (`inPeriod(op.date)`; месяц —
+  `date.slice(0, 7)`), тип `FeedDays` `:5499`. «Месяц»: `data-month-feed` «История» (только `canEdit`) → `WeekFeedSheet`
+  (`emptyText`; проп `week` снят критиком — лист его не читал), ручная — `catHand`. Удалены: `canAfford`/`AffordWhy`/`affordWhy`/
+  `affordWhyText`, `paceMonths` (критик), `rkShare`, `RK_SPEND_GROUPS` (`RK_GROUP_BY_CATEGORY` остался — `spendCompare`).
+  `indexedNeed`, `contributionStreak`, `INFLATION` в приложении больше не зовутся (ритм и «дорожает» сняты вариантом составителя,
+  Р-9) — оставлены до ответа владельца, их тесты живы.
+- Лист «+» (`AppShell`): `actions` `:161` (Мечта, Желание, Заметка, Прикинуть кредит), `expenses` `:169` (Трата, Выписка, Платёж
+  или подписка, Долг), `addPage` `:177` (`watch(addOpen)` сбрасывает); плитки `data-add-income` (→ `/month?income=1`) /
+  `data-add-expense`; `?afford=1` ничего не открывает. Удалены `AffordSheet`, строка `SalaryRow` (`Row`) — два режима `button` /
+  `button small`, проп `button` формально остался (оба вызова с ним).
+- Цель v2 (`views/GoalDetail.vue`): `termShort` `:175` (`MONTHS_DAT`, даты поездки, «на паузе»/«после плана»/…), «Пополнить» `sm`
+  `data-goal-deposit` в `footer` обложки; ячейки `data-goal-cells` — `data-goal-monthly` (кнопка у участника → лист «Взнос в
+  месяц» `monthlyOpen` `:231`: `NumFieldBlur` → `onMonthly`, `data-goal-left-line`, фонд — «Месяцев трат», «Снять» →
+  `openWithdraw` `:233`) и `data-goal-left`; взносы — `money` со знаком (`data-goal-movement`), пусто — `data-goal-no-movements`.
+  `TripCard` — `data-trip-total` 26 + `data-trip-budget`. «Деньги» — `data-worth-assets` / `data-worth-debts` / `data-worth-no-debts`;
+  `PayoffSheet` — `data-payoff-months`, `data-payoff-saved` + `Hint` «Что меняется», лесенка `details[data-payoff-ladder]`.
