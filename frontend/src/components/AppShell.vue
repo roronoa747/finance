@@ -25,7 +25,6 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { readPlanView } from '@/lib/storage'
-import { liveGoals } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { useScrollMemory } from './useScrollMemory'
 import ShellPeople from '@/components/ShellPeople.vue'
@@ -120,11 +119,8 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/money/debts/faster') return { title: 'Закрыть быстрее' }
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
-  if (p.startsWith('/goals/')) {
-    // Имя цели заголовком (g4 «Экран цели»), без «мечта · имена» (Р-116).
-    const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id) // Сбылось (PN-13): все живые — заголовок и у сбывшейся
-    return { title: goal?.name ?? 'Цель' }
-  }
+  // Цель — шапка без заголовка (FG-30, макеты 78:50, 78:104): имя — на обложке и в листе «···»; и у сбывшейся.
+  if (p.startsWith('/goals/')) return { title: '' }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }
   if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/admin') return { title: 'Цифры' }
@@ -195,13 +191,13 @@ function navigateAndClose(to: string) {
           v-if="!isRoot"
           type="button"
           aria-label="Назад"
-          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-glass text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
           @click="goBack"
         >
           <PhCaretLeft :size="20" />
         </button>
         <div class="min-w-0">
-          <h1 class="type-h1 truncate text-ink">{{ header.title }}</h1>
+          <h1 v-if="header.title" class="type-h1 truncate text-ink">{{ header.title }}</h1>
           <div v-if="header.sub" class="mt-0.5 truncate type-meta">{{ header.sub }}</div>
         </div>
       </div>

@@ -1,5 +1,9 @@
+// @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia, getActivePinia, setActivePinia, type Pinia } from 'pinia'
+import { createMemoryHistory, RouterView, type Router } from 'vue-router'
+import { createAppRouter } from '../src/router'
 import { apiClient, type ApiClient } from '../src/api/client'
 import { useAuthStore } from '../src/stores/auth'
 import { useFinanceStore } from '../src/stores/finance'
@@ -7,7 +11,8 @@ import { useOperationsStore } from '../src/stores/operations'
 import { assignIds, handId, handOperation } from '../src/lib/statements/model'
 import type { Operation, ParsedStatement } from '../src/lib/statements/types'
 import { money } from '../src/lib/money'
-import { planFamilyDoc } from '../src/test/planFamily'
+import { authAs, planFamilyDoc, T0 } from '../src/test/planFamily'
+import type { Goal, SyncDoc } from '../src/types/finance'
 import Week from '../src/views/Week.vue'
 import { at, backend, fakeServer, fakeStatements, screen, statementsFor, type FakeServer, type FakeStatements } from './support/family'
 
@@ -95,6 +100,8 @@ beforeEach(() => {
     clear: () => storage.clear(),
   })
   storage.clear()
+  // happy-dom (сценарии вида) отдаёт относительным адресам хост — запросы мимо подменённых ручек не уходят в сеть.
+  vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('offline'))))
   down.clear()
   handles.clear()
   vi.useFakeTimers()
@@ -270,5 +277,69 @@ describe('e2e / Блок 6 «Маленькая пачка» — FG-29: окно
       expect(weekOnServer(server).sc_food).toBe(20_000)
     }
     await sameEverywhere([a1, a2], b, 1_730_000)
+  })
+})
+
+/* Вид (FG-30…FG-32): экраны в DOM — роутер приложения, оболочка, семья `planFamilyDoc` с целями ниже. */
+let app: App | null = null
+const goal = (id: string, name: string, extra: Partial<Goal> = {}): Goal => ({
+  id, name, need: 1_000_000, seed: 0, have: 0, monthly: 50_000, hue: 'teal', planPct: 0, movements: [], updatedAt: T0, ...extra,
+})
+async function viewPhone(extra: Partial<SyncDoc>, role: 'member' | 'viewer' = 'member') {
+  server = fakeServer(planFamilyDoc(extra))
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  useAuthStore().setAuthData(authAs(role, 'a'))
+  const store = useFinanceStore()
+  store.claimFor('h-family')
+  await store.pullHousehold(backend(server))
+  return pinia
+}
+const tick = async (n = 6) => {
+  for (let i = 0; i < n; i++) await vi.dynamicImportSettled()
+  for (let i = 0; i < n; i++) await nextTick()
+}
+async function mount(pinia: Pinia, path: string): Promise<Router> {
+  app?.unmount()
+  document.body.innerHTML = ''
+  setActivePinia(pinia)
+  const router = createAppRouter(createMemoryHistory())
+  await router.push(path)
+  await router.isReady()
+  const root = document.createElement('div')
+  document.body.appendChild(root)
+  app = createApp({ render: () => h(RouterView) })
+  app.use(pinia)
+  app.use(router)
+  app.mount(root)
+  await tick()
+  return router
+}
+const q = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)
+const all = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)]
+const txt = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim()
+const LONG = 'Поездка в Японию на сакуру и Фудзи'
+
+describe('e2e / Блок 6 «Маленькая пачка» — вид', () => {
+  beforeEach(() => {
+    localStorage.setItem('ff_tips_seen', JSON.stringify(['tab-week', 'tab-month', 'tab-money', 'tab-dreams']))
+  })
+  afterEach(() => {
+    app?.unmount()
+    app = null
+    document.body.innerHTML = ''
+  })
+
+  it('FG-30: цель — шапка оболочки одна, без заголовка; «Поделиться» и «···» в ней; имя — на обложке один раз', async () => {
+    const pinia = await viewPhone({ goals: [goal('jp', LONG, { seed: 200_000, have: 200_000, main: true })] })
+    await mount(pinia, '/goals/jp')
+    const heads = all('[data-shell-header]')
+    expect(heads).toHaveLength(1)
+    expect(heads[0].querySelector('h1')).toBeNull()
+    expect(txt(heads[0])).not.toContain('Поездка')
+    expect(q('[data-shell-header] [aria-label="Назад"]')!.className).toContain('bg-surface-glass')
+    for (const sel of ['[data-goal-share]', '[aria-label="Меню цели"]']) expect(heads[0].querySelector<HTMLElement>(sel)!.className).toContain('bg-surface-glass')
+    expect(all('[data-hero-title]').map(txt)).toEqual([LONG])
+    expect(document.body.textContent!.split(LONG)).toHaveLength(2)
   })
 })
