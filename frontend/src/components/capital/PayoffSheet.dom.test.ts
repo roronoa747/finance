@@ -94,6 +94,22 @@ describe('FG-25: калькулятор досрочки', () => {
     expect(details.textContent).toContain('₸')
   })
 
+  it('«Разово» — пояснение поля про разовую сумму, в «?» итога нет «половины переплаты» (она про добавку в месяц)', async () => {
+    await open()
+    const once = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button[aria-pressed]')].find((b) => b.textContent?.trim() === 'Разово')!
+    once.click()
+    await tick()
+    q<HTMLButtonElement>('[aria-label="Какую сумму вписать"]')!.click()
+    await tick()
+    expect(txt(q('[role="note"]'))).toBe('Сумма, которую действительно можете внести разом — больше приложение не предложит')
+    await type(plain(500_000))
+    q<HTMLButtonElement>('[aria-label="Что меняется"]')!.click()
+    await tick()
+    const notes = [...document.querySelectorAll('[role="note"]')].map(txt).join(' ')
+    expect(notes).toMatch(/Останется \d+ платеж/)
+    expect(notes).not.toContain('Половину переплаты')
+  })
+
   it('добавка, с которой срок почти не меняется, — «Срок почти не изменится» и та же строка переплаты', async () => {
     await open()
     await type('1')

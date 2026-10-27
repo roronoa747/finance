@@ -147,7 +147,7 @@ function prepayUndoNote(p: Payment): string {
 
       <Field :label="payoffMode === 'monthly' ? 'Сколько добавите к платежу' : 'Сколько внесёте разом'">
         <!-- Пояснение — в «?» у подписи, а не абзацем под полем (FG-25, 51:873). -->
-        <template #hint><Hint label="Какую сумму вписать">Сумма, которую действительно можете добавлять каждый месяц — больше приложение не предложит</Hint></template>
+        <template #hint><Hint label="Какую сумму вписать">Сумма, которую действительно можете {{ payoffMode === 'monthly' ? 'добавлять каждый месяц' : 'внести разом' }} — больше приложение не предложит</Hint></template>
         <NumField v-model="payoffAmount" :placeholder="plain(chips[0] ?? 5000)" class="mb-2" />
       </Field>
 
@@ -170,7 +170,7 @@ function prepayUndoNote(p: Payment): string {
           <span v-if="payoffResult.sooner" class="font-num text-[28px] font-bold leading-tight num text-ink" data-payoff-months>−{{ payoffResult.monthsSaved }} мес.</span>
           <span v-else class="text-[15px] text-ink-2" data-payoff-months>Срок почти не изменится</span>
           <Hint label="Что меняется">
-            Останется {{ payoffResult.monthsAfter }} {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }} вместо {{ payoffResult.monthsNow }}.<template v-if="payoffHalf">
+            Останется {{ payoffResult.monthsAfter }} {{ plural(payoffResult.monthsAfter, 'платёж', 'платежа', 'платежей') }} вместо {{ payoffResult.monthsNow }}.<template v-if="payoffHalf && payoffMode === 'monthly'">
             Половину переплаты снимает уже добавка в {{ money(payoffHalf) }} — дальше каждая следующая тысяча даёт меньше предыдущей.</template>
           </Hint>
         </div>
