@@ -73,6 +73,11 @@ describe('Access (B2C-25)', () => {
     expect(box(off)).toContain('h-[52px]')
   })
 
+  it('FG-31: «‹ Назад» ниже строки статуса iPhone — верх max(32px, вырез + 8px), низ 32 как был', async () => {
+    const html = await renderScreen(Access, '/access')
+    expect(html).toMatch(/class="[^"]*\bpb-8 pt-\[max\(32px,calc\(env\(safe-area-inset-top\)_\+_8px\)\)\]/)
+  })
+
   it('вход истёк (401) — строка «Вход истёк, войдите снова»; без него строки нет', async () => {
     expect(await renderScreen(Access, '/access?expired=1')).toContain('Вход истёк, войдите снова')
     expect(await renderScreen(Access, '/access')).not.toContain('Вход истёк')

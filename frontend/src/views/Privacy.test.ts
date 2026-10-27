@@ -75,6 +75,12 @@ describe('B2C-26: /privacy — публичная политика конфид�
     for (const no of ['скриншот', 'screenshot']) expect(html.toLowerCase()).not.toContain(no)
   })
 
+  // FG-31 (критик Блока 6): PWA iPhone рисует контент под строкой статуса — «‹ Family Finance» ниже выреза; без выреза — 32 px.
+  it('FG-31: верх ниже строки статуса iPhone — max(32px, вырез + 8px)', async () => {
+    const html = await renderScreen(Privacy, '/privacy')
+    expect(html.match(/<article[^>]*>/)![0]).toContain('pt-[max(32px,calc(env(safe-area-inset-top)_+_8px))]')
+  })
+
   it('открывается без входа и пользователю без семьи; вошедший тоже видит', async () => {
     const router = createAppRouter(createMemoryHistory())
     await router.push('/privacy')
