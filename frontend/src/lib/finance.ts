@@ -214,15 +214,6 @@ export function realRate(nominal: number, inflation: number): number {
 export const INFLATION = 0.102
 
 /**
- * Во что обойдётся та же цель через `months` месяцев, если она дорожает вместе
- * с рынком. null — взнос 0, срок не наступит, и прогноза нет.
- */
-export function indexedNeed(need: number, months: number, inflation = INFLATION): number | null {
-  if (!Number.isFinite(months)) return null
-  return Math.round(need * Math.pow(1 + inflation, months / 12))
-}
-
-/**
  * Сколько лежит в цели: стартовое накопленное плюс все движения. Меньше нуля не
  * бывает — снятие сверх накопленного пишется в историю целиком, а остаток 0.
  * Одна формула для стора и слияния, иначе телефоны покажут разное.
@@ -2576,28 +2567,8 @@ export function cushionMonths(liquidAccounts: Account[], monthlyMandatory: numbe
   return +(liquidCash(liquidAccounts) / monthlyMandatory).toFixed(1);
 }
 
-/**
- * Подсчёт серии месяцев регулярных взносов в цели.
- */
 /** Месяц взноса — по Алматы (хвост RP, B2C-18): ISO-дата вечером 30-го по Алматы — ещё этот месяц. */
 export const movementMonth = (date: string) => (/^\d{4}-\d{2}-\d{2}T/.test(date) ? monthKey(new Date(date)) : date.slice(0, 7))
-
-export function contributionStreak(movements: { date: string; amount: number }[]): number {
-  const months = new Set(
-    movements.filter((m) => m.amount > 0).map((m) => movementMonth(m.date)),
-  )
-  if (!months.size) return 0
-
-  let streak = 0
-  let cursor = monthKey()
-  if (!months.has(cursor)) cursor = addMonths(cursor, -1)
-
-  while (months.has(cursor)) {
-    streak++
-    cursor = addMonths(cursor, -1)
-  }
-  return streak
-}
 
 /**
  * Темп взносов в цель, ₸ в месяц (PN-09, Р-15): план взноса (`monthly`), а без плана — среднее положительных

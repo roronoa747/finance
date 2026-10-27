@@ -9,7 +9,6 @@ import {
   prepayment,
   debtCost,
   goalMonths,
-  contributionStreak,
   deposit,
   realRate,
 } from '../src/lib/finance'
@@ -129,13 +128,10 @@ describe('e2e / block-5 — Сквозной сценарий Капитала, 
     expect(cost.overpay).toBeGreaterThan(0)
     expect(cost.closes).toBe(true)
 
-    // 5. Проверка целей и непрерывной серии пополнений (MGV-13)
+    // 5. Проверка целей (MGV-13; серия пополнений снята с цели — FG-30)
     const remaining = japanGoal.need - japanGoal.have
     const monthsNeeded = goalMonths(remaining, japanGoal.monthly)
     expect(monthsNeeded).toBe(14)
-
-    const streak = contributionStreak(japanGoal.movements)
-    expect(streak).toBe(3)
 
     // Пополнение цели со счета Kaspi Gold
     const kaspiAcc = financeStore.householdAccounts.find((a) => a.name === 'Kaspi Gold')!

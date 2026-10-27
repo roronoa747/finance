@@ -15,7 +15,6 @@ import {
   goalMonthly,
   keepTermMonthly,
   goalHave,
-  indexedNeed,
   INFLATION,
   emergencyTarget,
   debtCost,
@@ -70,7 +69,6 @@ import {
   pausedGoals,
   allocationFor,
   cancelledSubscriptions,
-  contributionStreak,
   movementMonth,
   monthsBetween,
   planExtra,
@@ -1210,14 +1208,8 @@ describe('PV-04 — накопленное и прогноз цели', () => {
     expect(goalHave(70_000)).toBe(70_000)
   })
 
-  it('indexedNeed: цена цели через N месяцев при инфляции 10,2%; взнос 0 (Infinity) — null; целое', () => {
+  it('INFLATION — одна на приложение, 10,2 % (реальная ставка депозита, `AccountSheet`)', () => {
     expect(INFLATION).toBe(0.102)
-    expect(indexedNeed(1_000_000, 24)).toBe(Math.round(1_000_000 * 1.102 ** 2))
-    expect(indexedNeed(1_000_000, 24)).toBe(1_214_404)
-    expect(indexedNeed(1_000_000, Infinity)).toBeNull()
-    const v = indexedNeed(777_777, 7)!
-    expect(Number.isInteger(v)).toBe(true)
-    expect(indexedNeed(1_000_000, 12, 0.08)).toBe(1_080_000)
   })
 })
 
@@ -2919,18 +2911,13 @@ describe('B2C-14 — главный «Мечты»: главная мечта, �
 })
 
 describe('B2C-18: месяц взноса по Алматы', () => {
-  it('movementMonth и серия — по Алматы: взнос 30 сентября 20:00 UTC — это уже 1 октября', () => {
+  it('movementMonth — по Алматы: взнос 30 сентября 20:00 UTC — это уже 1 октября', () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(new Date('2026-10-01T00:00:00Z')) // 05:00 1 октября по Алматы
       expect(movementMonth('2026-09-30T20:00:00.000Z')).toBe('2026-10')
       expect(movementMonth('2026-09-30T18:00:00.000Z')).toBe('2026-09')
       expect(movementMonth('2026-09-30')).toBe('2026-09')
-      const late = { id: 'm1', date: '2026-09-30T20:00:00.000Z', amount: 10_000, by: 'a' as const }
-      const august = { id: 'm2', date: '2026-08-15T10:00:00.000Z', amount: 10_000, by: 'a' as const }
-      // По UTC это были бы сентябрь и август подряд — серия 2; по Алматы сентября нет — серия 1.
-      expect(contributionStreak([late, august])).toBe(1)
-      expect(contributionStreak([late, { ...august, id: 'm3', date: '2026-09-10T10:00:00.000Z' }, august])).toBe(3)
     } finally {
       vi.useRealTimers()
     }

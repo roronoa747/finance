@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iPhone (FG-31): контент под строкой статуса и полосой жеста — отступы берёт env(safe-area-inset-*) в CSS. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- Строка сверху — цвет фона (--canvas из style.css) до загрузки JS; дальше её ведёт applyTheme (B2C-53). -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f0" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121214" />

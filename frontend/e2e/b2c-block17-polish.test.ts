@@ -167,7 +167,8 @@ describe('e2e / B2C Блок 17 — полировка на двух телеф�
     main.scrollTop = 520
     await router.push('/goals/car')
     await tick()
-    expect(header()).toContain('Машина')
+    // Шапка цели — без заголовка (FG-30): имя на обложке.
+    expect(header()).not.toContain('Машина')
     expect(header()).not.toMatch(/мечта ·|Ильяс|Аруна/)
     expect(main.scrollTop).toBe(0)
     router.back()

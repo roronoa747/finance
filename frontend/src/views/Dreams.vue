@@ -8,7 +8,7 @@ import { useOperationsStore } from '@/stores/operations'
 import { useAiStore } from '@/stores/ai'
 import { money, pct } from '@/lib/money'
 import { monthKey, monthShort } from '@/lib/dates'
-import { doneGoals, doneTerm, dreamShift, goalTerm, planForecast, shiftShort, wishQueue } from '@/lib/finance'
+import { doneGoals, doneTerm, wishQueue } from '@/lib/finance'
 import type { Goal } from '@/types/finance'
 import { hueColor } from '@/lib/palette'
 import { isDark } from '@/lib/theme'
@@ -47,7 +47,6 @@ const ops = useOperationsStore()
 const ai = useAiStore()
 
 const NBSP = ' '
-const key = computed(() => monthKey())
 const canEdit = computed(() => !authStore.isViewer)
 /** Подсказка у главной мечты (бэклог «первый» Р-7; слова — владелец на `/ux`, Р-9: «Нажмите на…, чтобы…»); viewer — без призыва. */
 const tipText = computed(() => (canEdit.value ? 'Нажмите на мечту, чтобы посмотреть подробнее' : 'Главная мечта семьи'))
@@ -61,37 +60,6 @@ const nameOf = (id: string) => `Переставить: ${othersById.value.get(i
 // Место в списке под героем — второе и ниже среди целей.
 const moveOther = (id: string, index: number) => financeStore.moveGoal(id, index + 1)
 
-// Сроки — прогон очереди плана месяца (Р-83): выключил цель — она «на паузе», сроки остальных сдвинулись.
-const plan = computed(() => financeStore.monthPlanOf(key.value))
-// Прогноз плана «Сначала долги» — только для целей на его паузе (срок — после плана).
-const forecast = computed(() => (financeStore.activePlan ? planForecast(financeStore.activePlan, financeStore.planState(), key.value) : undefined))
-/**
- * Срок цели — одна функция для строки и героя (`goalTerm`, ревью frontend Б14 Н-2), та же, что у экрана цели:
- * выключенная — «на паузе», на паузе плана долгов — после плана, иначе — месяц прогона очереди.
- */
-function termOf(g: Goal) {
-  const item = plan.value.queue.find((x) => x.goalId === g.id)
-  return goalTerm(item, g, key.value, item?.paused === 'plan' ? forecast.value : undefined)
-}
-/**
- * Метка «мечта сдвинулась» (AU-06, Р-6): сдвиг срока к снимку начала месяца и причина — `dreamShift`; снимка нет или
- * сдвиг меньше недели — ничего. Тот же расчёт, что у экрана цели. У главной мечты на обложке метки нет (пачка 2 «Figma»,
- * FG-21, поверх FG-12): срок и причина — в карточке цели; у строк целей — как была.
- */
-const snap = computed(() => financeStore.termSnapFor(key.value))
-function shiftOf(g: Goal) {
-  const { state, ctx } = financeStore.planInput(key.value)
-  // Раздел причины — только свой (Х-8, Р-29); viewer — семейная причина, как было.
-  const s = dreamShift(state, ctx, snap.value, g.id, authStore.isViewer ? undefined : authStore.slot ?? undefined)
-  return s ? { text: shiftShort(s), tone: s.days > 0 ? ('warn' as const) : ('ok' as const) } : null
-}
-/**
- * Подпись цели в строке — «на паузе» или метка сдвига с точкой тона, как у героя; срок цели — на её экране (Р-116).
- * Один расчёт на отрисовку (`dreamShift` гоняет план месяца).
- */
-const rowNotes = computed(
-  () => new Map(others.value.map((g) => [g.id, termOf(g).off ? { text: 'на паузе', tone: null } : shiftOf(g)] as const)),
-)
 
 const heroPercent = computed(() => (main.value ? pct(main.value.have, main.value.need) : 0))
 // Обложка с шапкой на фото (FG-21): пока есть главная мечта, шапки оболочки нет.
@@ -225,13 +193,10 @@ onMounted(refresh)
               clickable
               @click="router.push(`/goals/${id}`)"
             >
-              <span v-if="rowNotes.get(id)" class="flex min-w-0 items-center gap-1.5 type-meta" data-row-note>
-                <i v-if="rowNotes.get(id)!.tone" class="size-1.5 shrink-0 rounded-full" :class="rowNotes.get(id)!.tone === 'ok' ? 'bg-ok' : 'bg-warn'" aria-hidden="true" />
-                <span class="truncate">{{ rowNotes.get(id)!.text }}</span>
-              </span>
               <ProgressBar :value="othersById.get(id)!.need ? othersById.get(id)!.have / othersById.get(id)!.need : 0" tone="ink" :height="5" />
               <template #end>
-                <span class="font-num text-[15px] font-bold num text-ink">{{ pct(othersById.get(id)!.have, othersById.get(id)!.need) }}{{ NBSP }}%</span>
+                <!-- Процент — колонкой одной ширины (FG-32): полосы строк ровные при «3 %» и «100 %». -->
+                <span class="inline-block w-[52px] text-right font-num text-[15px] font-bold num text-ink" data-row-pct>{{ pct(othersById.get(id)!.have, othersById.get(id)!.need) }}{{ NBSP }}%</span>
               </template>
             </ThumbRow>
           </template>

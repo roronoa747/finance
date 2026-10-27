@@ -149,6 +149,11 @@ describe('e2e / Фидбек Блок 2 — приёмка', () => {
     await useOperationsStore().saveHand(hand, { oneOff: true }, A1.client)
     await sync(A1)
     at('2026-09-26T07:06:00Z')
+    // FG-28: `pull` пересчитывает итоги принесённой траты — по личному документу этого телефона («Разовая» в нём). В
+    // приложении личный документ приходит тем же кругом, а итоги уходят на сервер через 1,5 с (`scheduleSync`); помощник
+    // `sync` отправляет сразу после `pull` — личный документ A2 сначала.
+    use(A2)
+    await useFinanceStore().pullPrivateDoc(A2.client)
     await sync(A2, A1)
     for (const p of [A1, A2]) expect(compare(p, '2026-09').oneOff).toBe(25_000)
   })

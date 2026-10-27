@@ -17,6 +17,8 @@
 :root {
   --canvas: #f2f2f0;
   --surface: #ffffff;
+  /* Кнопки-значки шапки оболочки на холсте и на фото («‹», «Поделиться», «···»), FG-30. */
+  --surface-glass: rgb(255 255 255 / 0.6);
   --surface-2: #f1f1ef;
   --surface-3: #e7e7e3;
   --line: #e3e3df;
@@ -88,6 +90,7 @@
 .dark {
   --canvas: #121214;
   --surface: #1c1c1f;
+  --surface-glass: rgb(28 28 31 / 0.6);
   --surface-2: #26262a;
   --surface-3: #313136;
   --line: #36363b;
@@ -167,6 +170,7 @@
 @theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
+  --color-surface-glass: var(--surface-glass);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-line: var(--line);

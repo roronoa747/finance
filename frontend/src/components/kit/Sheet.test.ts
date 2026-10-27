@@ -43,6 +43,8 @@ describe('PV-09: kit/Sheet — окно на ките (SSR)', () => {
     // Тень только у листа (DESIGN.md §4 `--shadow-sheet`), радиус 28; ручка-полоска — токеном, лист тянется вниз (PN-35).
     expect(html).toContain('shadow-sheet')
     expect(html).toContain('rounded-t-[28px]')
+    // FG-31: низ листа над полосой жеста iPhone (с нулевым вырезом — прежние 36 px).
+    expect(html).toContain('pb-[max(36px,calc(env(safe-area-inset-bottom)_+_20px))]')
     expect(html).toMatch(/aria-hidden="true" class="[^"]*bg-line-strong sm:hidden"/)
     expect(html).not.toMatch(/bg-black|shadow-2xl|shadow-lift/)
     expect(html).toContain('z-index:60')

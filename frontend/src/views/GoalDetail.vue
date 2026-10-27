@@ -414,7 +414,7 @@ function share() {
       <button
         type="button"
         aria-label="Поделиться"
-        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-glass text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
         data-goal-share
         @click="share"
       >
@@ -424,7 +424,7 @@ function share() {
         v-if="canEdit"
         type="button"
         aria-label="Меню цели"
-        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+        class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-glass text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
         @click="menuOpen = true"
       >
         <PhDotsThree :size="20" weight="bold" />

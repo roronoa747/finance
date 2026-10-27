@@ -8,7 +8,6 @@ import {
   goalMonths,
   goalMonthly,
   planForecast,
-  contributionStreak,
   liveWishlist,
   deposit,
   realRate,
@@ -54,27 +53,6 @@ describe('views/GoalDetail.vue, GoalNew.vue, Wishes.vue, лист вклада �
     // Ежемесячный платеж на 12 месяцев для 600_000 ₸ -> 50_000 ₸
     expect(goalMonthly(600_000, 12)).toBe(50_000)
     expect(goalMonthly(600_000, 0)).toBe(600_000)
-  })
-
-  it('contributionStreak корректно определяет непрерывную серию ежемесячных взносов', () => {
-    const today = new Date()
-    const y = today.getFullYear()
-    const m = today.getMonth()
-
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const fmt = (year: number, month: number) => `${year}-${pad(month + 1)}-10`
-
-    // Взносы за текущий, прошлый и позапрошлый месяц -> серия 3
-    const movements = [
-      { id: '1', date: fmt(y, m), amount: 20_000, by: 'a' as const },
-      { id: '2', date: fmt(y, m - 1), amount: 15_000, by: 'b' as const },
-      { id: '3', date: fmt(y, m - 2), amount: 30_000, by: 'a' as const },
-    ]
-
-    expect(contributionStreak(movements)).toBe(3)
-
-    // Если взносов нет — серия 0
-    expect(contributionStreak([])).toBe(0)
   })
 
   it('liveWishlist фильтрует удалённые позиции (мягкое удаление deletedAt)', () => {
@@ -472,6 +450,12 @@ describe('PV-15: пауза целей ради плана (SSR)', () => {
     expect(trip).not.toContain('Другое фото')
     expect(trip).not.toContain('Убрать фото')
     expect(trip).toContain('aria-label="Меню цели"')
+    // Кнопки шапки цели — «белый 60 %» (FG-30, Р-16): токен `--surface-glass`, не чистый `--surface`.
+    const btns = [trip.match(/<button[^>]*aria-label="Меню цели"[^>]*>/)![0], trip.match(/<button(?=[^>]*data-goal-share)[^>]*>/)![0]]
+    for (const b of btns) {
+      expect(b).toContain('bg-surface-glass')
+      expect(b).not.toContain('bg-surface ')
+    }
     expect(trip).not.toContain('Сделать главной')
     // Меню: «Сделать главной» — первым и цветом бренда, затем «Изменить цель» и пауза.
     const menu = await renderScreen(GoalDetail, '/goals/trip', undefined, [screenMixin({ menuOpen: true })])

@@ -67,6 +67,13 @@ describe('B2C-27: лэндинг «/» для анонима', () => {
     expect(tryIt).not.toContain('h-13')
   })
 
+  it('FG-31: «Family Finance» ниже строки статуса iPhone — max(26px, вырез + 8px); на десктопе — py-4', async () => {
+    const html = await renderScreen(Landing, '/')
+    const nav = html.match(/<nav[^>]*>/)![0]
+    expect(nav).toContain('pt-[max(26px,calc(env(safe-area-inset-top)_+_8px))]')
+    expect(nav).toContain('md:py-4')
+  })
+
   it('черновик демо на телефоне — «Вернуться в демо»', async () => {
     useFinanceStore().claimFor(DEMO_HOUSEHOLD)
     expect(visible(await renderScreen(Landing, '/'))).toContain('Вернуться в демо')

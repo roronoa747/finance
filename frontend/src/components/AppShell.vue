@@ -25,7 +25,6 @@ import { useFinanceStore } from '@/stores/finance'
 import { useAuthStore } from '@/stores/auth'
 import { useAiStore } from '@/stores/ai'
 import { readPlanView } from '@/lib/storage'
-import { liveGoals } from '@/lib/finance'
 import { monthKey } from '@/lib/dates'
 import { useScrollMemory } from './useScrollMemory'
 import ShellPeople from '@/components/ShellPeople.vue'
@@ -120,11 +119,8 @@ const header = computed<{ title: string; sub?: string }>(() => {
   if (p === '/money/debts/faster') return { title: 'Закрыть быстрее' }
   if (p === '/money' || p.startsWith('/money/')) return { title: 'Деньги' }
   if (p === '/goals/new') return { title: 'Новая мечта' }
-  if (p.startsWith('/goals/')) {
-    // Имя цели заголовком (g4 «Экран цели»), без «мечта · имена» (Р-116).
-    const goal = liveGoals(financeStore.goals).find((g) => g.id === route.params.id) // Сбылось (PN-13): все живые — заголовок и у сбывшейся
-    return { title: goal?.name ?? 'Цель' }
-  }
+  // Цель — шапка без заголовка (FG-30, макеты 78:50, 78:104): имя — на обложке и в листе «···»; и у сбывшейся.
+  if (p.startsWith('/goals/')) return { title: '' }
   if (p === '/wishes' || p.startsWith('/people/')) return { title: 'Желания' }
   if (p === '/settings/me') return { title: 'Свой кружок' }
   if (p === '/admin') return { title: 'Цифры' }
@@ -189,19 +185,19 @@ function navigateAndClose(to: string) {
   <div
     class="relative mx-auto flex h-dvh w-full max-w-[520px] flex-col overflow-hidden bg-canvas text-left md:my-8 md:h-[860px] md:max-w-[420px] md:rounded-[42px] md:border md:border-line-strong"
   >
-    <header v-if="!heroHeader" class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-4" data-shell-header>
+    <header v-if="!heroHeader" class="flex shrink-0 items-center justify-between gap-3 px-5 pb-2 pt-[max(16px,calc(env(safe-area-inset-top)_+_8px))]" data-shell-header>
       <div class="flex min-w-0 items-center gap-2.5">
         <button
           v-if="!isRoot"
           type="button"
           aria-label="Назад"
-          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
+          class="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-surface-glass text-ink-2 hover:bg-surface-3 hover:text-ink cursor-pointer"
           @click="goBack"
         >
           <PhCaretLeft :size="20" />
         </button>
         <div class="min-w-0">
-          <h1 class="type-h1 truncate text-ink">{{ header.title }}</h1>
+          <h1 v-if="header.title" class="type-h1 truncate text-ink">{{ header.title }}</h1>
           <div v-if="header.sub" class="mt-0.5 truncate type-meta">{{ header.sub }}</div>
         </div>
       </div>
@@ -215,7 +211,7 @@ function navigateAndClose(to: string) {
 
     <!-- Капсула вкладок парит над контентом (макет pivot-3 `.tabs`): снизу запас 96 px, чтобы последняя карточка
          докручивалась из-под неё. -->
-    <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-6' : 'pb-24']">
+    <main ref="mainEl" :class="['flex-1 overflow-y-auto px-4 [overscroll-behavior:contain]', noTabs ? 'pb-[max(24px,env(safe-area-inset-bottom))]' : 'pb-[calc(96px+env(safe-area-inset-bottom))]']">
       <!-- Смена экрана — короткое проявление (Р-45); ключ — имя маршрута: квадраты «Денег» и цели
            между собой экран не пересоздают. Шапка и капсула вкладок вне — не прыгают. -->
       <RouterView v-slot="{ Component, route: r }">
@@ -226,7 +222,7 @@ function navigateAndClose(to: string) {
     </main>
 
     <!-- Тосты экранов (`kit/Toast`) — над капсулой вкладок (макет week-month.html `.toast`). -->
-    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-4' : 'bottom-[84px]'" />
+    <div id="shell-toast" class="absolute inset-x-4 z-20 flex flex-col gap-2 empty:hidden" :class="noTabs ? 'bottom-[max(16px,env(safe-area-inset-bottom))]' : 'bottom-[calc(84px+env(safe-area-inset-bottom))]'" />
 
     <Tabs v-if="!noTabs" :items="tabs" :plus="!authStore.isViewer" plus-label="Добавить" @plus="addOpen = true" />
 

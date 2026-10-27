@@ -171,7 +171,7 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     }
   })
 
-  it('часть 2 — выключил цель: остаток и даты пересчитаны сразу и у партнёра; на «Мечтах» — «на паузе»', async () => {
+  it('часть 2 — выключил цель: остаток и даты пересчитаны сразу и у партнёра; на «Мечтах» — приглушена (слово — в цели, FG-32)', async () => {
     const A = await phone(server, st, 'a')
     const B = await phone(server, st, 'b')
     const before = planOf(A)
@@ -187,7 +187,8 @@ describe('e2e / B2C Блок 14 — план месяца на двух теле
     const money_ = await month(B, 'queue')
     expect(part(money_, REST)).toBe(sp(money(527_000)))
     expect(part(money_, 'data-queue="car"')).toContain('на паузе')
-    expect(part(await screen(B.pinia, Dreams, '/'), 'data-id="car"')).toContain('на паузе')
+    // Приглушение строки на паузе проверяют `Dreams.queue.dom` и `fg-block6-small` (FG-32).
+    expect(part(await screen(B.pinia, Dreams, '/'), 'data-id="car"')).not.toContain('на паузе')
     // Включил обратно — как было.
     setActivePinia(B.pinia)
     B.store.pauseGoal('car', false)

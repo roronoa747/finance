@@ -40,7 +40,7 @@ function tryDemo() {
 <template>
   <div class="min-h-dvh text-left text-ink">
     <div class="mx-auto w-full max-w-[1120px] px-5 md:px-10">
-      <nav class="flex items-center justify-between pl-2 pt-[26px] pb-4 md:pl-0 md:py-4">
+      <nav class="flex items-center justify-between pl-2 pt-[max(26px,calc(env(safe-area-inset-top)_+_8px))] pb-4 md:pl-0 md:py-4">
         <span class="font-display text-[17px] font-semibold tracking-[-0.02em]">Family Finance</span>
         <div class="flex items-center gap-5 text-[14px] text-ink-2">
           <a href="#how" class="hidden md:inline">Как это работает</a>

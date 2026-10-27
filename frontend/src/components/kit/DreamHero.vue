@@ -50,14 +50,14 @@ const onPhoto = computed(() => !!props.src || !!props.tone)
     <div
       v-if="src && ($slots.top || author)"
       class="absolute inset-x-0 top-0 -z-10 photo-scrim-top"
-      :class="$slots.top ? 'h-28' : 'h-14 opacity-60'"
+      :class="$slots.top ? 'h-[calc(112px+env(safe-area-inset-top))]' : 'h-14 opacity-60'"
       aria-hidden="true"
       data-hero-top-scrim
     />
     <!-- Верхняя строка поверх фото (обложка «Мечт»: «Мечты» и шапка оболочки). -->
-    <div v-if="$slots.top" class="absolute inset-x-0 top-0 z-10 px-4 pt-3"><slot name="top" :on-photo="onPhoto" /></div>
+    <div v-if="$slots.top" class="absolute inset-x-0 top-0 z-10 px-4 pt-[max(12px,calc(env(safe-area-inset-top)_+_8px))]"><slot name="top" :on-photo="onPhoto" /></div>
     <!-- Автор — один раз, на самом фото (владелец, 2026-09-27); ссылка на профиль — требование Unsplash. -->
-    <div v-if="author" class="absolute right-4 text-[11px]" :class="[src ? 'opacity-75' : 'text-ink-2', $slots.top ? 'top-[62px]' : 'top-3']">
+    <div v-if="author" class="absolute right-4 text-[11px]" :class="[src ? 'opacity-75' : 'text-ink-2', $slots.top ? 'top-[calc(62px+env(safe-area-inset-top))]' : 'top-3']">
       <a v-if="authorUrl" :href="authorUrl" target="_blank" rel="noreferrer noopener" class="underline-offset-2 hover:underline" @click.stop>Фото: {{ author }}</a>
       <template v-else>Фото: {{ author }}</template>
     </div>

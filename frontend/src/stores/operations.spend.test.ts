@@ -148,25 +148,29 @@ describe('F2-07: запись «потрачено» счёта для трат'
   })
 })
 
+const partnerShift = (id: string) => {
+  const finance = useFinanceStore()
+  const shift = { id, accountId: 'k1', amount: -10_000, date: '2026-10-20', by: 'b' as const, kind: 'goal-in' as const, updatedAt: new Date().toISOString() }
+  finance.setHouseholdDoc({ ...finance.householdDoc, accountShifts: [...(finance.householdDoc.accountShifts ?? []), shift] }, 2)
+}
+/** Своя операция в копии без пересчёта итогов — как копия, оставшаяся с прошлого запуска. */
+const local = (id: string, amount: number) => {
+  const store = useOperationsStore()
+  store.ops = { ...store.ops, [id]: { ...hand(id, amount), at: '2026-10-20T06:30:00.000Z' } }
+}
+const wire = (id: string, amount: number) => ({
+  id, bank: 'hand', date: '2026-10-20', amount: -amount, kind: 'purchase', merchant: 'Продукты', category_id: 'sc_food', internal: false, updated_at: '2026-10-20T07:00:01Z',
+})
+
+/** Итог раздела «Еда» недели 2026-W43 моих операций. */
+const food = (kind: 'week' | 'month' = 'week') =>
+  (useFinanceStore().householdDoc.spendTotals ?? []).find((t) => t.by === 'a' && t.kind === kind && t.categoryId === 'sc_food')
+
 /**
  * FG-27 (FG-Х7): документ семьи пришёл фоном (сдвиг партнёра с моей карты) — запись `k1:a` пишется только по свежей
  * копии своих операций: после `pull`; без удачного `pull` в запуске — не пишется (её пишет первый удачный `pull`).
  */
 describe('FG-27: второй свой телефон с несвежими операциями', () => {
-  const partnerShift = (id: string) => {
-    const finance = useFinanceStore()
-    const shift = { id, accountId: 'k1', amount: -10_000, date: '2026-10-20', by: 'b' as const, kind: 'goal-in' as const, updatedAt: new Date().toISOString() }
-    finance.setHouseholdDoc({ ...finance.householdDoc, accountShifts: [...(finance.householdDoc.accountShifts ?? []), shift] }, 2)
-  }
-  /** Своя операция в копии без пересчёта итогов — как копия, оставшаяся с прошлого запуска. */
-  const local = (id: string, amount: number) => {
-    const store = useOperationsStore()
-    store.ops = { ...store.ops, [id]: { ...hand(id, amount), at: '2026-10-20T06:30:00.000Z' } }
-  }
-  const wire = (id: string, amount: number) => ({
-    id, bank: 'hand', date: '2026-10-20', amount: -amount, kind: 'purchase', merchant: 'Продукты', category_id: 'sc_food', internal: false, updated_at: '2026-10-20T07:00:01Z',
-  })
-
   it('(1) без удачного pull документ не пишет запись; первый удачный pull — пишет', async () => {
     signIn()
     const store = useOperationsStore()
@@ -235,7 +239,7 @@ describe('FG-27: второй свой телефон с несвежими оп
     expect(apiClient.listOperations).not.toHaveBeenCalled()
   })
 
-  it('(5) «Оплатил» партнёра (наблюдатель отметок, `writeTotals` по документу) — запись только после pull, по его операциям; итоги — сразу', async () => {
+  it('(5) «Оплатил» партнёра (наблюдатель отметок) — потраченное и итоги разделов только после pull, по его операциям (FG-28)', async () => {
     const finance = signIn()
     const store = useOperationsStore()
     await store.pull(client)
@@ -248,11 +252,12 @@ describe('FG-27: второй свой телефон с несвежими оп
     finance.setHouseholdDoc({ ...finance.householdDoc, payments: [...(finance.householdDoc.payments ?? []), paid] }, 2)
     await nextTick()
     await Promise.resolve()
-    // Итоги разделов — как были (вне скоупа FG-27), потраченное со счёта старой копией (2 500) не пишется — ждёт pull.
-    expect(finance.householdDoc.spendTotals).toEqual(expect.arrayContaining([expect.objectContaining({ by: 'a', amount: 2_500 })]))
+    // Ни потраченное со счёта, ни итоги разделов старой копией (2 500) не пишутся — ждут pull (FG-28).
+    expect(food()).toBeUndefined()
     expect(spent()).toEqual([])
     answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
     await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })]))
+    expect(food()).toMatchObject({ amount: 15_000, ops: 2 })
     expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
   })
 
@@ -270,5 +275,197 @@ describe('FG-27: второй свой телефон с несвежими оп
     vi.setSystemTime(new Date('2026-10-20T07:02:00Z'))
     await store.pull(client)
     expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 2_500 })])
+  })
+})
+
+/** «Оплатил» партнёра без счёта — сигнал документа наблюдателю отметок. */
+const partnerPaid = (id: string, targetId = 'rent') => {
+  const finance = useFinanceStore()
+  const now = new Date().toISOString()
+  const paid = { id, kind: 'obligation' as const, targetId, period: '2026-10', amount: 100_000, accountId: null, by: 'b' as const, at: now, updatedAt: now }
+  finance.setHouseholdDoc({ ...finance.householdDoc, payments: [...(finance.householdDoc.payments ?? []), paid] }, 2)
+}
+const ticks = async (n = 10) => {
+  for (let i = 0; i < n; i++) await Promise.resolve()
+}
+
+/**
+ * FG-28 (FG-Х8): итоги разделов по сигналу документа — тем же путём, что потраченное со счёта (FG-27): только по свежей
+ * копии после `pull`; до удачного `pull` — отложены (`totalsDue`). `pull`, принёсший новые для копии строки, сам
+ * пересчитывает их периоды.
+ */
+describe('FG-28: итоги разделов второго своего телефона', () => {
+  it('(1) «Оплатил» партнёра при старой копии — итоги не пишутся до ответа pull (ни 2 500, ни 0), после — 15 000; запрос один', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    let answer!: (page: OperationsPage) => void
+    vi.mocked(apiClient.listOperations).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+    partnerPaid('pm_00000001')
+    await nextTick()
+    await ticks()
+    expect(useFinanceStore().householdDoc.spendTotals ?? []).toEqual([])
+    answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await vi.waitFor(() => expect(food()).toMatchObject({ amount: 15_000, ops: 2 }))
+    expect(food('month')).toMatchObject({ amount: 15_000 })
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })])
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(2) без удачного pull сигнал итоги не пишет (`totalsDue`); первый удачный pull — пишет по пришедшим; ошибка сервера после удачного — то же', async () => {
+    signIn()
+    const store = useOperationsStore()
+    local('00aa11bb22cc33dd', 2_500)
+    partnerPaid('pm_00000001')
+    await nextTick()
+    await ticks()
+    expect(food()).toBeUndefined()
+    expect(apiClient.listOperations).not.toHaveBeenCalled()
+    // Первый удачный pull новых строк не принёс — отложенное сигналом пишется им же (`totalsDue`), по подтверждённой копии.
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 2_500, ops: 1 })
+    // Пришедшие строки — тоже.
+    vi.setSystemTime(new Date('2026-10-20T07:00:30Z'))
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 15_000, ops: 2 })
+
+    // Удачный pull был, следующий запрос — ошибка: сигнал по старой копии не пишет, следующий удачный pull — пишет.
+    local('22aa11bb22cc33dd', 1_000)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    vi.mocked(apiClient.listOperations).mockRejectedValueOnce(new Error('503'))
+    partnerPaid('pm_00000002')
+    await vi.waitFor(() => expect(apiClient.listOperations).toHaveBeenCalledTimes(1))
+    await ticks()
+    expect(food()).toMatchObject({ amount: 15_000 })
+    vi.setSystemTime(new Date('2026-10-20T07:02:00Z'))
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 16_000, ops: 3 })
+  })
+
+  it('(3) pull без сигнала принёс строку этой недели с другого телефона — итоги и потраченное переписаны; повторный pull без новых строк документ не трогает', async () => {
+    const finance = signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    await store.saveHand(hand('00aa11bb22cc33dd', 2_500), {}, client)
+    expect(food()).toMatchObject({ amount: 2_500 })
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 15_000, ops: 2 })
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })])
+    const mutate = vi.spyOn(finance, 'mutateHouseholdDoc')
+    const set = vi.spyOn(finance, 'setHouseholdDoc')
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await store.pull(client)
+    await store.pull(client)
+    expect(mutate).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('(4) демо — итоги сразу по копии, без запроса; viewer — ничего', async () => {
+    useAuthStore().setAuthData({
+      token: DEMO_TOKEN, user: { id: 'demo', email: 'demo', created_at: '' },
+      household: { id: 'demo-household-1', name: 'Демо', created_by: 'demo', created_at: '' },
+      member: { household_id: 'demo-household-1', user_id: 'demo', slot: 'a', display_name: 'Я', role: 'member', joined_at: '' },
+    })
+    useFinanceStore().setHouseholdDoc({ ...defaultSyncDoc(), accounts: [card()] }, 1)
+    useOperationsStore()
+    local('00aa11bb22cc33dd', 2_500)
+    partnerPaid('pm_00000001')
+    await nextTick()
+    expect(food()).toMatchObject({ amount: 2_500 })
+    expect(apiClient.listOperations).not.toHaveBeenCalled()
+
+    setActivePinia(createPinia())
+    storage.clear()
+    signIn('viewer')
+    useOperationsStore()
+    local('00aa11bb22cc33dd', 2_500)
+    partnerPaid('pm_00000001')
+    await nextTick()
+    await ticks()
+    expect(useFinanceStore().householdDoc.spendTotals ?? []).toEqual([])
+    expect(apiClient.listOperations).not.toHaveBeenCalled()
+  })
+
+  it('(5) pull принёс свою строку, исправленную на втором своём телефоне (сумма, раздел), — итоги её периода переписаны (критик)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    await store.saveHand(hand('00aa11bb22cc33dd', 2_500), {}, client)
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 15_000, ops: 2 })
+    // Сумму строки исправили на втором своём телефоне: id тот же — строка не новая, но итог другой.
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 9_000)] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 11_500, ops: 2 })
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 11_500 })])
+    // …затем раздел: из «Еды» строка ушла.
+    vi.mocked(client.listOperations).mockResolvedValueOnce({ operations: [{ ...wire('11aa11bb22cc33dd', 9_000), category_id: 'sc_cafe' }] as never, next: null })
+    await store.pull(client)
+    expect(food()).toMatchObject({ amount: 2_500, ops: 1 })
+  })
+})
+
+/**
+ * FG-29 (FG-Х9): сигнал документа принимает только `pull`, начатый не раньше самого сигнала (`pullFresh(since)`); круг
+ * движка (`pullFresh()` без `since`) — прежний порог `PULL_FRESH_MS`.
+ */
+describe('FG-29: окно свежести — от сигнала документа', () => {
+  it('(1) pull в T, сдвиг партнёра в T + 3 с — ещё один запрос, запись по его ответу', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:00:03Z'))
+    vi.mocked(apiClient.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    partnerShift('as_00000001')
+    await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })]))
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(2) pull в T, круг движка без `since` в T + 3 с — запроса нет (порог круга прежний)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(apiClient)
+    vi.mocked(apiClient.listOperations).mockClear()
+    vi.setSystemTime(new Date('2026-10-20T07:00:03Z'))
+    await store.pullFresh()
+    expect(apiClient.listOperations).not.toHaveBeenCalled()
+    vi.setSystemTime(new Date('2026-10-20T07:00:06Z'))
+    await store.pullFresh()
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(3) сигнал во время идущего pull — новый запрос после него, итог по последнему ответу; каскад наблюдателей в одном тике — один запрос', async () => {
+    const finance = signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    let answer!: (page: OperationsPage) => void
+    vi.mocked(apiClient.listOperations)
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500), wire('22aa11bb22cc33dd', 1_000)] as never, next: null })
+    const held = store.pull(apiClient)
+    vi.setSystemTime(new Date('2026-10-20T07:01:01Z'))
+    // Один документ будит сразу двух наблюдателей: отметки (итоги) и счёт для трат (сдвиг).
+    const now = new Date().toISOString()
+    const paid = { id: 'pm_00000001', kind: 'obligation' as const, targetId: 'rent', period: '2026-10', amount: 100_000, accountId: null, by: 'b' as const, at: now, updatedAt: now }
+    const shift = { id: 'as_00000001', accountId: 'k1', amount: -10_000, date: '2026-10-20', by: 'b' as const, kind: 'goal-in' as const, updatedAt: now }
+    finance.setHouseholdDoc({ ...finance.householdDoc, payments: [paid], accountShifts: [shift] }, 2)
+    await nextTick()
+    answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await held
+    // Остаточное окно (FG-Х11, критик): идущий pull начат раньше сигнала, но забирает отложенное и пишет по своему ответу;
+    // следующий — уже в очереди — приносит недостающую строку и переписывает. В приложении обе записи уходят одним синком
+    // документа (`scheduleSync` 1,5 с сбрасывается) — на сервер идёт последняя.
+    expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })])
+    await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 16_000 })]))
+    expect(food()).toMatchObject({ amount: 16_000, ops: 3 })
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(2)
   })
 })

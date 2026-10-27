@@ -12,7 +12,8 @@ const UPDATED = '23 октября 2026'
 </script>
 
 <template>
-  <article class="mx-auto w-full max-w-[640px] px-5 py-8 text-left text-[14.5px] leading-relaxed text-ink-2">
+  <!-- Верх ниже строки статуса iPhone (FG-31): «‹ Family Finance» — единственный путь назад в PWA. -->
+  <article class="mx-auto w-full max-w-[640px] px-5 pb-8 pt-[max(32px,calc(env(safe-area-inset-top)_+_8px))] text-left text-[14.5px] leading-relaxed text-ink-2">
     <RouterLink to="/" class="text-[13px] text-brand">‹ Family Finance</RouterLink>
     <h1 class="mt-4 type-h1 text-ink">Политика конфиденциальности</h1>
     <p class="mt-1 type-meta">Обновлено {{ UPDATED }}</p>
