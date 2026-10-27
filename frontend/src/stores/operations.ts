@@ -952,10 +952,11 @@ export const useOperationsStore = defineStore('operations', () => {
 
   /**
    * `pull`, если копия не свежая (FG-27): запрошенная меньше `PULL_FRESH_MS` назад — новый запрос не шлётся, ждётся
-   * идущий. Наблюдатель счёта для трат и круг движка зовут разом — один запрос.
+   * идущий. Наблюдатель счёта для трат и круг движка зовут разом — один запрос. `since` — момент сигнала документа (FG-29):
+   * свежая только копия `pull`, начатого не раньше него, — иначе новый запрос (после идущего).
    */
-  function pullFresh(client: ApiClient = apiClient): Promise<unknown> {
-    if (Date.now() - lastPullAt < PULL_FRESH_MS) return pulling
+  function pullFresh(client: ApiClient = apiClient, since?: number): Promise<unknown> {
+    if (since === undefined ? Date.now() - lastPullAt < PULL_FRESH_MS : lastPullAt >= since) return pulling
     return pull(client)
   }
 
@@ -977,6 +978,8 @@ export const useOperationsStore = defineStore('operations', () => {
     docFresh(ids ?? 'recent')
   }
   function docFresh(totals?: 'recent' | Iterable<string>) {
+    // Момент сигнала — до любого ожидания: копия свежая, только если `pull` начат не раньше него (FG-29).
+    const since = Date.now()
     if (!demo.value && !auth.isMember) return
     spentDue = true
     if (totals) {
@@ -986,7 +989,7 @@ export const useOperationsStore = defineStore('operations', () => {
     }
     if (demo.value) return writeFresh()
     if (!pulledOk) return
-    void pullFresh().then(() => {
+    void pullFresh(apiClient, since).then(() => {
       if (pulledOk && !pullFailed) writeFresh()
     })
   }

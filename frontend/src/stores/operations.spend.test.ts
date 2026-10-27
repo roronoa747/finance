@@ -390,3 +390,59 @@ describe('FG-28: итоги разделов второго своего тел�
     expect(apiClient.listOperations).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * FG-29 (FG-Х9): сигнал документа принимает только `pull`, начатый не раньше самого сигнала (`pullFresh(since)`); круг
+ * движка (`pullFresh()` без `since`) — прежний порог `PULL_FRESH_MS`.
+ */
+describe('FG-29: окно свежести — от сигнала документа', () => {
+  it('(1) pull в T, сдвиг партнёра в T + 3 с — ещё один запрос, запись по его ответу', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:00:03Z'))
+    vi.mocked(apiClient.listOperations).mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    partnerShift('as_00000001')
+    await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 15_000 })]))
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(2) pull в T, круг движка без `since` в T + 3 с — запроса нет (порог круга прежний)', async () => {
+    signIn()
+    const store = useOperationsStore()
+    await store.pull(apiClient)
+    vi.mocked(apiClient.listOperations).mockClear()
+    vi.setSystemTime(new Date('2026-10-20T07:00:03Z'))
+    await store.pullFresh()
+    expect(apiClient.listOperations).not.toHaveBeenCalled()
+    vi.setSystemTime(new Date('2026-10-20T07:00:06Z'))
+    await store.pullFresh()
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(1)
+  })
+
+  it('(3) сигнал во время идущего pull — новый запрос после него, запись одна по последнему ответу; каскад наблюдателей в одном тике — один запрос', async () => {
+    const finance = signIn()
+    const store = useOperationsStore()
+    await store.pull(client)
+    local('00aa11bb22cc33dd', 2_500)
+    vi.setSystemTime(new Date('2026-10-20T07:01:00Z'))
+    let answer!: (page: OperationsPage) => void
+    vi.mocked(apiClient.listOperations)
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce({ operations: [wire('11aa11bb22cc33dd', 12_500), wire('22aa11bb22cc33dd', 1_000)] as never, next: null })
+    const held = store.pull(apiClient)
+    vi.setSystemTime(new Date('2026-10-20T07:01:01Z'))
+    // Один документ будит сразу двух наблюдателей: отметки (итоги) и счёт для трат (сдвиг).
+    const now = new Date().toISOString()
+    const paid = { id: 'pm_00000001', kind: 'obligation' as const, targetId: 'rent', period: '2026-10', amount: 100_000, accountId: null, by: 'b' as const, at: now, updatedAt: now }
+    const shift = { id: 'as_00000001', accountId: 'k1', amount: -10_000, date: '2026-10-20', by: 'b' as const, kind: 'goal-in' as const, updatedAt: now }
+    finance.setHouseholdDoc({ ...finance.householdDoc, payments: [paid], accountShifts: [shift] }, 2)
+    await nextTick()
+    answer({ operations: [wire('11aa11bb22cc33dd', 12_500)] as never, next: null })
+    await held
+    await vi.waitFor(() => expect(spent()).toEqual([expect.objectContaining({ id: 'k1:a', amount: 16_000 })]))
+    expect(food()).toMatchObject({ amount: 16_000, ops: 3 })
+    expect(apiClient.listOperations).toHaveBeenCalledTimes(2)
+  })
+})

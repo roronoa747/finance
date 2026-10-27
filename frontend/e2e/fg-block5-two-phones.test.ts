@@ -219,7 +219,7 @@ describe('e2e / Блок 5 «Figma» — второй свой телефон с
     await sameEverywhere([a1, a2, b], 1_882_500)
   })
 
-  it('(4) регресс: свой сдвиг рукой на A1 пишется сразу, без запроса (копия свежая); офлайн после удачного pull — тоже', async () => {
+  it('(4) регресс: свой сдвиг рукой на A1 — взнос и сдвиг сразу, запись — после одного запроса, число то же (FG-29); офлайн после удачного pull — по копии без запроса', async () => {
     const { a1 } = await family()
     // Переводы в цели — в выписке раньше взносов (пока трата).
     await statement(a1, [row('2026-10-15', -40_000, 'Перевод', { kind: 'transfer-out' }), row('2026-10-15', -30_000, 'Перевод', { kind: 'transfer-out' })])
@@ -228,15 +228,20 @@ describe('e2e / Блок 5 «Figma» — второй свой телефон с
     const mine = () => a1.store.householdDoc.accountSpent?.find((s) => s.id === 'card:a')?.amount
     const ops = vi.mocked(apiClient.listOperations)
     ops.mockClear()
+    // Через 2 с после pull выписки: сигнал документа принимает только pull, начатый не раньше него (FG-29) — один запрос.
+    at('2026-10-15T07:00:02Z')
     setActivePinia(a1.pinia)
     a1.store.shiftAccountAmount('card', -40_000, { kind: 'goal-in', goalId: 'cushion' })
+    // Сдвиг — сразу; запись потраченного — после ответа (до него строка пары на миг считается дважды).
+    expect(mine()).toBe(332_500)
     await settle()
-    expect(ops).not.toHaveBeenCalled() // копия свежая (pull только что) — без запроса
+    expect(ops).toHaveBeenCalledTimes(1)
     expect(mine()).toBe(292_500)
     expect(card(a1)).toBe(1_667_500)
 
     // Через 10 минут без сети: запроса нет, запись — по локальной копии (удачный pull в запуске был).
     at('2026-10-15T07:10:00Z')
+    ops.mockClear()
     setOnline(false)
     a1.store.shiftAccountAmount('card', -30_000, { kind: 'goal-in', goalId: 'cushion' })
     await settle()
