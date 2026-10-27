@@ -184,14 +184,15 @@ const giftSrc = usePhotos(() => financeStore.gifts.map((g) => g.photoId))
       <Segmented v-if="tabs.length > 1" v-model="tab" :options="tabs" class="min-w-0 flex-1" />
       <button
         type="button"
-        :aria-label="view === 'grid' ? 'Списком' : 'Галереей'"
+        aria-label="Списком"
         :aria-pressed="view === 'list'"
         class="grid size-10 shrink-0 place-items-center rounded-pill cursor-pointer"
         :class="view === 'list' ? 'bg-brand-soft text-brand' : 'bg-surface-3 text-ink-2 hover:text-ink'"
         data-view-toggle
         @click="setView(view === 'grid' ? 'list' : 'grid')"
       >
-        <!-- Значок — текущий вид; список подсвечен брендовым тоном (FG-22, 90:19) -->
+        <!-- Значок — текущий вид; список подсвечен брендовым тоном (FG-22, 90:19). Кнопка-переключатель: имя одно
+             («Списком»), включён ли список — `aria-pressed` (критик Блока 4: «Галереей, нажата» читалось наоборот). -->
         <PhListBullets v-if="view === 'list'" :size="18" />
         <PhSquaresFour v-else :size="18" />
       </button>

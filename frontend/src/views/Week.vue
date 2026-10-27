@@ -723,7 +723,7 @@ onBeforeUnmount(() => {
     <OpSheet :op-id="sectionOp" :z="60" @close="sectionOp = null" />
     <HandSpendSheet v-if="canUpload" :open="spendOpen || handEdit !== null" :op-id="handEdit" @close="closeHand" @saved="onHandSaved" />
     <NoteSheet v-if="canUpload" :open="noteOpen || noteEdit !== null" :note-id="noteEdit" @close="closeNoteSheet" @saved="onHandSaved" />
-    <WeekFeedSheet :open="feedOpen" :week="week" :feed="feed" @close="feedOpen = false" @edit="editHand" />
+    <WeekFeedSheet :open="feedOpen" :feed="feed" @close="feedOpen = false" @edit="editHand" />
     <UploadsSheet :open="uploadsOpen" :me="me" :busy="reading" @close="uploadsOpen = false" @upload="pickFile" />
 
     <!-- «Сразу готово» (Р-97): тост с «Отменить», пока выписка не отправлена; иначе — короткая фраза -->

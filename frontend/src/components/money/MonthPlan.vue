@@ -1137,7 +1137,7 @@ function addFund(kind: 'reserve' | 'cushion') {
     <!-- Зарплата: своя и ждём — «Пришла» (и «Другая сумма или счёт»); тихо — отметка пришедшей и «Изменить оклад» -->
     <SalarySheet :month-key="monthKey" :line="salarySheet" @close="salaryFor = null" />
     <ExtraIncomeSheet :open="incomeOpen" @close="incomeOpen = false" />
-    <WeekFeedSheet v-if="canEdit" :open="monthFeedOpen" :week="monthKey" :feed="monthFeedOf" empty-text="За этот месяц трат нет" @close="monthFeedOpen = false" @edit="openFeedHand" />
+    <WeekFeedSheet v-if="canEdit" :open="monthFeedOpen" :feed="monthFeedOf" empty-text="За этот месяц трат нет" @close="monthFeedOpen = false" @edit="openFeedHand" />
     <AiReport
       :open="reviewOpen && reviewShown"
       :month-key="monthKey"

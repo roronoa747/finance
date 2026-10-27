@@ -20,7 +20,6 @@ import OpSheet from '@/components/OpSheet.vue'
 const props = withDefaults(
   defineProps<{
     open: boolean
-    week: string
     feed: { count: number; days: { date: string; ops: WeekFeedOp[] }[] }
     /** Пустая лента; «История» месяца (FG-23) — «За этот месяц трат нет». */
     emptyText?: string
