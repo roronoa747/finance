@@ -32,11 +32,10 @@ type Config struct {
 	// memory/secrets/anthropic.md). Optional: without it AI is off everywhere and production
 	// is still valid, so ValidateProduction does not ask for it.
 	AnthropicAPIKey string
-	// AIModelReview, AIModelSellers and AIModelWish pick the model per feature
-	// (AI_MODEL_REVIEW, AI_MODEL_SELLERS, AI_MODEL_WISH).
+	// AIModelReview and AIModelSellers pick the model per feature
+	// (AI_MODEL_REVIEW, AI_MODEL_SELLERS).
 	AIModelReview  string
 	AIModelSellers string
-	AIModelWish    string
 	// AIMonthlyLimitMicros is the money a family may spend on AI per Almaty month, in
 	// micro-dollars (AI_MONTHLY_LIMIT_USD — whole dollars, one value for every family). Zero,
 	// negative or not a number falls back to the default: "no limit" is not a setting. The old
@@ -72,7 +71,6 @@ func shortcutURL(key string) string {
 const (
 	DefaultAIModelReview     = "claude-opus-5-5"
 	DefaultAIModelSellers    = "claude-haiku-5-5"
-	DefaultAIModelWish       = "claude-opus-5-5"
 	DefaultAIMonthlyLimitUSD = 2
 )
 
@@ -97,7 +95,6 @@ func Load() (*Config, error) {
 		AnthropicAPIKey:           strings.TrimSpace(getEnv("ANTHROPIC_API_KEY", "")),
 		AIModelReview:             strings.TrimSpace(getEnv("AI_MODEL_REVIEW", DefaultAIModelReview)),
 		AIModelSellers:            strings.TrimSpace(getEnv("AI_MODEL_SELLERS", DefaultAIModelSellers)),
-		AIModelWish:               strings.TrimSpace(getEnv("AI_MODEL_WISH", DefaultAIModelWish)),
 		AIMonthlyLimitMicros:      int64(positiveInt(getEnv("AI_MONTHLY_LIMIT_USD", ""), DefaultAIMonthlyLimitUSD)) * microsPerUSD,
 		ApplePayShortcutURL:       shortcutURL("APPLEPAY_SHORTCUT_URL"),
 		ApplePayShortcutURLLegacy: shortcutURL("APPLEPAY_SHORTCUT_URL_LEGACY"),

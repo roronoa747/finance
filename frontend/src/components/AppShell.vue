@@ -156,7 +156,7 @@ useScrollMemory(mainEl, (p) => ROOTS.includes(p), authStore.token)
  */
 const actions = [
   { to: '/goals/new', title: 'Мечта', icon: PhHeart },
-  { to: '/wishes', title: 'Желание', icon: PhShoppingBag },
+  { to: '/wishes?new=1', title: 'Желание', icon: PhShoppingBag },
   // «Заметка» себе с датой (Блок 5 «Фидбек», Р-33): всплывает карточкой на «Неделе» своей даты.
   { to: '/week?note=1', title: 'Заметка', icon: PhNote },
   // Прикидка ничего не пишет (Р-11); у viewer «+» нет вовсе — «Прикинуть кредит» ему с «Долгов» (PN-17).

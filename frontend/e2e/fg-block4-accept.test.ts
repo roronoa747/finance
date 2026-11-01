@@ -161,7 +161,7 @@ describe('e2e / «Figma» Блок 4 — приёмка', () => {
       routes[title] = router.currentRoute.value.fullPath
     }
     expect(routes).toEqual({
-      'Мечта': '/goals/new', 'Желание': '/wishes', 'Заметка': '/week?note=1', 'Прикинуть кредит': '/money/debts?try=1', 'Доход': '/month?income=1',
+      'Мечта': '/goals/new', 'Желание': '/wishes?new=1', 'Заметка': '/week?note=1', 'Прикинуть кредит': '/money/debts?try=1', 'Доход': '/month?income=1',
       'Трата': '/week?spend=1', 'Выписка': '/week?upload=1', 'Платёж или подписка': '/money?add=payment', 'Долг': '/money?add=debt',
     })
 
