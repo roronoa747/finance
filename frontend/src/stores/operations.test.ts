@@ -1242,6 +1242,9 @@ describe('stores/operations — итоги находок (RZ-01)', () => {
 
   // Ревью frontend Н-4: главный путь — регулярное внесли в план, находка обнуляется пересчётом стора.
   it('новое регулярное → заведён платёж того же имени — итог обнулён; отметка «это платёж по …» — тоже', async () => {
+    // Обнуление пишет наблюдатель обязательств, а он пересчитывает лишь этот и прошлый месяц
+    // (totalsFresh → recentOperations): без фиксации даты сентябрьская находка вне окна уже в ноябре.
+    vi.setSystemTime(new Date('2026-10-20T07:00:00Z'))
     const plus = (month: string, merchant = 'YANDEX PLUS', amount = -1_990) => ({
       bank: 'kaspi' as const, date: `${month}-12`, amount, kind: 'purchase' as const, merchant, categoryId: null, internal: false,
     })
