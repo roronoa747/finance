@@ -826,16 +826,16 @@ describe('RP-06: отметки оплат в сторе', () => {
   it('ответ «это платёж по …» при «голой» ручной отметке: та же запись привязывается к операции (сумма — факт строки), дубля нет; повтор привязанную не меняет', () => {
     const { store, rent } = family()
     const manual = store.markPaid('obligation', rent, 'a', { period: '2026-09' })
-    expect(manual.opId).toBeUndefined()
+    expect(manual!.opId).toBeUndefined()
     const linked = store.markPaid('obligation', rent, 'a', { period: '2026-09', amount: 219_000, source: 'statement', opId: 'op-bank-1' })
-    expect(linked.id).toBe(manual.id)
-    const rec = store.payments.find((p) => p.id === manual.id)!
+    expect(linked!.id).toBe(manual!.id)
+    const rec = store.payments.find((p) => p.id === manual!.id)!
     expect(rec).toMatchObject({ opId: 'op-bank-1', source: 'statement', amount: 219_000, kind: 'obligation', targetId: rent, period: '2026-09' })
     expect(store.payments.filter((p) => p.kind === 'obligation' && p.targetId === rent && p.period === '2026-09' && !p.deletedAt)).toHaveLength(1)
     // Уже привязанную запись повторный ответ другой строкой не меняет.
     const again = store.markPaid('obligation', rent, 'a', { period: '2026-09', amount: 219_500, source: 'statement', opId: 'op-bank-2' })
-    expect(again.id).toBe(manual.id)
-    expect(store.payments.find((p) => p.id === manual.id)!.opId).toBe('op-bank-1')
+    expect(again!.id).toBe(manual!.id)
+    expect(store.payments.find((p) => p.id === manual!.id)!.opId).toBe('op-bank-1')
   })
 
   it('«оплатил аренду»: запись по графику, карта уменьшилась, следующий — октябрь; повтор не удваивает', () => {
