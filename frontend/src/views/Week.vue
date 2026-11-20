@@ -716,6 +716,8 @@ onBeforeUnmount(() => {
       :amount="firstSalary?.amount ?? 0"
       :first-time="true"
       :amount-note="firstSalary?.note ?? ''"
+      :op-id="firstSalary?.c.opId"
+      :op-date="firstSalary ? store.ops[firstSalary.c.opId]?.date : undefined"
       @close="firstSalary = null"
     />
     <SectionSheet :row="sectionRow" :week="week" :month-name="restMonth" @close="sectionFor = null" @edit="editHand" @open="(id) => (sectionOp = id)" />

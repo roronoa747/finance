@@ -72,10 +72,15 @@ describe('matchCandidates', () => {
     expect(matchCandidates(ops(op('2026-09-20', 500_000, 'ТОО Работодатель')), close, [], 'a').map((c) => [c.kind, c.targetId])).toEqual([['salary', 'a']])
   })
 
-  it('уже отмеченный месяц — без предложения; одна операция — одно предложение; одна пара «цель · месяц» — одно; внутренние и привязанные — мимо', () => {
+  it('месяц, отмеченный с привязкой к строке банка, — без предложения; «голая» ручная отметка вопрос не гасит; одна операция — одно предложение; одна пара «цель · месяц» — одно; внутренние и привязанные — мимо', () => {
     const paid: Payment = { id: 'p', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: null, by: 'a', at: T, updatedAt: T }
     const list = ops(op('2026-09-06', -220_000, 'ARENDA'), op('2026-09-07', -220_000, 'ARENDA 2'))
-    expect(matchCandidates(list, { ...state, payments: [paid] }, [])).toEqual([])
+    // Отметка руками без строки банка — пара занята (вторую операцию не предлагаем), но вопрос
+    // по подходящей строке остаётся: ответ «это платёж по …» привяжет операцию к той же записи.
+    expect(matchCandidates(list, { ...state, payments: [paid] }, []).map((c) => c.opId)).toEqual([list[0].id])
+    // Отметка с привязанной операцией закрывает месяц: предложений нет.
+    const done: Payment = { ...paid, id: 'd', opId: list[1].id }
+    expect(matchCandidates(list, { ...state, payments: [done] }, [])).toEqual([])
     // Без отметки — только первая операция берёт пару «аренда · сентябрь».
     const twice = matchCandidates(list, state, [])
     expect(twice.map((c) => c.opId)).toEqual([list[0].id])
@@ -83,6 +88,21 @@ describe('matchCandidates', () => {
     const linked: Payment = { ...paid, id: 'q', opId: list[0].id, deletedAt: T }
     expect(matchCandidates(list, { ...state, payments: [linked] }, []).map((c) => c.opId)).toEqual([list[1].id])
     expect(matchCandidates(ops(op('2026-09-06', -220_000, 'ARENDA', { internal: true })), state, [])).toEqual([])
+  })
+
+
+  it('отказ «нет» по паре не занимает операцию: строка предлагается следующей цели, даже при «голой» отметке первой (TL-08)', () => {
+    const paid: Payment = { id: 'p', kind: 'obligation', targetId: 'rent', period: '2026-09', amount: 220_000, accountId: null, by: 'a', at: T, updatedAt: T }
+    const other = ob('o2', 'Другая', 220_000, 5)
+    const st = { ...state, obligations: [rent, other], payments: [paid] }
+    const list = ops(op('2026-09-06', -220_000, 'ARENDA'))
+    // Без отказа — вопрос по «голой» отмеченной паре (ответ привяжет операцию к ней).
+    expect(matchCandidates(list, st, []).map((c) => c.targetId)).toEqual(['rent'])
+    // «Нет» по «голой» отмеченной паре (старый ключ без операции) — вопрос переходит следующей цели.
+    expect(matchCandidates(list, st, [], undefined, ['obligation:rent:2026-09']).map((c) => c.targetId)).toEqual(['o2'])
+    // Отказ без «голой» отметки выбор не меняет: отказ фильтрует вызывающий (openMatches).
+    const none = { ...state, obligations: [rent, other], payments: [] as Payment[] }
+    expect(matchCandidates(list, none, [], undefined, ['obligation:rent:2026-09']).map((c) => c.targetId)).toEqual(['rent'])
   })
 
   it('правило семьи «это платёж по …» → confidence rule, месяц — ближайший к дате; подписка помечена', () => {

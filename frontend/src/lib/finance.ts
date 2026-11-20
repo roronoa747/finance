@@ -1589,6 +1589,25 @@ export function paidFor(
 }
 
 /**
+ * Отметка пары с привязанной банковской операцией; null — не отмечен или отметка
+ * «голая» (руками, без строки банка). Голая отметка не закрывает вопрос «это платёж
+ * по …?» для подходящей операции: ответ на него привяжет операцию к той же записи
+ * (`markPaid`), а не продублирует месяц.
+ */
+export function linkedPaidFor(
+  payments: Payment[] = [],
+  kind: MonthlyKind,
+  targetId: string,
+  period: string,
+): Payment | null {
+  return (
+    countedPayments(payments).find(
+      (p) => p.opId && p.kind === kind && p.targetId === targetId && p.period === period,
+    ) ?? null
+  )
+}
+
+/**
  * Действует ли отметка на остаток: сделана не раньше ручной сверки — до неё
  * деньги уже вошли во введённую сумму. Сверки не было — действуют все.
  */

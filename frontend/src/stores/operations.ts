@@ -198,7 +198,7 @@ export const useOperationsStore = defineStore('operations', () => {
   const openMatches = computed<MatchCandidate[]>(() =>
     auth.isViewer
       ? []
-      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me()).filter((c) => !isDeclined(c, declined.value)),
+      : matchCandidates(recentOperations(all.value), matchState(), finance.merchantRules, me(), declined.value).filter((c) => !isDeclined(c, declined.value)),
   )
   /** Предложения, что ждут ответа (вопросы «Недели»). */
   const pendingMatches = computed<MatchCandidate[]>(() => openMatches.value.filter((c) => c.confidence !== 'rule'))
@@ -772,9 +772,10 @@ export const useOperationsStore = defineStore('operations', () => {
     if (!op || !target || auth.isViewer) return
     const { kind, t } = target
     const { period } = nearestPeriod(op.date, t.day)
-    const paid = finance.payments.some((p) => !p.deletedAt && p.kind === kind && p.targetId === t.id && p.period === period)
     // Отметка — до пересчёта: итоги пишутся с ней, отмеченная строка не трата (хвосты 952/967).
-    if (!paid) finance.markPaid(kind, t.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
+    // markPaid идемпотентен: месяц с «голой» ручной отметкой он дополнит привязкой этой операции
+    // (строка уйдёт из трат, сумма — факт строки), а уже привязанный вернёт без изменений.
+    finance.markPaid(kind, t.id, me(), { period, amount: Math.abs(op.amount), source: 'statement', opId: op.id, at: operationAt(op.date) })
     // Своё действие — итоги сразу, как у «Да, отметить»: наблюдатель отметок ждёт `pull` (FG-28).
     writeTotals(periodsOf([op]))
     await recategorize(ruleMatchOf(op), { payment: { kind, targetId: t.id, categoryId: matchCategory(kind, t) } }, client)

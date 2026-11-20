@@ -17,6 +17,7 @@ import {
   salaryRecords,
 } from '@/lib/finance'
 import { dayLabel } from '@/lib/dates'
+import { operationAt } from '@/lib/statements/matching'
 import type { Operation } from '@/lib/statements/types'
 import type { PersonId } from '@/types/finance'
 
@@ -107,7 +108,15 @@ export function useSalaryTap(personId: MaybeRefOrGetter<PersonId>, period: Maybe
       sheet.value = null
       return
     }
-    finance.markSalary(toValue(personId), { period: target.value, amount, accountId: accountId ?? null })
+    // Отметка из листа по пушу банка — та же строка, что «Да» вопроса «Недели»: привязываем
+    // операцию (иначе после отметки вопрос «Это зарплата?» встаёт снова).
+    const came = arrival.value
+    finance.markSalary(toValue(personId), {
+      period: target.value,
+      amount,
+      accountId: accountId ?? null,
+      ...(came ? { source: 'statement' as const, opId: came.op.id, at: operationAt(came.op.date) } : {}),
+    })
     sheet.value = null
     if (monthCame()) toAllocation()
   }

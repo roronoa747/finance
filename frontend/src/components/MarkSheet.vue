@@ -6,6 +6,7 @@ import { useFxStore } from '@/stores/fx'
 import { money, moneyIn, plain, parseMoney } from '@/lib/money'
 import { FX_ACCOUNT_NAME } from '@/lib/fx'
 import { addMonths, atLabel, dayLabel } from '@/lib/dates'
+import { operationAt } from '@/lib/statements/matching'
 import {
   afterAnchor,
   amountAt,
@@ -55,8 +56,11 @@ const props = withDefaults(
     firstTime?: boolean
     /** Подпись суммы зарплаты вместо оклада — откуда сумма («Пришло в Kaspi · 16 октября», приход из пуша). */
     amountNote?: string
+    /** Отметка по строке банка (приход из пуша): ответ «это оно» — операция привязывается, вопрос не встаёт снова. */
+    opId?: string
+    opDate?: string
   }>(),
-  { amount: 0, account: undefined, firstTime: false, amountNote: '' },
+  { amount: 0, account: undefined, firstTime: false, amountNote: '', opId: undefined, opDate: undefined },
 )
 
 const emit = defineEmits<{
@@ -186,11 +190,12 @@ function confirmMark() {
     emit('close')
     return
   }
+  const link = props.opId && props.opDate ? { source: 'statement' as const, opId: props.opId, at: operationAt(props.opDate) } : {}
   const written = fxSalary.value
     ? finance.markSalary(props.targetId as PersonId, { period: props.period, foreign: amount, accountId: chosen.value })
     : salary.value
-    ? finance.markSalary(props.targetId as PersonId, { period: props.period, amount, accountId: chosen.value })
-    : finance.markPaid(props.kind as ScheduledKind, props.targetId, auth.slot ?? 'a', { period: props.period, amount, accountId: chosen.value })
+    ? finance.markSalary(props.targetId as PersonId, { period: props.period, amount, accountId: chosen.value, ...link })
+    : finance.markPaid(props.kind as ScheduledKind, props.targetId, auth.slot ?? 'a', { period: props.period, amount, accountId: chosen.value, ...link })
   emit('close')
   if (written) emit('marked', written)
 }

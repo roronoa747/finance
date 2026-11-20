@@ -408,6 +408,24 @@ describe('stores/operations — сопоставление с отметками
     expect(store.pendingMatches).toEqual([])
   })
 
+  it('«голая» ручная отметка не гасит вопрос: «да» привязывает строку банка к той же записи (случай владельца 2026-11-20 — Claude)', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Аренда отмечена руками на «Неделе», без строки банка; потом пришла выписка со списанием.
+    const manual = finance.markPaid('obligation', 'rent', 'a', { period: '2026-09' })
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-06', -219_000, 'PEREVOD ARENDA'))))
+    await store.send(client)
+    // Вопрос остаётся: ответ привяжет операцию, а не продублирует месяц.
+    expect(store.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([['obligation', 'rent', '2026-09']])
+    await store.acceptMatch(store.pendingMatches[0], client)
+    const records = finance.payments.filter((p) => p.kind === 'obligation' && p.targetId === 'rent' && p.period === '2026-09' && !p.deletedAt)
+    expect(records).toHaveLength(1)
+    expect(records[0].id).toBe(manual.id)
+    expect(records[0]).toMatchObject({ opId: store.all[0].id, source: 'statement', amount: 219_000 })
+    expect(store.pendingMatches).toEqual([])
+  })
+
   it('повтор того же файла — второй отметки нет; следующий месяц отмечается сам по правилу; «снять» не предлагает снова', async () => {
     const finance = family()
     const { client } = fakeServer()
@@ -1242,6 +1260,9 @@ describe('stores/operations — итоги находок (RZ-01)', () => {
 
   // Ревью frontend Н-4: главный путь — регулярное внесли в план, находка обнуляется пересчётом стора.
   it('новое регулярное → заведён платёж того же имени — итог обнулён; отметка «это платёж по …» — тоже', async () => {
+    // Обнуление пишет наблюдатель обязательств, а он пересчитывает лишь этот и прошлый месяц
+    // (totalsFresh → recentOperations): без фиксации даты сентябрьская находка вне окна уже в ноябре.
+    vi.setSystemTime(new Date('2026-10-20T07:00:00Z'))
     const plus = (month: string, merchant = 'YANDEX PLUS', amount = -1_990) => ({
       bank: 'kaspi' as const, date: `${month}-12`, amount, kind: 'purchase' as const, merchant, categoryId: null, internal: false,
     })
