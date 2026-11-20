@@ -421,7 +421,7 @@ describe('stores/operations — сопоставление с отметками
     await store.acceptMatch(store.pendingMatches[0], client)
     const records = finance.payments.filter((p) => p.kind === 'obligation' && p.targetId === 'rent' && p.period === '2026-09' && !p.deletedAt)
     expect(records).toHaveLength(1)
-    expect(records[0].id).toBe(manual.id)
+    expect(records[0].id).toBe(manual!.id)
     expect(records[0]).toMatchObject({ opId: store.all[0].id, source: 'statement', amount: 219_000 })
     expect(store.pendingMatches).toEqual([])
   })
