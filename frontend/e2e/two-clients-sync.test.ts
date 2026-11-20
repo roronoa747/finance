@@ -9,7 +9,7 @@ import { ApiClient, ApiError } from '../src/api/client'
 import type { SyncDoc, Account } from '../src/types/finance'
 import type { HouseholdDocResponse, ConflictResponse, PrivateDocResponse } from '../src/types/api'
 import { netWorth, goalMonths, nextChange } from '../src/lib/finance'
-import { monthKey } from '../src/lib/dates'
+import { addMonths, monthKey } from '../src/lib/dates'
 import { plain, parseMoney } from '../src/lib/money'
 import { numChanged } from '../src/lib/num'
 import Dreams from '../src/views/Dreams.vue'
@@ -317,7 +317,9 @@ describe('e2e / MGV-14 — Сквозная приёмка: совместная
       category: 'd1',
       versions: [
         { from: '2026-01', amount: 60_000 },
-        { from: '2026-11', amount: 20_000 }, // снижение на 40 000
+        // Снижение всегда со следующего месяца: nextChange берёт версии строго после текущей,
+        // зашитый месяц устарел бы с датой (тест падал с 2026-11-01).
+        { from: addMonths(monthKey(), 1), amount: 20_000 }, // снижение на 40 000
       ],
       updatedAt: '2026-09-24T00:00:00Z',
     })
