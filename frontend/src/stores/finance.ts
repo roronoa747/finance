@@ -1620,7 +1620,23 @@ export const useFinanceStore = defineStore('finance', () => {
       if (!c.rateUnknown) principal = split.body
     }
     const existing = paidFor(payments.value, kind, targetId, period)
-    if (existing) return existing
+    if (existing) {
+      // Ответ «это платёж по …» по строке банка при «голой» ручной отметке: операция
+      // привязывается к той же записи (сумма — факт строки), а не дублирует месяц —
+      // иначе строка банка остаётся тратой, а платёж считается дважды (случай владельца 2026-11-20).
+      if (!existing.opId && opts.source === 'statement' && opts.opId) {
+        const t = new Date().toISOString()
+        mutateHouseholdDoc((doc) => {
+          const rec = doc.payments?.find((p) => p.id === existing.id)
+          if (!rec) return
+          rec.opId = opts.opId
+          rec.source = 'statement'
+          if (opts.amount !== undefined) rec.amount = opts.amount
+          rec.updatedAt = t
+        })
+      }
+      return existing
+    }
 
     const record = newPayment(
       { kind, targetId, period, amount, ...(principal === undefined ? {} : { principal }), by, ...sourceOf(opts) },
@@ -1655,7 +1671,21 @@ export const useFinanceStore = defineStore('finance', () => {
     // Ритм (Б7): месяц экрана у аванса и недели — ближайший открытый приход этого месяца (`period` — его ISO-день).
     const period = salaryMarkPeriod(p, payments.value, opts.period ?? monthKey())
     const existing = paidFor(payments.value, 'salary', personId, period)
-    if (existing) return existing
+    if (existing) {
+      // Как в markPaid: «голую» отметку ответ по строке банка дополняет привязкой, а не дублирует.
+      if (!existing.opId && opts.source === 'statement' && opts.opId) {
+        const t = new Date().toISOString()
+        mutateHouseholdDoc((doc) => {
+          const rec = doc.payments?.find((x) => x.id === existing.id)
+          if (!rec) return
+          rec.opId = opts.opId
+          rec.source = 'statement'
+          if (opts.amount !== undefined) rec.amount = opts.amount
+          rec.updatedAt = t
+        })
+      }
+      return existing
+    }
     const own = salaryOf(p, periodMonth(period))
     // Из тенговой выписки валютная зарплата приходит уже в тенге (банк обменял, B2C-80) — тенговая запись.
     const record =

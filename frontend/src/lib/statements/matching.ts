@@ -1,7 +1,7 @@
 import type { AccountShift, Credit, FxExchange, Obligation, Payment, Person, PersonId, RateBook } from '@/types/finance'
 import type { MerchantRule, Operation, PaymentRule } from './types'
 import { dayNumber, isHand, ruleFor, type PaymentAmount } from './model'
-import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
+import { amountAt, creditDueAmount, dueIn, expectedEventTenge, isSubscription, linkedPaidFor, liveCredits, liveExchanges, liveObligations, paidFor, payEventOf, payEvents, type PayEvent, type SalaryCtx } from '@/lib/finance'
 import { addMonths, dayLabel, daysInMonth, monthKey, todayIso } from '@/lib/dates'
 import { money } from '@/lib/money'
 
@@ -281,6 +281,7 @@ export function matchCandidates(
   state: { obligations?: Obligation[]; credits?: Credit[]; people?: Person[]; payments?: Payment[]; fxExchanges?: FxExchange[]; book?: RateBook | null },
   rules: MerchantRule[],
   me?: PersonId,
+  declined: readonly string[] = [],
 ): MatchCandidate[] {
   const payments = state.payments ?? []
   const salary: SalaryCtx = { book: state.book, payments, exchanges: state.fxExchanges }
@@ -364,7 +365,13 @@ export function matchCandidates(
   const taken = new Set<string>()
   const chosen = new Map<string, Scored>()
   for (const c of all) {
-    if (chosen.has(c.opId) || taken.has(key(c)) || paidFor(payments, c.kind, c.targetId, c.period)) continue
+    // Уже отмеченные пары не предлагаем только когда отметка привязана к строке банка:
+    // «голая» ручная отметка вопрос не гасит — ответ привяжет операцию к ней (markPaid).
+    if (chosen.has(c.opId) || taken.has(key(c)) || linkedPaidFor(payments, c.kind, c.targetId, c.period)) continue
+    // «Голая» отметка по отклонённой («нет») паре — исключение: операция явно не этот платёж,
+    // она предлагается следующей подходящей цели (TL-08). Без отметки отказ фильтруется после
+    // выбора (`isDeclined` у вызывающего) и операцию другим целям не отдаёт.
+    if (isDeclined(c, declined) && paidFor(payments, c.kind, c.targetId, c.period)) continue
     taken.add(key(c))
     chosen.set(c.opId, c)
   }

@@ -408,6 +408,24 @@ describe('stores/operations — сопоставление с отметками
     expect(store.pendingMatches).toEqual([])
   })
 
+  it('«голая» ручная отметка не гасит вопрос: «да» привязывает строку банка к той же записи (случай владельца 2026-11-20 — Claude)', async () => {
+    const finance = family()
+    const { client } = fakeServer()
+    const store = useOperationsStore()
+    // Аренда отмечена руками на «Неделе», без строки банка; потом пришла выписка со списанием.
+    const manual = finance.markPaid('obligation', 'rent', 'a', { period: '2026-09' })
+    store.setDraft(draftOf(statement('2026-09-01', '2026-09-20', op('2026-09-06', -219_000, 'PEREVOD ARENDA'))))
+    await store.send(client)
+    // Вопрос остаётся: ответ привяжет операцию, а не продублирует месяц.
+    expect(store.pendingMatches.map((c) => [c.kind, c.targetId, c.period])).toEqual([['obligation', 'rent', '2026-09']])
+    await store.acceptMatch(store.pendingMatches[0], client)
+    const records = finance.payments.filter((p) => p.kind === 'obligation' && p.targetId === 'rent' && p.period === '2026-09' && !p.deletedAt)
+    expect(records).toHaveLength(1)
+    expect(records[0].id).toBe(manual.id)
+    expect(records[0]).toMatchObject({ opId: store.all[0].id, source: 'statement', amount: 219_000 })
+    expect(store.pendingMatches).toEqual([])
+  })
+
   it('повтор того же файла — второй отметки нет; следующий месяц отмечается сам по правилу; «снять» не предлагает снова', async () => {
     const finance = family()
     const { client } = fakeServer()

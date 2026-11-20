@@ -68,6 +68,8 @@ const { target, canMark, arrival, title, sheet, markAmount, markAccount, markNot
     :account="markAccount"
     :first-time="firstTime"
     :amount-note="markNote"
+    :op-id="arrival?.op.id"
+    :op-date="arrival?.op.date"
     @close="sheet = null"
     @marked="onMarked"
     @allocate="toAllocation"
