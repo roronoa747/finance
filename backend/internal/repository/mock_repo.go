@@ -701,10 +701,16 @@ func (m *MockStatementRepo) ListUploads(ctx context.Context, householdID string,
 }
 
 func (m *MockStatementRepo) UpsertOperations(ctx context.Context, userID, householdID string, ops []models.Operation) (int, error) {
+	res, err := m.UpsertOperationsChecked(ctx, userID, householdID, ops)
+	return res.Upserted, err
+}
+
+func (m *MockStatementRepo) UpsertOperationsChecked(ctx context.Context, userID, householdID string, ops []models.Operation) (UpsertResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ops = lastByID(ops)
 	now := m.stamp()
+	res := UpsertResult{At: now}
 	if m.ops[userID] == nil {
 		m.ops[userID] = make(map[string]*mockOperation)
 	}
@@ -715,16 +721,26 @@ func (m *MockStatementRepo) UpsertOperations(ctx context.Context, userID, househ
 		}
 		// As in SQL: source, occurred_at and fx_* stay the server's; the tombstone is one-way.
 		op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = "statement", nil, nil, nil
+		accepted := true
 		if prev, ok := m.ops[userID][op.ID]; ok {
 			if op.UploadID == nil {
 				op.UploadID = prev.op.UploadID
 			}
 			op.Source, op.OccurredAt, op.FxCurrency, op.FxAmount = prev.op.Source, prev.op.OccurredAt, prev.op.FxCurrency, prev.op.FxAmount
 			op.Deleted = op.Deleted || prev.op.Deleted
+			if isStaleBase(op.BaseUpdatedAt, prev.op.UpdatedAt) {
+				accepted = false
+				op.Note, op.CategoryID, op.Internal = prev.op.Note, prev.op.CategoryID, prev.op.Internal
+			}
 		}
+		if accepted {
+			res.Accepted = append(res.Accepted, op.ID)
+		}
+		op.BaseUpdatedAt = nil
 		m.ops[userID][op.ID] = &mockOperation{op: op, householdID: householdID}
 	}
-	return len(ops), nil
+	res.Upserted = len(ops)
+	return res, nil
 }
 
 func (m *MockStatementRepo) ListOperations(ctx context.Context, userID string, since time.Time, limit int) ([]models.Operation, error) {

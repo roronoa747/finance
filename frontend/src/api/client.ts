@@ -292,8 +292,9 @@ export class ApiClient {
     return this.request<{ uploads: StatementUploadResponse[] }>('/statements', { method: 'GET' })
   }
 
-  async upsertOperations(operations: OperationWire[]): Promise<{ upserted: number }> {
-    return this.request<{ upserted: number }>('/operations/batch', {
+  /** `updated_at` и `accepted` — время записи и id строк, чьи поля приняты; строки вне `accepted` сохранили серверные. */
+  async upsertOperations(operations: OperationWire[]): Promise<{ upserted: number; updated_at?: string; accepted?: string[] }> {
+    return this.request<{ upserted: number; updated_at?: string; accepted?: string[] }>('/operations/batch', {
       method: 'POST',
       body: JSON.stringify({ operations }),
     })

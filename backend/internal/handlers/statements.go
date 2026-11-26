@@ -221,13 +221,19 @@ func (h *StatementHandler) UpsertOperations(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	}
-	n, err := h.repo.UpsertOperations(r.Context(), userID, householdID, req.Operations)
+	res, err := h.repo.UpsertOperationsChecked(r.Context(), userID, householdID, req.Operations)
 	if err != nil {
 		log.Printf("statements: upsert operations: %v", err)
 		errorJSON(w, http.StatusInternalServerError, "failed to save operations")
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]int{"upserted": n})
+	// accepted + updated_at: the phone takes this time as the new base of those lines (a line left out
+	// kept the server's category/note, the next pull brings it).
+	accepted := res.Accepted
+	if accepted == nil {
+		accepted = []string{}
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"upserted": res.Upserted, "updated_at": res.At, "accepted": accepted})
 }
 
 // ListOperations — GET /api/operations?since=<RFC3339>&limit=<≤2000> (member):
