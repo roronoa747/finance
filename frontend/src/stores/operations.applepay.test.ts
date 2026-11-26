@@ -101,7 +101,8 @@ describe('провод — новые поля', () => {
     const back = toWire(op)
     expect(back).not.toHaveProperty('source')
     expect(back).not.toHaveProperty('fx_amount')
-    expect(fromWire({ ...back, source: 'tap', occurred_at: op.at, fx_currency: 'USD', fx_amount: 622 })).toEqual(op)
+    // База строки (updated_at сервера) уходит как base_updated_at и возвращается тем же updated_at.
+    expect(fromWire({ ...back, updated_at: back.base_updated_at, source: 'tap', occurred_at: op.at, fx_currency: 'USD', fx_amount: 622 })).toEqual(op)
     // Выписка — без новых полей.
     expect(fromWire({ ...w, source: 'statement', fx_currency: undefined, fx_amount: undefined, occurred_at: undefined })).not.toHaveProperty('source')
   })
