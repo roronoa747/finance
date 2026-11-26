@@ -111,6 +111,7 @@ export function toWire(op: Operation): OperationWire {
     category_id: op.categoryId,
     internal: op.internal,
     upload_id: op.uploadId ?? null,
+    ...(op.baseAt ? { base_updated_at: op.baseAt } : {}),
     // source, at и fx пишет только сервер (Р-14): батч их не шлёт.
   }
 }
@@ -131,6 +132,7 @@ export function fromWire(w: OperationWire): Operation {
     categoryId: w.category_id ?? null,
     internal: w.internal,
     ...(w.upload_id ? { uploadId: w.upload_id } : {}),
+    ...(w.updated_at ? { baseAt: w.updated_at } : {}),
     ...(w.source === 'tap' || w.source === 'push' ? { source: w.source } : {}),
     ...(w.occurred_at ? { at: w.occurred_at } : {}),
     ...(w.fx_currency && w.fx_amount ? { fx: { currency: w.fx_currency, amount: w.fx_amount } } : {}),
@@ -294,6 +296,18 @@ export const useOperationsStore = defineStore('operations', () => {
       if (op && markByOperation(c, op)) n += 1
     }
     return n
+  }
+
+  /**
+   * Сервер принял поля этих строк и назвал время записи: оно — новая база (`baseAt`) строки на телефоне и у её копий в
+   * очереди, иначе следующая правка той же строки сошла бы за старую. Строки вне `accepted` сохранили серверные
+   * категорию, заметку и «внутренний»: их копию с сервера принесёт ближайший `pull`.
+   */
+  function rebase(at: string | undefined, accepted: string[] | undefined) {
+    if (!at || !accepted?.length) return
+    const ids = new Set(accepted)
+    for (const id of ids) if (ops.value[id]) ops.value[id].baseAt = at
+    for (const j of pending.value) for (const o of j.ops) if (ids.has(o.id)) o.baseAt = at
   }
 
   function save() {
@@ -918,8 +932,9 @@ export const useOperationsStore = defineStore('operations', () => {
           }
           while (job.ops.length) {
             const chunk = job.ops.slice(0, BATCH_SIZE)
-            await client.upsertOperations(chunk.map((o) => (job.deleted ? tombstoneWire(o) : toWire({ ...o, uploadId: job.uploadId ?? o.uploadId }))))
+            const sent = await client.upsertOperations(chunk.map((o) => (job.deleted ? tombstoneWire(o) : toWire({ ...o, uploadId: job.uploadId ?? o.uploadId }))))
             job.ops = job.ops.slice(chunk.length)
+            rebase(sent?.updated_at, sent?.accepted)
             save()
           }
           pending.value.shift()

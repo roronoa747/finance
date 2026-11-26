@@ -131,6 +131,8 @@ export interface OperationWire {
   internal: boolean
   upload_id?: string | null
   updated_at?: string
+  /** Батч: `updated_at`, который телефон видел у строки; сервер старее-не-перетирает категорию, заметку, «внутренний». */
+  base_updated_at?: string
   /** Apple Pay (Р-14): пишет только сервер — батч их не меняет. Нет или `statement` — строка выписки. */
   source?: 'statement' | 'tap' | 'push'
   occurred_at?: string

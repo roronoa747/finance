@@ -30,6 +30,10 @@ type Operation struct {
 	Internal     bool      `json:"internal"`
 	UploadID     *string   `json:"upload_id,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// BaseUpdatedAt is the updated_at the phone last saw for this line (a batch only). A line the server
+	// changed since then is newer than the phone's copy: the batch keeps the server's category, note and
+	// "internal". Absent (an old client, a new line) means no check.
+	BaseUpdatedAt *time.Time `json:"base_updated_at,omitempty"`
 	// Apple Pay (Р-14): the server writes source, occurred_at and fx_* itself — a batch never
 	// changes them. A foreign-currency operation has amount 0 until the phone converts it.
 	Source     string     `json:"source"` // statement | tap | push

@@ -160,7 +160,7 @@ func TestOperationsOwnerOnlyAndRoles(t *testing.T) {
 	batch := map[string]any{"operations": []any{op("aaaa0001", -1200), op("aaaa0002", -800)}}
 
 	rec := app.do(t, http.MethodPost, "/api/operations/batch", app.alice, batch)
-	if rec.Code != http.StatusOK || decode[map[string]int](t, rec)["upserted"] != 2 {
+	if rec.Code != http.StatusOK || decode[map[string]any](t, rec)["upserted"] != float64(2) {
 		t.Fatalf("member batch: %d %s", rec.Code, rec.Body.String())
 	}
 

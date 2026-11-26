@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
+
 	"finance-backend/internal/applepay"
 	"finance-backend/internal/models"
 )
@@ -31,6 +33,11 @@ type StatementRepository interface {
 	// id updates every mutable field, updated_at moves forward. An upload_id not
 	// owned by the user is stored as NULL.
 	UpsertOperations(ctx context.Context, userID, householdID string, ops []models.Operation) (int, error)
+	// UpsertOperationsChecked is UpsertOperations that also tells the phone which lines it may treat as
+	// settled: a line with base_updated_at older than the server's row keeps the server's category, note and
+	// "internal" (a stale phone copy must not overwrite them) and is not Accepted. Accepted lines carry At,
+	// the new updated_at, so the phone's next edit of them is not taken for stale.
+	UpsertOperationsChecked(ctx context.Context, userID, householdID string, ops []models.Operation) (UpsertResult, error)
 	// ListOperations returns the user's operations with updated_at > since in
 	// (updated_at, id) order. A page never ends inside one updated_at: rows of
 	// one batch share it (one transaction), so a cursor cut there would skip the
@@ -38,6 +45,15 @@ type StatementRepository interface {
 	ListOperations(ctx context.Context, userID string, since time.Time, limit int) ([]models.Operation, error)
 	// Operations from a phone (Apple Pay, Р-14).
 	PhoneOperationRepository
+}
+
+// UpsertResult is the outcome of UpsertOperationsChecked.
+type UpsertResult struct {
+	Upserted int
+	// At is the updated_at the written lines got (one transaction, one time).
+	At time.Time
+	// Accepted are the ids whose phone fields were written; the rest kept the server's.
+	Accepted []string
 }
 
 type sqlStatementRepository struct {
@@ -100,73 +116,143 @@ const upsertChunk = 500
 const operationColumns = 12
 
 func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, householdID string, ops []models.Operation) (int, error) {
+	res, err := r.UpsertOperationsChecked(ctx, userID, householdID, ops)
+	return res.Upserted, err
+}
+
+func (r *sqlStatementRepository) UpsertOperationsChecked(ctx context.Context, userID, householdID string, ops []models.Operation) (UpsertResult, error) {
 	ops = lastByID(ops)
+	var res UpsertResult
 	if len(ops) == 0 {
-		return 0, nil
+		return res, nil
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to start tx: %w", err)
+		return res, fmt.Errorf("failed to start tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	total := 0
-	for start := 0; start < len(ops); start += upsertChunk {
-		chunk := ops[start:min(start+upsertChunk, len(ops))]
-		values := make([]string, 0, len(chunk))
-		args := make([]any, 0, 2+len(chunk)*operationColumns)
-		args = append(args, userID, householdID)
-		for _, op := range chunk {
-			n := len(args)
-			p := func(i int) string { return fmt.Sprintf("$%d", n+i) }
-			// The upload counts only if it is the user's own; otherwise NULL.
-			// source, occurred_at and fx_* are the server's (Apple Pay): a batch never writes them,
-			// a new row from a batch is a statement line (the column default).
-			values = append(values, fmt.Sprintf(
-				"($1, %s, $2, (SELECT u.id FROM app.statement_uploads u WHERE u.id = %s::uuid AND u.user_id = $1), %s, %s::date, %s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN now() END)",
-				p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10), p(11), p(12)))
-			args = append(args, op.ID, op.UploadID, op.Bank, op.Date, op.Amount, op.Kind, op.Merchant,
-				op.Counterparty, op.Note, op.CategoryID, op.Internal, op.Deleted)
+	// Lines the phone has not seen the latest of: the server's row changed after the phone's base.
+	ids := make([]string, len(ops))
+	for i, op := range ops {
+		ids[i] = op.ID
+	}
+	current := map[string]time.Time{}
+	rows, err := tx.QueryContext(ctx, `SELECT id, updated_at FROM app.operations WHERE user_id = $1 AND id = ANY($2) FOR UPDATE`, userID, pq.Array(ids))
+	if err != nil {
+		return res, fmt.Errorf("failed to read operations: %w", err)
+	}
+	for rows.Next() {
+		var id string
+		var at time.Time
+		if err := rows.Scan(&id, &at); err != nil {
+			rows.Close()
+			return res, fmt.Errorf("failed to read operations: %w", err)
 		}
-		// The tombstone is one-way: a later batch without "deleted" (an old client) keeps it.
-		query := `
-			INSERT INTO app.operations
-				(user_id, id, household_id, upload_id, bank, op_date, amount, kind, merchant, counterparty, note, category_id, internal, deleted_at)
-			VALUES ` + strings.Join(values, ",\n") + `
-			ON CONFLICT (user_id, id) DO UPDATE SET
-				household_id = EXCLUDED.household_id,
-				upload_id = COALESCE(EXCLUDED.upload_id, app.operations.upload_id),
-				bank = EXCLUDED.bank,
-				op_date = EXCLUDED.op_date,
-				amount = EXCLUDED.amount,
-				kind = EXCLUDED.kind,
-				merchant = EXCLUDED.merchant,
-				counterparty = EXCLUDED.counterparty,
+		current[id] = at
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return res, fmt.Errorf("failed to read operations: %w", err)
+	}
+	rows.Close()
+	var fresh, stale []models.Operation
+	for _, op := range ops {
+		if at, ok := current[op.ID]; ok && isStaleBase(op.BaseUpdatedAt, at) {
+			stale = append(stale, op)
+		} else {
+			fresh = append(fresh, op)
+			res.Accepted = append(res.Accepted, op.ID)
+		}
+	}
+
+	for _, part := range []struct {
+		ops   []models.Operation
+		stale bool
+	}{{fresh, false}, {stale, true}} {
+		for start := 0; start < len(part.ops); start += upsertChunk {
+			chunk := part.ops[start:min(start+upsertChunk, len(part.ops))]
+			n, err := upsertChunkTx(ctx, tx, userID, householdID, chunk, part.stale)
+			if err != nil {
+				return res, err
+			}
+			res.Upserted += n
+		}
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT now()`).Scan(&res.At); err != nil {
+		return res, fmt.Errorf("failed to read the batch time: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return res, fmt.Errorf("failed to commit operations: %w", err)
+	}
+	return res, nil
+}
+
+// isStaleBase: the phone says which updated_at it last saw; the server's row is newer. Times are compared at
+// the microsecond the database keeps.
+func isStaleBase(base *time.Time, serverAt time.Time) bool {
+	return base != nil && base.Truncate(time.Microsecond).Before(serverAt.Truncate(time.Microsecond))
+}
+
+func upsertChunkTx(ctx context.Context, tx *sql.Tx, userID, householdID string, chunk []models.Operation, stale bool) (int, error) {
+	values := make([]string, 0, len(chunk))
+	args := make([]any, 0, 2+len(chunk)*operationColumns)
+	args = append(args, userID, householdID)
+	for _, op := range chunk {
+		n := len(args)
+		p := func(i int) string { return fmt.Sprintf("$%d", n+i) }
+		// The upload counts only if it is the user's own; otherwise NULL.
+		// source, occurred_at and fx_* are the server's (Apple Pay): a batch never writes them,
+		// a new row from a batch is a statement line (the column default).
+		values = append(values, fmt.Sprintf(
+			"($1, %s, $2, (SELECT u.id FROM app.statement_uploads u WHERE u.id = %s::uuid AND u.user_id = $1), %s, %s::date, %s, %s, %s, %s, %s, %s, %s, CASE WHEN %s THEN now() END)",
+			p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10), p(11), p(12)))
+		args = append(args, op.ID, op.UploadID, op.Bank, op.Date, op.Amount, op.Kind, op.Merchant,
+			op.Counterparty, op.Note, op.CategoryID, op.Internal, op.Deleted)
+	}
+	// A phone copy older than the server's row keeps the server's note, category and "internal": what the
+	// phone sends for them is an old value, not a decision. Otherwise a stale non-null category would
+	// overwrite the sorted one, as a null already could not.
+	phoneFields := `
 				note = EXCLUDED.note,
 				-- A stale client copy has no category for a line the server already sorted: it must not
 				-- wipe it (a batch from a phone that missed a pull did exactly that). Moving a line to
 				-- "internal" still clears the category, as the client does on purpose.
 				category_id = CASE WHEN EXCLUDED.internal THEN NULL
 				                   ELSE COALESCE(EXCLUDED.category_id, app.operations.category_id) END,
-				internal = EXCLUDED.internal,
-				deleted_at = COALESCE(app.operations.deleted_at, EXCLUDED.deleted_at),
-				updated_at = now();`
-		res, err := tx.ExecContext(ctx, query, args...)
-		if err != nil {
-			return 0, fmt.Errorf("failed to upsert operations: %w", err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("failed to count upserted operations: %w", err)
-		}
-		total += int(n)
+				internal = EXCLUDED.internal,`
+	if stale {
+		phoneFields = `
+				note = app.operations.note,
+				category_id = app.operations.category_id,
+				internal = app.operations.internal,`
 	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit operations: %w", err)
+	// The tombstone is one-way: a later batch without "deleted" (an old client) keeps it.
+	query := `
+		INSERT INTO app.operations
+			(user_id, id, household_id, upload_id, bank, op_date, amount, kind, merchant, counterparty, note, category_id, internal, deleted_at)
+		VALUES ` + strings.Join(values, ",\n") + `
+		ON CONFLICT (user_id, id) DO UPDATE SET
+			household_id = EXCLUDED.household_id,
+			upload_id = COALESCE(EXCLUDED.upload_id, app.operations.upload_id),
+			bank = EXCLUDED.bank,
+			op_date = EXCLUDED.op_date,
+			amount = EXCLUDED.amount,
+			kind = EXCLUDED.kind,
+			merchant = EXCLUDED.merchant,
+			counterparty = EXCLUDED.counterparty,` + phoneFields + `
+			deleted_at = COALESCE(app.operations.deleted_at, EXCLUDED.deleted_at),
+			updated_at = now();`
+	res, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to upsert operations: %w", err)
 	}
-	return total, nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to count upserted operations: %w", err)
+	}
+	return int(n), nil
 }
 
 const operationSelect = `
