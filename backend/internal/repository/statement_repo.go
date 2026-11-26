@@ -144,7 +144,11 @@ func (r *sqlStatementRepository) UpsertOperations(ctx context.Context, userID, h
 				merchant = EXCLUDED.merchant,
 				counterparty = EXCLUDED.counterparty,
 				note = EXCLUDED.note,
-				category_id = EXCLUDED.category_id,
+				-- A stale client copy has no category for a line the server already sorted: it must not
+				-- wipe it (a batch from a phone that missed a pull did exactly that). Moving a line to
+				-- "internal" still clears the category, as the client does on purpose.
+				category_id = CASE WHEN EXCLUDED.internal THEN NULL
+				                   ELSE COALESCE(EXCLUDED.category_id, app.operations.category_id) END,
 				internal = EXCLUDED.internal,
 				deleted_at = COALESCE(app.operations.deleted_at, EXCLUDED.deleted_at),
 				updated_at = now();`
